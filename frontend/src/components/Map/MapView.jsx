@@ -1,50 +1,122 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import { opportunities } from '../../data/mockOpportunities';
+import { createRiskIcon } from '../../data/mapIcons';
 
-// Fix para os ícones do Leaflet não aparecerem
+// Fix para os ícones do Leaflet
 delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: require('leaflet/dist/images/marker-icon-2x.png'),
-  iconUrl: require('leaflet/dist/images/marker-icon.png'),
-  shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
-});
 
 const MapView = () => {
+  // Estado para controlar qual oportunidade está selecionada
+  const [selectedOpportunity, setSelectedOpportunity] = useState(null);
+  
   // Coordenadas do centro do Brasil
   const brazilCenter = [-14.235, -51.9253];
-  
-  // Dados de exemplo: Oportunidades
-  const opportunities = [
-    {
-      id: 1,
-      name: 'Tomate - Pernambuco',
-      position: [-8.0476, -34.8770], // Recife, PE
-      buyPrice: 2.50,
-      sellPrice: 7.00,
-      roi: 180,
-      product: 'Tomate',
-      risk: 'Baixo'
-    },
-    {
-      id: 2,
-      name: 'Tomate - Mato Grosso',
-      position: [-15.6014, -56.0979], // Cuiabá, MT
-      buyPrice: 7.00,
-      sellPrice: 12.50,
-      roi: 78,
-      product: 'Tomate',
-      risk: 'Alto (Granizo previsto)'
-    }
-  ];
+
+  // Função para formatar preço em reais
+  const formatPrice = (price) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    }).format(price);
+  };
+
+  // Função para obter badge de risco
+  const getRiskBadge = (risk, riskLevel) => {
+    const colors = {
+      1: '#22c55e',
+      2: '#f59e0b',
+      3: '#ef4444'
+    };
+    
+    return {
+      color: colors[riskLevel],
+      text: risk
+    };
+  };
 
   return (
-    <div style={{ height: '100vh', width: '100%' }}>
+    <div style={{ height: '100vh', width: '100%', position: 'relative' }}>
+      {/* Legenda de cores */}
+      <div style={{
+        position: 'absolute',
+        top: '20px',
+        right: '20px',
+        backgroundColor: 'white',
+        padding: '15px',
+        borderRadius: '8px',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+        zIndex: 1000,
+        minWidth: '180px'
+      }}>
+        <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', fontWeight: 'bold' }}>
+          📊 Legenda - ROI
+        </h4>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+          <div style={{
+            width: '20px',
+            height: '20px',
+            backgroundColor: '#22c55e',
+            borderRadius: '50%',
+            marginRight: '10px',
+            border: '2px solid white',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+          }}></div>
+          <span style={{ fontSize: '12px' }}>Alto (&gt;100%)</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+          <div style={{
+            width: '20px',
+            height: '20px',
+            backgroundColor: '#f59e0b',
+            borderRadius: '50%',
+            marginRight: '10px',
+            border: '2px solid white',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+          }}></div>
+          <span style={{ fontSize: '12px' }}>Médio (50-100%)</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+          <div style={{
+            width: '20px',
+            height: '20px',
+            backgroundColor: '#ef4444',
+            borderRadius: '50%',
+            marginRight: '10px',
+            border: '2px solid white',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+          }}></div>
+          <span style={{ fontSize: '12px' }}>Baixo (&lt;50%)</span>
+        </div>
+        <hr style={{ margin: '10px 0', border: 'none', borderTop: '1px solid #e5e7eb' }} />
+        <div style={{ fontSize: '11px', color: '#6b7280' }}>
+          🔴 Borda vermelha = Alto risco
+        </div>
+      </div>
+
+      {/* Contador de oportunidades */}
+      <div style={{
+        position: 'absolute',
+        top: '20px',
+        left: '20px',
+        backgroundColor: '#2c5f2d',
+        color: 'white',
+        padding: '12px 18px',
+        borderRadius: '8px',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+        zIndex: 1000,
+        fontWeight: 'bold'
+      }}>
+        🌾 {opportunities.length} Oportunidades Ativas
+      </div>
+
       <MapContainer 
         center={brazilCenter} 
         zoom={4} 
         style={{ height: '100%', width: '100%' }}
+        scrollWheelZoom={true}
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -52,15 +124,174 @@ const MapView = () => {
         />
         
         {opportunities.map((opp) => (
-          <Marker key={opp.id} position={opp.position}>
-            <Popup>
-              <div style={{ padding: '10px' }}>
-                <h3 style={{ margin: '0 0 10px 0' }}>{opp.name}</h3>
-                <p><strong>Produto:</strong> {opp.product}</p>
-                <p><strong>Preço de Compra:</strong> R$ {opp.buyPrice.toFixed(2)}/kg</p>
-                <p><strong>Preço de Venda:</strong> R$ {opp.sellPrice.toFixed(2)}/kg</p>
-                <p><strong>ROI:</strong> {opp.roi}%</p>
-                <p><strong>Risco:</strong> {opp.risk}</p>
+          <Marker 
+            key={opp.id} 
+            position={opp.position}
+            icon={createRiskIcon(opp.roi, opp.riskLevel)}
+            eventHandlers={{
+              click: () => setSelectedOpportunity(opp)
+            }}
+          >
+            <Popup maxWidth={350} minWidth={250}>
+              <div style={{ padding: '8px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+                {/* Header */}
+                <div style={{ 
+                  borderBottom: '2px solid #22c55e', 
+                  paddingBottom: '10px',
+                  marginBottom: '12px'
+                }}>
+                  <h3 style={{ 
+                    margin: '0 0 5px 0', 
+                    color: '#1f2937',
+                    fontSize: '16px',
+                    fontWeight: 'bold'
+                  }}>
+                    {opp.product}
+                  </h3>
+                  <p style={{ 
+                    margin: '0', 
+                    fontSize: '13px', 
+                    color: '#6b7280'
+                  }}>
+                    📍 {opp.city}, {opp.stateName}
+                  </p>
+                </div>
+
+                {/* ROI Badge */}
+                <div style={{
+                  backgroundColor: opp.roi >= 100 ? '#dcfce7' : opp.roi >= 50 ? '#fef3c7' : '#fee2e2',
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  marginBottom: '12px',
+                  textAlign: 'center'
+                }}>
+                  <span style={{ 
+                    fontSize: '20px', 
+                    fontWeight: 'bold',
+                    color: opp.roi >= 100 ? '#15803d' : opp.roi >= 50 ? '#b45309' : '#dc2626'
+                  }}>
+                    🎯 {opp.roi}% ROI
+                  </span>
+                </div>
+
+                {/* Informações principais */}
+                <div style={{ marginBottom: '12px' }}>
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between',
+                    marginBottom: '8px',
+                    padding: '6px',
+                    backgroundColor: '#f9fafb',
+                    borderRadius: '4px'
+                  }}>
+                    <span style={{ fontSize: '12px', fontWeight: '600', color: '#374151' }}>
+                      💰 Compra:
+                    </span>
+                    <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#059669' }}>
+                      {formatPrice(opp.buyPrice)}/kg
+                    </span>
+                  </div>
+                  
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between',
+                    marginBottom: '8px',
+                    padding: '6px',
+                    backgroundColor: '#f9fafb',
+                    borderRadius: '4px'
+                  }}>
+                    <span style={{ fontSize: '12px', fontWeight: '600', color: '#374151' }}>
+                      💵 Venda:
+                    </span>
+                    <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#0891b2' }}>
+                      {formatPrice(opp.sellPrice)}/kg
+                    </span>
+                  </div>
+
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between',
+                    marginBottom: '8px',
+                    padding: '6px',
+                    backgroundColor: '#f9fafb',
+                    borderRadius: '4px'
+                  }}>
+                    <span style={{ fontSize: '12px', fontWeight: '600', color: '#374151' }}>
+                      📦 Volume:
+                    </span>
+                    <span style={{ fontSize: '12px', color: '#6b7280' }}>
+                      {opp.volume}
+                    </span>
+                  </div>
+
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between',
+                    marginBottom: '8px',
+                    padding: '6px',
+                    backgroundColor: '#f9fafb',
+                    borderRadius: '4px'
+                  }}>
+                    <span style={{ fontSize: '12px', fontWeight: '600', color: '#374151' }}>
+                      🚛 Destino:
+                    </span>
+                    <span style={{ fontSize: '12px', color: '#6b7280' }}>
+                      {opp.sellLocation}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Risco */}
+                <div style={{
+                  padding: '8px',
+                  backgroundColor: getRiskBadge(opp.risk, opp.riskLevel).color + '20',
+                  borderLeft: `4px solid ${getRiskBadge(opp.risk, opp.riskLevel).color}`,
+                  borderRadius: '4px',
+                  marginBottom: '10px'
+                }}>
+                  <span style={{ fontSize: '12px', fontWeight: '600', color: '#374151' }}>
+                    ⚠️ Risco: {opp.risk}
+                  </span>
+                </div>
+
+                {/* Clima */}
+                <div style={{
+                  padding: '8px',
+                  backgroundColor: '#eff6ff',
+                  borderRadius: '4px',
+                  marginBottom: '10px'
+                }}>
+                  <span style={{ fontSize: '12px', color: '#1e40af' }}>
+                    🌤️ {opp.climate}
+                  </span>
+                </div>
+
+                {/* Descrição */}
+                <div style={{
+                  fontSize: '11px',
+                  color: '#6b7280',
+                  lineHeight: '1.4',
+                  marginTop: '10px',
+                  padding: '8px',
+                  backgroundColor: '#f9fafb',
+                  borderRadius: '4px'
+                }}>
+                  {opp.description}
+                </div>
+
+                {/* Footer com categoria e temporada */}
+                <div style={{
+                  marginTop: '12px',
+                  paddingTop: '10px',
+                  borderTop: '1px solid #e5e7eb',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  fontSize: '11px',
+                  color: '#9ca3af'
+                }}>
+                  <span>📂 {opp.category}</span>
+                  <span>📅 {opp.season}</span>
+                </div>
               </div>
             </Popup>
           </Marker>
