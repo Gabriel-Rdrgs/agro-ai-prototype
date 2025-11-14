@@ -1,13 +1,15 @@
 import React, { useState, useRef } from 'react';
 import MapView from './components/Map/MapView';
 import Sidebar from './components/Sidebar/Sidebar';
+import Dashboard from './components/Dashboard/Dashboard';
 import './App.css';
 
 function App() {
   const [showSidebar, setShowSidebar] = useState(true);
+  const [activeTab, setActiveTab] = useState('map'); // 'map' ou 'dashboard'
   const mapRef = useRef(null);
 
-   const handleSelectOpportunity = (opportunity) => {
+  const handleSelectOpportunity = (opportunity) => {
     console.log('Oportunidade selecionada:', opportunity);
     
     // Centraliza o mapa na oportunidade selecionada
@@ -15,7 +17,6 @@ function App() {
       mapRef.current.focusOpportunity(opportunity);
     }
   };
-
 
   const toggleSidebar = () => {
     setShowSidebar(!showSidebar);
@@ -40,10 +41,10 @@ function App() {
         </p>
       </header>
 
-      {/* Container principal com sidebar e mapa */}
+      {/* Container principal com sidebar e mapa/dashboard */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
-        {/* Sidebar com header verde integrado */}
-        {showSidebar && (
+        {/* Sidebar (apenas visível na aba de mapa) */}
+        {showSidebar && activeTab === 'map' && (
           <div style={{ display: 'flex', flexDirection: 'column', width: '350px' }}>
             {/* Header verde da sidebar */}
             <div style={{
@@ -89,55 +90,120 @@ function App() {
               </button>
             </div>
 
-            {/* Conteúdo da sidebar (sem header, só filtros e lista) */}
+            {/* Conteúdo da sidebar */}
             <Sidebar 
               onSelectOpportunity={handleSelectOpportunity} 
               hideHeader={true}
             />
-
           </div>
         )}
 
-        {/* Container do mapa */}
-        <div style={{ flex: 1, position: 'relative' }}>
-          {/* Botão flutuante para MOSTRAR sidebar - REPOSICIONADO ACIMA DOS CONTROLES DE ZOOM */}
-          {!showSidebar && (
+               {/* Container do mapa/dashboard */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* Abas de navegação - FIXAS NO TOPO */}
+          <div style={{
+            display: 'flex',
+            backgroundColor: '#0a0e27',
+            borderBottom: '2px solid rgba(0, 217, 255, 0.2)',
+            padding: '0 20px',
+            position: 'relative',
+            zIndex: 50
+          }}>
             <button
-              onClick={toggleSidebar}
+              onClick={() => setActiveTab('map')}
               style={{
-                position: 'absolute',
-                top: '20px',
-                right: '20px',
-                zIndex: 1100,
-                backgroundColor: '#2c5f2d',
-                color: 'white',
+                backgroundColor: activeTab === 'map' ? 'rgba(0, 217, 255, 0.1)' : 'transparent',
                 border: 'none',
-                padding: '12px 18px',
-                borderRadius: '8px',
+                borderBottom: activeTab === 'map' ? '2px solid #00d9ff' : '2px solid transparent',
+                color: activeTab === 'map' ? '#00d9ff' : 'rgba(255, 255, 255, 0.6)',
+                padding: '15px 25px',
                 cursor: 'pointer',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
                 fontSize: '14px',
                 fontWeight: 'bold',
                 transition: 'all 0.3s ease',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
+                marginBottom: '-2px'
               }}
               onMouseEnter={(e) => {
-                e.target.style.backgroundColor = '#1f4520';
-                e.target.style.transform = 'scale(1.05)';
+                if (activeTab !== 'map') e.target.style.color = '#00d9ff';
               }}
               onMouseLeave={(e) => {
-                e.target.style.backgroundColor = '#2c5f2d';
-                e.target.style.transform = 'scale(1)';
+                if (activeTab !== 'map') e.target.style.color = 'rgba(255, 255, 255, 0.6)';
               }}
             >
-              ▶ Mostrar Lista
+              🗺️ MAPA
             </button>
-          )}
+            <button
+              onClick={() => setActiveTab('dashboard')}
+              style={{
+                backgroundColor: activeTab === 'dashboard' ? 'rgba(0, 217, 255, 0.1)' : 'transparent',
+                border: 'none',
+                borderBottom: activeTab === 'dashboard' ? '2px solid #00d9ff' : '2px solid transparent',
+                color: activeTab === 'dashboard' ? '#00d9ff' : 'rgba(255, 255, 255, 0.6)',
+                padding: '15px 25px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: 'bold',
+                transition: 'all 0.3s ease',
+                marginBottom: '-2px'
+              }}
+              onMouseEnter={(e) => {
+                if (activeTab !== 'dashboard') e.target.style.color = '#00d9ff';
+              }}
+              onMouseLeave={(e) => {
+                if (activeTab !== 'dashboard') e.target.style.color = 'rgba(255, 255, 255, 0.6)';
+              }}
+            >
+              📊 DASHBOARD
+            </button>
+          </div>
 
-          {/* Mapa */}
-          <MapView ref={mapRef} />
+          {/* Container do conteúdo com scroll */}
+          <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+            {/* Botão Mostrar Lista (apenas no mapa quando sidebar oculta) */}
+            {!showSidebar && activeTab === 'map' && (
+              <button
+                onClick={toggleSidebar}
+                style={{
+                  position: 'absolute',
+                  top: '20px',
+                  right: '20px',
+                  zIndex: 1100,
+                  backgroundColor: '#2c5f2d',
+                  color: 'white',
+                  border: 'none',
+                  padding: '12px 18px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  transition: 'all 0.3s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.backgroundColor = '#1f4520';
+                  e.target.style.transform = 'scale(1.05)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.backgroundColor = '#2c5f2d';
+                  e.target.style.transform = 'scale(1)';
+                }}
+              >
+                ▶ Mostrar Lista
+              </button>
+            )}
+
+            {/* Conteúdo (Mapa ou Dashboard) */}
+            {activeTab === 'map' ? (
+              <MapView ref={mapRef} />
+            ) : (
+              <div style={{ width: '100%', height: '100%', overflow: 'auto' }}>
+                <Dashboard />
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
