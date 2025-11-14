@@ -7,10 +7,15 @@ function App() {
   const [showSidebar, setShowSidebar] = useState(true);
   const mapRef = useRef(null);
 
-  const handleSelectOpportunity = (opportunity) => {
+   const handleSelectOpportunity = (opportunity) => {
     console.log('Oportunidade selecionada:', opportunity);
-    // Futuramente: centralizar mapa na oportunidade
+    
+    // Centraliza o mapa na oportunidade selecionada
+    if (mapRef.current) {
+      mapRef.current.focusOpportunity(opportunity);
+    }
   };
+
 
   const toggleSidebar = () => {
     setShowSidebar(!showSidebar);
@@ -89,6 +94,7 @@ function App() {
               onSelectOpportunity={handleSelectOpportunity} 
               hideHeader={true}
             />
+
           </div>
         )}
 

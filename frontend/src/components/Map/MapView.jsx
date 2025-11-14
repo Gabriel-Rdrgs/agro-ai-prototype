@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { opportunities } from '../../data/mockOpportunities';
@@ -8,12 +8,41 @@ import { createRiskIcon } from '../../data/mapIcons';
 // Fix para os ícones do Leaflet
 delete L.Icon.Default.prototype._getIconUrl;
 
-const MapView = () => {
-  // Estado para controlar qual oportunidade está selecionada
-  const [selectedOpportunity, setSelectedOpportunity] = useState(null);
+// Componente auxiliar para controlar o mapa programaticamente
+const MapController = ({ center, zoom }) => {
+  const map = useMap();
   
+  React.useEffect(() => {
+    if (center) {
+      map.setView(center, zoom || 8, {
+        animate: true,
+        duration: 1
+      });
+    }
+  }, [center, zoom, map]);
+  
+  return null;
+};
+
+const MapView = React.forwardRef((props, ref) => {
   // Coordenadas do centro do Brasil
   const brazilCenter = [-14.235, -51.9253];
+  
+  // Estados para controlar o mapa
+  const [mapCenter, setMapCenter] = useState(null);
+  const [mapZoom, setMapZoom] = useState(4);
+  const [activeMarkerId, setActiveMarkerId] = useState(null);
+  const [selectedOpportunity, setSelectedOpportunity] = useState(null);
+
+  // Expõe métodos para o componente pai
+  React.useImperativeHandle(ref, () => ({
+    focusOpportunity: (opportunity) => {
+      setMapCenter(opportunity.position);
+      setMapZoom(10);
+      setActiveMarkerId(opportunity.id);
+      setSelectedOpportunity(opportunity);
+    }
+  }));
 
   // Função para formatar preço em reais
   const formatPrice = (price) => {
@@ -96,8 +125,6 @@ const MapView = () => {
         </div>
       </div>
 
-      {/* REMOVIDO: Contador de oportunidades (já está na sidebar) */}
-
       <MapContainer 
         center={brazilCenter} 
         zoom={4} 
@@ -105,7 +132,10 @@ const MapView = () => {
         scrollWheelZoom={true}
         zoomControl={false}
       >
-        {/* Controle de zoom customizado - REPOSICIONADO */}
+        {/* Controlador do mapa */}
+        <MapController center={mapCenter} zoom={mapZoom} />
+
+        {/* Controle de zoom customizado */}
         <div style={{
           position: 'absolute',
           top: '20px',
@@ -116,9 +146,7 @@ const MapView = () => {
           gap: '5px'
         }}>
           <button
-            onClick={() => {
-              // Implementar zoom in futuramente
-            }}
+            onClick={() => {}}
             style={{
               width: '34px',
               height: '34px',
@@ -137,9 +165,7 @@ const MapView = () => {
             +
           </button>
           <button
-            onClick={() => {
-              // Implementar zoom out futuramente
-            }}
+            onClick={() => {}}
             style={{
               width: '34px',
               height: '34px',
@@ -170,7 +196,10 @@ const MapView = () => {
             position={opp.position}
             icon={createRiskIcon(opp.roi, opp.riskLevel)}
             eventHandlers={{
-              click: () => setSelectedOpportunity(opp)
+              click: () => {
+                setSelectedOpportunity(opp);
+                setActiveMarkerId(opp.id);
+              }
             }}
           >
             <Popup maxWidth={350} minWidth={250}>
@@ -340,6 +369,6 @@ const MapView = () => {
       </MapContainer>
     </div>
   );
-};
+});
 
 export default MapView;
