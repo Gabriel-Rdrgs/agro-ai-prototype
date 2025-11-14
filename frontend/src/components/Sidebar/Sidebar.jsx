@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { opportunities, sortByROI } from '../../data/mockOpportunities';
 
-const Sidebar = ({ onSelectOpportunity }) => {
+const Sidebar = ({ onSelectOpportunity, onToggle, hideHeader = false }) => {
   const [filter, setFilter] = useState('all');
   const [sortBy, setSortBy] = useState('roi');
   const [searchTerm, setSearchTerm] = useState('');
@@ -67,23 +67,7 @@ const Sidebar = ({ onSelectOpportunity }) => {
       display: 'flex',
       flexDirection: 'column'
     }}>
-      {/* Header */}
-      <div style={{
-        padding: '20px',
-        backgroundColor: '#2c5f2d',
-        color: 'white',
-        position: 'sticky',
-        top: 0,
-        zIndex: 10
-      }}>
-        <h2 style={{ margin: '0 0 5px 0', fontSize: '18px', fontWeight: 'bold' }}>
-          🌾 Oportunidades
-        </h2>
-        <p style={{ margin: 0, fontSize: '13px', opacity: 0.9 }}>
-          {filteredOpportunities.length} de {opportunities.length} exibidas
-        </p>
-      </div>
-
+           
       {/* Busca */}
       <div style={{ padding: '15px', borderBottom: '1px solid #e5e7eb' }}>
         <input

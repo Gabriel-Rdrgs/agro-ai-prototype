@@ -39,10 +39,10 @@ const MapView = () => {
 
   return (
     <div style={{ height: '100vh', width: '100%', position: 'relative' }}>
-      {/* Legenda de cores */}
+      {/* Legenda de cores - REPOSICIONADA */}
       <div style={{
         position: 'absolute',
-        top: '20px',
+        top: '80px',
         right: '20px',
         backgroundColor: 'white',
         padding: '15px',
@@ -96,28 +96,69 @@ const MapView = () => {
         </div>
       </div>
 
-      {/* Contador de oportunidades */}
-      <div style={{
-        position: 'absolute',
-        top: '20px',
-        left: '20px',
-        backgroundColor: '#2c5f2d',
-        color: 'white',
-        padding: '12px 18px',
-        borderRadius: '8px',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-        zIndex: 1000,
-        fontWeight: 'bold'
-      }}>
-        🌾 {opportunities.length} Oportunidades Ativas
-      </div>
+      {/* REMOVIDO: Contador de oportunidades (já está na sidebar) */}
 
       <MapContainer 
         center={brazilCenter} 
         zoom={4} 
         style={{ height: '100%', width: '100%' }}
         scrollWheelZoom={true}
+        zoomControl={false}
       >
+        {/* Controle de zoom customizado - REPOSICIONADO */}
+        <div style={{
+          position: 'absolute',
+          top: '20px',
+          left: '20px',
+          zIndex: 1000,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '5px'
+        }}>
+          <button
+            onClick={() => {
+              // Implementar zoom in futuramente
+            }}
+            style={{
+              width: '34px',
+              height: '34px',
+              backgroundColor: 'white',
+              border: '2px solid rgba(0,0,0,0.2)',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '18px',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 1px 5px rgba(0,0,0,0.2)'
+            }}
+          >
+            +
+          </button>
+          <button
+            onClick={() => {
+              // Implementar zoom out futuramente
+            }}
+            style={{
+              width: '34px',
+              height: '34px',
+              backgroundColor: 'white',
+              border: '2px solid rgba(0,0,0,0.2)',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '18px',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 1px 5px rgba(0,0,0,0.2)'
+            }}
+          >
+            −
+          </button>
+        </div>
+
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
