@@ -5,9 +5,13 @@ Plataforma de IA que identifica oportunidades de arbitragem no mercado agrícola
 
 ## 🗂️ Estrutura do Projeto
 agro-ai-prototype/
+
 ├── frontend/ # React app (mapa interativo + dashboard)
+
 ├── backend/ # Node.js API (dados e lógica)
+
 ├── data/ # GeoJSON e dados mockados
+
 └── docs/ # Documentação do projeto
 
 ## 🛠️ Stack Tecnológico
