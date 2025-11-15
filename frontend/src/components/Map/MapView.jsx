@@ -1,23 +1,20 @@
-import React, { useState, useImperativeHandle } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import React, { useState, useImperativeHandle, useEffect } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap, GeoJSON } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import theme from '../../styles/theme';
 import { opportunities } from '../../data/mockOpportunities';
 import { createRiskIcon } from '../../data/mapIcons';
 
-// Fix para ícones padrão do Leaflet
+// Leaflet icon fix para React
 delete L.Icon.Default.prototype._getIconUrl;
 
-// Componente para controle do mapa
+// Controlador programático do centro/zoom do mapa
 const MapController = ({ center, zoom }) => {
   const map = useMap();
-  React.useEffect(() => {
+  useEffect(() => {
     if (center) {
-      map.setView(center, zoom || 8, {
-        animate: true,
-        duration: 1
-      });
+      map.setView(center, zoom || 8, { animate: true, duration: 1 });
     }
   }, [center, zoom, map]);
   return null;
@@ -25,10 +22,20 @@ const MapController = ({ center, zoom }) => {
 
 const MapView = React.forwardRef((props, ref) => {
   const brazilCenter = [-14.235, -51.9253];
+  const [mapStyle, setMapStyle] = useState('padrao');
   const [mapCenter, setMapCenter] = useState(null);
   const [mapZoom, setMapZoom] = useState(4);
   const [activeMarkerId, setActiveMarkerId] = useState(null);
   const [selectedOpportunity, setSelectedOpportunity] = useState(null);
+  const [selectedState, setSelectedState] = useState(null);
+
+  // GeoJSON dos estados carregado via fetch
+  const [geojsonStates, setGeojsonStates] = useState(null);
+  useEffect(() => {
+    fetch('/estados.geojson')
+      .then(resp => resp.json())
+      .then(data => setGeojsonStates(data));
+  }, []);
 
   useImperativeHandle(ref, () => ({
     focusOpportunity: (opportunity) => {
@@ -36,15 +43,13 @@ const MapView = React.forwardRef((props, ref) => {
       setMapZoom(10);
       setActiveMarkerId(opportunity.id);
       setSelectedOpportunity(opportunity);
+      setSelectedState(opportunity.state);
     }
   }));
 
-  const formatPrice = (price) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    }).format(price);
-  };
+  const formatPrice = (price) => new Intl.NumberFormat('pt-BR', {
+    style: 'currency', currency: 'BRL'
+  }).format(price);
 
   const getRiskBadge = (risk, riskLevel) => {
     const colors = {
@@ -52,10 +57,7 @@ const MapView = React.forwardRef((props, ref) => {
       2: theme.colors.secondary,
       3: theme.colors.warning
     };
-    return {
-      color: colors[riskLevel],
-      text: risk
-    };
+    return { color: colors[riskLevel], text: risk };
   };
 
   return (
@@ -67,7 +69,7 @@ const MapView = React.forwardRef((props, ref) => {
       fontFamily: theme.font,
       color: theme.colors.textPrimary
     }}>
-      {/* Legenda – Tony Stark */}
+      {/* Legenda Neon */}
       <div style={{
         position: 'absolute',
         top: '80px',
@@ -93,44 +95,50 @@ const MapView = React.forwardRef((props, ref) => {
         </h4>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
           <div style={{
-            width: '20px',
-            height: '20px',
-            backgroundColor: '#22c55e',
-            borderRadius: '50%',
-            marginRight: '10px',
-            border: '2px solid white',
+            width: '20px', height: '20px', backgroundColor: '#22c55e',
+            borderRadius: '50%', marginRight: '10px', border: '2px solid white',
             boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
-          }}></div>
+          }} />
           <span style={{ fontSize: '12px' }}>Alto (&gt;100%)</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
           <div style={{
-            width: '20px',
-            height: '20px',
-            backgroundColor: theme.colors.secondary,
-            borderRadius: '50%',
-            marginRight: '10px',
-            border: '2px solid white',
+            width: '20px', height: '20px', backgroundColor: theme.colors.secondary,
+            borderRadius: '50%', marginRight: '10px', border: '2px solid white',
             boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
-          }}></div>
+          }} />
           <span style={{ fontSize: '12px' }}>Médio (50-100%)</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
           <div style={{
-            width: '20px',
-            height: '20px',
-            backgroundColor: theme.colors.warning,
-            borderRadius: '50%',
-            marginRight: '10px',
-            border: '2px solid white',
+            width: '20px', height: '20px', backgroundColor: theme.colors.warning,
+            borderRadius: '50%', marginRight: '10px', border: '2px solid white',
             boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
-          }}></div>
+          }} />
           <span style={{ fontSize: '12px' }}>Baixo (&lt;50%)</span>
         </div>
         <hr style={{ margin: '10px 0', border: 'none', borderTop: `1px solid ${theme.colors.textMuted}` }} />
         <div style={{ fontSize: '11px', color: theme.colors.warning }}>
           🔴 Borda vermelha = Alto risco
         </div>
+      </div>
+      <div style={{
+  position: 'absolute', top: 22, left: 80, zIndex: 2000, background: theme.colors.background,
+  borderRadius: theme.borderRadius, boxShadow: theme.colors.cardGlow, padding: '6px 14px'
+}}>
+  <label style={{color: theme.colors.textPrimary, fontWeight: 600, fontSize: 13, marginRight: 8}}>Visualização:</label>
+  <select
+    value={mapStyle}
+    onChange={e => setMapStyle(e.target.value)}
+    style={{
+      border: `1.5px solid ${theme.colors.accent}`, borderRadius: 8, padding: '5px 8px',
+      background: theme.colors.background, color: theme.colors.textPrimary, fontFamily: theme.font
+    }}
+  >
+    <option value="padrao">Padrão</option>
+    <option value="dark">Noturno</option>
+    <option value="satelite">Satélite</option>
+  </select>
       </div>
 
       <MapContainer
@@ -140,10 +148,24 @@ const MapView = React.forwardRef((props, ref) => {
         scrollWheelZoom={true}
         zoomControl={false}
       >
-        {/* Controlador de centro/zoom */}
         <MapController center={mapCenter} zoom={mapZoom} />
 
-        {/* Zoom buttons */}
+        {/* GeoJSON dos estados - só renderiza se carregado via fetch */}
+        {geojsonStates && (
+          <GeoJSON
+            data={geojsonStates}
+            style={feature => ({
+              fillColor: feature.properties.sigla === selectedState ? theme.colors.accent : `${theme.colors.accent}05`,
+              color: feature.properties.sigla === selectedState ? theme.colors.accent : theme.colors.textMuted,
+              weight: feature.properties.sigla === selectedState ? 4 : 1,
+              fillOpacity: feature.properties.sigla === selectedState ? 0.2 : 0.08,
+              dashArray: feature.properties.sigla === selectedState ? '8' : '2',
+              transition: 'all 0.3s'
+            })}
+          />
+        )}
+
+        {/* Botões de Zoom personalizados */}
         <div style={{
           position: 'absolute',
           top: '20px',
@@ -196,15 +218,20 @@ const MapView = React.forwardRef((props, ref) => {
           </button>
         </div>
 
-        {/* Tile – estilo claro / mude para satélite assim que desejar */}
+        {/* TileLayer - pode mudar para dark/satélite depois */}
         <TileLayer
-          attribution='&copy; OpenStreetMap contributors'
-          url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-        />
-        {/* Para satélite/Google Earth – substitua o URL acima por:
-            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-        */}
+  attribution='&copy; OpenStreetMap contributors'
+  url={
+    mapStyle === 'padrao'
+      ? 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+      : mapStyle === 'dark'
+      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+      : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+  }
+/>
 
+
+        {/* Marcadores - agora sempre com seu padrão visual */}
         {opportunities.map((opp) => (
           <Marker
             key={opp.id}
@@ -214,6 +241,7 @@ const MapView = React.forwardRef((props, ref) => {
               click: () => {
                 setSelectedOpportunity(opp);
                 setActiveMarkerId(opp.id);
+                setSelectedState(opp.state);
               }
             }}
           >
@@ -221,7 +249,7 @@ const MapView = React.forwardRef((props, ref) => {
               <div style={{
                 padding: '8px',
                 fontFamily: theme.font,
-                background: `${theme.colors.background}F2`, // pop-up translúcido
+                background: `${theme.colors.background}F2`,
                 color: theme.colors.textPrimary,
                 borderRadius: '12px',
                 boxShadow: theme.colors.cardGlow

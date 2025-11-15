@@ -1,4 +1,5 @@
 import L from 'leaflet';
+import theme from '../styles/theme';
 
 // Função para criar ícone colorido baseado no ROI
 export const createColoredIcon = (roi) => {
@@ -23,25 +24,26 @@ export const createColoredIcon = (roi) => {
     </svg>
   `;
 
+  // Ícone SVG futurista (você pode customizar ainda mais!)
   return L.divIcon({
-    html: svgIcon,
-    className: 'custom-marker',
-    iconSize: [32, 42],
-    iconAnchor: [16, 42],
-    popupAnchor: [0, -42]
+    className: '',
+    html: `<div style="width:24px;height:24px;border-radius:50%;background:${color};box-shadow:0 0 12px ${color}77;border:2px solid #fff"></div>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 24],
+    popupAnchor: [0, -24]
   });
-};
+}
 
 // Ícone para oportunidades de risco alto (adiciona borda vermelha)
-export const createRiskIcon = (roi, riskLevel) => {
+export function createRiskIcon(roi, riskLevel) {
   let color;
   
   if (roi >= 100) {
     color = '#22c55e';
   } else if (roi >= 50) {
-    color = '#f59e0b';
+    color = theme.colors.secondary; // roxo
   } else {
-    color = '#ef4444';
+    color = theme.colors.warning; // vermelho
   }
 
   const strokeColor = riskLevel === 3 ? '#dc2626' : '#fff';
