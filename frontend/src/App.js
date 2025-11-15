@@ -184,6 +184,38 @@ function App() {
                 ▶ Mostrar Lista
               </button>
             )}
+            {!showSidebar && activeTab === 'map' && (
+  <div
+    style={{
+      width: '60px',
+      height: '100vh',
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      background: 'linear-gradient(135deg, #0a0e27 40%, #24284a 100%)',
+      borderRight: '2.5px solid #00d9ff',
+      boxShadow: '0 0 28px #00d9ff44, 0 0 80px #11131f inset',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 100,
+      transition: 'all 0.3s',
+      pointerEvents: 'none'
+    }}
+  >
+    <span
+      style={{
+        color: '#00d9ff',
+        fontWeight: 700,
+        fontFamily: theme.font,
+        textShadow: '0 0 15px #00d9ff88, 0 0 25px #00d9ff22',
+        fontSize: '1.6rem',
+        opacity: 0.9,
+      }}
+    >≡</span>
+  </div>
+)}
+
             {/* Conteúdo (Mapa ou Dashboard) */}
             {activeTab === 'map' ? (
               <MapView ref={mapRef} />

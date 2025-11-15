@@ -6,10 +6,9 @@ import theme from '../../styles/theme';
 import { opportunities } from '../../data/mockOpportunities';
 import { createRiskIcon } from '../../data/mapIcons';
 
-// Leaflet icon fix para React
+// Fix Leaflet icon para React
 delete L.Icon.Default.prototype._getIconUrl;
 
-// Controlador programático do centro/zoom do mapa
 const MapController = ({ center, zoom }) => {
   const map = useMap();
   useEffect(() => {
@@ -21,6 +20,12 @@ const MapController = ({ center, zoom }) => {
 };
 
 const MapView = React.forwardRef((props, ref) => {
+  const [geojsonMunicipios, setGeojsonMunicipios] = useState(null);
+    useEffect(() => {
+    fetch('/municipios.geojson')
+    .then(resp => resp.json())
+    .then(data => setGeojsonMunicipios(data));
+  }, []);
   const brazilCenter = [-14.235, -51.9253];
   const [mapStyle, setMapStyle] = useState('padrao');
   const [mapCenter, setMapCenter] = useState(null);
@@ -28,9 +33,8 @@ const MapView = React.forwardRef((props, ref) => {
   const [activeMarkerId, setActiveMarkerId] = useState(null);
   const [selectedOpportunity, setSelectedOpportunity] = useState(null);
   const [selectedState, setSelectedState] = useState(null);
-
-  // GeoJSON dos estados carregado via fetch
   const [geojsonStates, setGeojsonStates] = useState(null);
+
   useEffect(() => {
     fetch('/estados.geojson')
       .then(resp => resp.json())
@@ -46,20 +50,15 @@ const MapView = React.forwardRef((props, ref) => {
       setSelectedState(opportunity.state);
     }
   }));
+console.log("Selected opportunity:", selectedOpportunity);
 
-  const formatPrice = (price) => new Intl.NumberFormat('pt-BR', {
-    style: 'currency', currency: 'BRL'
-  }).format(price);
+  const formatPrice = (price) =>
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price);
 
   const getRiskBadge = (risk, riskLevel) => {
-    const colors = {
-      1: '#22c55e',
-      2: theme.colors.secondary,
-      3: theme.colors.warning
-    };
+    const colors = { 1: '#22c55e', 2: theme.colors.secondary, 3: theme.colors.warning };
     return { color: colors[riskLevel], text: risk };
   };
-
   return (
     <div style={{
       height: '100vh',
@@ -90,9 +89,7 @@ const MapView = React.forwardRef((props, ref) => {
           color: theme.colors.accent,
           textShadow: '0 0 8px #00d9ff66',
           letterSpacing: '1px'
-        }}>
-          📊 Legenda - ROI
-        </h4>
+        }}>📊 Legenda - ROI</h4>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
           <div style={{
             width: '20px', height: '20px', backgroundColor: '#22c55e',
@@ -122,23 +119,24 @@ const MapView = React.forwardRef((props, ref) => {
           🔴 Borda vermelha = Alto risco
         </div>
       </div>
+      {/* CONTROLES de visualização */}
       <div style={{
-  position: 'absolute', top: 22, left: 80, zIndex: 2000, background: theme.colors.background,
-  borderRadius: theme.borderRadius, boxShadow: theme.colors.cardGlow, padding: '6px 14px'
-}}>
-  <label style={{color: theme.colors.textPrimary, fontWeight: 600, fontSize: 13, marginRight: 8}}>Visualização:</label>
-  <select
-    value={mapStyle}
-    onChange={e => setMapStyle(e.target.value)}
-    style={{
-      border: `1.5px solid ${theme.colors.accent}`, borderRadius: 8, padding: '5px 8px',
-      background: theme.colors.background, color: theme.colors.textPrimary, fontFamily: theme.font
-    }}
-  >
-    <option value="padrao">Padrão</option>
-    <option value="dark">Noturno</option>
-    <option value="satelite">Satélite</option>
-  </select>
+        position: 'absolute', top: 22, left: 80, zIndex: 2000, background: theme.colors.background,
+        borderRadius: theme.borderRadius, boxShadow: theme.colors.cardGlow, padding: '6px 14px'
+      }}>
+        <label style={{color: theme.colors.textPrimary, fontWeight: 600, fontSize: 13, marginRight: 8}}>Visualização:</label>
+        <select
+          value={mapStyle}
+          onChange={e => setMapStyle(e.target.value)}
+          style={{
+            border: `1.5px solid ${theme.colors.accent}`, borderRadius: 8, padding: '5px 8px',
+            background: theme.colors.background, color: theme.colors.textPrimary, fontFamily: theme.font
+          }}
+        >
+          <option value="padrao">Padrão</option>
+          <option value="dark">Noturno</option>
+          <option value="satelite">Satélite</option>
+        </select>
       </div>
 
       <MapContainer
@@ -149,22 +147,32 @@ const MapView = React.forwardRef((props, ref) => {
         zoomControl={false}
       >
         <MapController center={mapCenter} zoom={mapZoom} />
-
-        {/* GeoJSON dos estados - só renderiza se carregado via fetch */}
         {geojsonStates && (
           <GeoJSON
             data={geojsonStates}
             style={feature => ({
               fillColor: feature.properties.sigla === selectedState ? theme.colors.accent : `${theme.colors.accent}05`,
               color: feature.properties.sigla === selectedState ? theme.colors.accent : theme.colors.textMuted,
-              weight: feature.properties.sigla === selectedState ? 4 : 1,
-              fillOpacity: feature.properties.sigla === selectedState ? 0.2 : 0.08,
-              dashArray: feature.properties.sigla === selectedState ? '8' : '2',
+              weight: feature.properties.sigla === selectedState ? 7 : 1,
+              fillOpacity: feature.properties.sigla === selectedState ? 0.38 : 0.10,
+              filter: feature.properties.sigla === selectedState ? 'drop-shadow(0 0 10px #00d9ff)' : 'none',
               transition: 'all 0.3s'
             })}
+            eventHandlers={{
+              click: (e) => {
+                const layer = e.target;
+                const map = layer._map;
+                const feature = layer.feature;
+                if (feature && feature.geometry && feature.geometry.type === 'Polygon') {
+                  const latlngs = feature.geometry.coordinates[0].map(([lng, lat]) => [lat, lng]);
+                  const bounds = L.latLngBounds(latlngs);
+                  setSelectedState(feature.properties.sigla);
+                  map.flyToBounds(bounds, { animate: true, duration: 1.2 });
+                }
+              }
+            }}
           />
         )}
-
         {/* Botões de Zoom personalizados */}
         <div style={{
           position: 'absolute',
@@ -218,196 +226,228 @@ const MapView = React.forwardRef((props, ref) => {
           </button>
         </div>
 
-        {/* TileLayer - pode mudar para dark/satélite depois */}
         <TileLayer
-  attribution='&copy; OpenStreetMap contributors'
-  url={
-    mapStyle === 'padrao'
-      ? 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-      : mapStyle === 'dark'
-      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-      : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-  }
-/>
+          attribution='&copy; OpenStreetMap contributors'
+          url={
+            mapStyle === 'padrao'
+              ? 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+              : mapStyle === 'dark'
+              ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+              : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+          }
+        />
+{geojsonMunicipios && selectedOpportunity && (
+  <GeoJSON
+    key={selectedOpportunity.id || selectedOpportunity.city}
+    data={{
+      ...geojsonMunicipios,
+      features: geojsonMunicipios.features.filter(f => {
+        const geoNome = (f.properties.name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        const cityNome = (selectedOpportunity.city || '').normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        return !!geoNome && !!cityNome && geoNome === cityNome;
+      })
+    }}
+    style={() => ({
+      fillColor: theme.colors.secondary,
+      color: theme.colors.secondary,
+      weight: 5,
+      fillOpacity: 0.28,
+      filter: 'drop-shadow(0 0 8px ' + theme.colors.secondary + ')',
+      transition: 'all 0.3s'
+    })}
+  />
+)}
 
 
-        {/* Marcadores - agora sempre com seu padrão visual */}
         {opportunities.map((opp) => (
-          <Marker
-            key={opp.id}
-            position={opp.position}
-            icon={createRiskIcon(opp.roi, opp.riskLevel)}
-            eventHandlers={{
-              click: () => {
-                setSelectedOpportunity(opp);
-                setActiveMarkerId(opp.id);
-                setSelectedState(opp.state);
-              }
-            }}
-          >
-            <Popup maxWidth={350} minWidth={250}>
-              <div style={{
-                padding: '8px',
-                fontFamily: theme.font,
-                background: `${theme.colors.background}F2`,
-                color: theme.colors.textPrimary,
-                borderRadius: '12px',
-                boxShadow: theme.colors.cardGlow
-              }}>
-                {/* Header */}
-                <div style={{
-                  borderBottom: `2px solid ${theme.colors.accent}`,
-                  paddingBottom: '10px',
-                  marginBottom: '12px'
-                }}>
-                  <h3 style={{
-                    margin: '0 0 5px 0',
-                    color: theme.colors.accent,
-                    fontSize: '16px',
-                    fontWeight: 'bold',
-                    letterSpacing: '1.5px'
-                  }}>
-                    {opp.product}
-                  </h3>
-                  <p style={{
-                    margin: '0',
-                    fontSize: '13px',
-                    color: theme.colors.textMuted
-                  }}>
-                    📍 {opp.city}, {opp.stateName}
-                  </p>
-                </div>
-                {/* ROI Badge */}
-                <div style={{
-                  background: opp.roi >= 100 ? '#dcfce7' : opp.roi >= 50 ? '#fef3c7' : '#fee2e2',
-                  padding: '8px 12px',
-                  borderRadius: '6px',
-                  marginBottom: '12px',
-                  textAlign: 'center'
-                }}>
-                  <span style={{
-                    fontSize: '20px',
-                    fontWeight: 'bold',
-                    color: opp.roi >= 100 ? '#15803d' : opp.roi >= 50 ? '#b45309' : '#dc2626'
-                  }}>
-                    🎯 {opp.roi}% ROI
-                  </span>
-                </div>
-                {/* Informações principais */}
-                <div style={{ marginBottom: '12px' }}>
-                  <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    marginBottom: '8px',
-                    padding: '6px',
-                    background: `${theme.colors.background}99`,
-                    borderRadius: '4px'
-                  }}>
-                    <span style={{ fontSize: '12px', fontWeight: '600', color: theme.colors.textPrimary }}>
-                      💰 Compra:
-                    </span>
-                    <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#22c55e' }}>
-                      {formatPrice(opp.buyPrice)}/kg
-                    </span>
-                  </div>
-                  <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    marginBottom: '8px',
-                    padding: '6px',
-                    background: `${theme.colors.background}99`,
-                    borderRadius: '4px'
-                  }}>
-                    <span style={{ fontSize: '12px', fontWeight: '600', color: theme.colors.textPrimary }}>
-                      💵 Venda:
-                    </span>
-                    <span style={{ fontSize: '12px', fontWeight: 'bold', color: theme.colors.accent }}>
-                      {formatPrice(opp.sellPrice)}/kg
-                    </span>
-                  </div>
-                  <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    marginBottom: '8px',
-                    padding: '6px',
-                    background: `${theme.colors.background}99`,
-                    borderRadius: '4px'
-                  }}>
-                    <span style={{ fontSize: '12px', fontWeight: '600', color: theme.colors.textPrimary }}>
-                      📦 Volume:
-                    </span>
-                    <span style={{ fontSize: '12px', color: theme.colors.textMuted }}>
-                      {opp.volume}
-                    </span>
-                  </div>
-                  <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    marginBottom: '8px',
-                    padding: '6px',
-                    background: `${theme.colors.background}99`,
-                    borderRadius: '4px'
-                  }}>
-                    <span style={{ fontSize: '12px', fontWeight: '600', color: theme.colors.textPrimary }}>
-                      🚛 Destino:
-                    </span>
-                    <span style={{ fontSize: '12px', color: theme.colors.textMuted }}>
-                      {opp.sellLocation}
-                    </span>
-                  </div>
-                </div>
-                {/* Risco */}
-                <div style={{
-                  padding: '8px',
-                  background: getRiskBadge(opp.risk, opp.riskLevel).color + '20',
-                  borderLeft: `4px solid ${getRiskBadge(opp.risk, opp.riskLevel).color}`,
-                  borderRadius: '4px',
-                  marginBottom: '10px'
-                }}>
-                  <span style={{ fontSize: '12px', fontWeight: '600', color: theme.colors.textPrimary }}>
-                    ⚠️ Risco: {opp.risk}
-                  </span>
-                </div>
-                {/* Clima */}
-                <div style={{
-                  padding: '8px',
-                  background: '#eff6ff',
-                  borderRadius: '4px',
-                  marginBottom: '10px'
-                }}>
-                  <span style={{ fontSize: '12px', color: '#1e40af' }}>
-                    🌤️ {opp.climate}
-                  </span>
-                </div>
-                {/* Descrição */}
-                <div style={{
-                  fontSize: '11px',
-                  color: theme.colors.textMuted,
-                  lineHeight: '1.4',
-                  marginTop: '10px',
-                  padding: '8px',
-                  background: `${theme.colors.background}99`,
-                  borderRadius: '4px'
-                }}>
-                  {opp.description}
-                </div>
-                {/* Footer */}
-                <div style={{
-                  marginTop: '12px',
-                  paddingTop: '10px',
-                  borderTop: `1px solid ${theme.colors.textMuted}`,
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  fontSize: '11px',
-                  color: theme.colors.textMuted
-                }}>
-                  <span>📂 {opp.category}</span>
-                  <span>📅 {opp.season}</span>
-                </div>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+  <Marker
+    key={opp.id}
+    position={opp.position}
+    icon={createRiskIcon(opp.roi, opp.riskLevel)}
+    eventHandlers={{
+      click: () => {
+        setSelectedOpportunity(opp); // ESSENCIAL: atualiza o município destacado
+        setActiveMarkerId(opp.id);
+        setSelectedState(opp.state);
+        setMapCenter(opp.position);
+        setMapZoom(8);
+      }
+    }}
+  >
+    <Popup maxWidth={350} minWidth={250}>
+      <div style={{
+        padding: '8px',
+        fontFamily: theme.font,
+        background: `${theme.colors.background}F2`,
+        color: theme.colors.textPrimary,
+        borderRadius: '12px',
+        boxShadow: theme.colors.cardGlow
+      }}>
+        {/* Header */}
+        <div style={{
+          borderBottom: `2px solid ${theme.colors.accent}`,
+          paddingBottom: '10px',
+          marginBottom: '12px'
+        }}>
+          <h3 style={{
+            margin: '0 0 5px 0',
+            color: theme.colors.accent,
+            fontSize: '16px',
+            fontWeight: 'bold',
+            letterSpacing: '1.5px'
+          }}>
+            {opp.product}
+          </h3>
+          <p style={{
+            margin: '0',
+            fontSize: '13px',
+            color: theme.colors.textMuted
+          }}>
+            📍 {opp.city}, {opp.state}
+          </p>
+        </div>
+        {/* ROI Badge */}
+        <div style={{
+          background: opp.roi >= 100 ? '#dcfce7' : opp.roi >= 50 ? '#fef3c7' : '#fee2e2',
+          padding: '8px 12px',
+          borderRadius: '6px',
+          marginBottom: '12px',
+          textAlign: 'center'
+        }}>
+          <span style={{
+            fontSize: '20px',
+            fontWeight: 'bold',
+            color: opp.roi >= 100 ? '#15803d' : opp.roi >= 50 ? '#b45309' : '#dc2626'
+          }}>
+            🎯 {opp.roi}% ROI
+          </span>
+        </div>
+        {/* Informações principais */}
+        <div style={{ marginBottom: '12px' }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            marginBottom: '8px',
+            padding: '6px',
+            background: `${theme.colors.background}99`,
+            borderRadius: '4px'
+          }}>
+            <span style={{ fontSize: '12px', fontWeight: '600', color: theme.colors.textPrimary }}>
+              💰 Compra:
+            </span>
+            <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#22c55e' }}>
+              {formatPrice(opp.buyPrice)}/kg
+            </span>
+          </div>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            marginBottom: '8px',
+            padding: '6px',
+            background: `${theme.colors.background}99`,
+            borderRadius: '4px'
+          }}>
+            <span style={{ fontSize: '12px', fontWeight: '600', color: theme.colors.textPrimary }}>
+              💵 Venda:
+            </span>
+            <span style={{ fontSize: '12px', fontWeight: 'bold', color: theme.colors.accent }}>
+              {formatPrice(opp.sellPrice)}/kg
+            </span>
+          </div>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            marginBottom: '8px',
+            padding: '6px',
+            background: `${theme.colors.background}99`,
+            borderRadius: '4px'
+          }}>
+            <span style={{ fontSize: '12px', fontWeight: '600', color: theme.colors.textPrimary }}>
+              📦 Volume:
+            </span>
+            <span style={{ fontSize: '12px', color: theme.colors.textMuted }}>
+              {opp.volume}
+            </span>
+          </div>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            marginBottom: '8px',
+            padding: '6px',
+            background: `${theme.colors.background}99`,
+            borderRadius: '4px'
+          }}>
+            <span style={{ fontSize: '12px', fontWeight: '600', color: theme.colors.textPrimary }}>
+              🚛 Destino:
+            </span>
+            <span style={{ fontSize: '12px', color: theme.colors.textMuted }}>
+              {opp.sellLocation}
+            </span>
+          </div>
+        </div>
+        {/* Risco */}
+        <div style={{
+          padding: '8px',
+          background: opp.riskLevel === 1
+            ? '#22c55e20'
+            : opp.riskLevel === 2
+            ? `${theme.colors.secondary}20`
+            : '#fee2e2',
+          borderLeft: `4px solid ${
+            opp.riskLevel === 1
+              ? '#22c55e'
+              : opp.riskLevel === 2
+              ? theme.colors.secondary
+              : '#dc2626'
+          }`,
+          borderRadius: '4px',
+          marginBottom: '10px'
+        }}>
+          <span style={{ fontSize: '12px', fontWeight: '600', color: theme.colors.textPrimary }}>
+            ⚠️ Risco: {opp.risk}
+          </span>
+        </div>
+        {/* Clima */}
+        <div style={{
+          padding: '8px',
+          background: '#eff6ff',
+          borderRadius: '4px',
+          marginBottom: '10px'
+        }}>
+          <span style={{ fontSize: '12px', color: '#1e40af' }}>
+            🌤️ {opp.climate}
+          </span>
+        </div>
+        {/* Descrição */}
+        <div style={{
+          fontSize: '11px',
+          color: theme.colors.textMuted,
+          lineHeight: '1.4',
+          marginTop: '10px',
+          padding: '8px',
+          background: `${theme.colors.background}99`,
+          borderRadius: '4px'
+        }}>
+          {opp.description}
+        </div>
+        {/* Footer */}
+        <div style={{
+          marginTop: '12px',
+          paddingTop: '10px',
+          borderTop: `1px solid ${theme.colors.textMuted}`,
+          display: 'flex',
+          justifyContent: 'space-between',
+          fontSize: '11px',
+          color: theme.colors.textMuted
+        }}>
+          <span>📂 {opp.category}</span>
+          <span>📅 {opp.season}</span>
+        </div>
+      </div>
+    </Popup>
+  </Marker>
+))}
+
       </MapContainer>
     </div>
   );
