@@ -9,6 +9,7 @@ function App() {
   const [showSidebar, setShowSidebar] = useState(true);
   const [activeTab, setActiveTab] = useState('map'); // 'map' ou 'dashboard'
   const mapRef = useRef(null);
+  const [selectedOpportunity, setSelectedOpportunity] = useState(null);
 
   const handleSelectOpportunity = (opportunity) => {
     console.log('Oportunidade selecionada:', opportunity);
@@ -218,10 +219,11 @@ function App() {
 
             {/* Conteúdo (Mapa ou Dashboard) */}
             {activeTab === 'map' ? (
-              <MapView ref={mapRef} />
+              <MapView selectedOpportunity={selectedOpportunity} ref={mapRef} />
             ) : (
               <div style={{ width: '100%', height: '100%', overflow: 'auto' }}>
-                <Dashboard />
+               <Dashboard setSelectedOpportunity={setSelectedOpportunity} setActiveTab={setActiveTab} />
+
               </div>
             )}
           </div>

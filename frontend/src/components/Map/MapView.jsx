@@ -50,6 +50,17 @@ const MapView = React.forwardRef((props, ref) => {
       setSelectedState(opportunity.state);
     }
   }));
+  // Integração via prop (dashboard)
+useEffect(() => {
+  if (props.selectedOpportunity) {
+    setMapCenter(props.selectedOpportunity.position);
+    setMapZoom(10);
+    setActiveMarkerId(props.selectedOpportunity.id);
+    setSelectedOpportunity(props.selectedOpportunity);
+    setSelectedState(props.selectedOpportunity.state);
+  }
+}, [props.selectedOpportunity]);
+
 console.log("Selected opportunity:", selectedOpportunity);
 
   const formatPrice = (price) =>

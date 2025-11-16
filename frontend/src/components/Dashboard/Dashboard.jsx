@@ -1,49 +1,74 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend, Filler } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
 import { opportunities, sortByROI } from '../../data/mockOpportunities';
 
-// Registrar componentes do Chart.js
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend, Filler);
 
-const Dashboard = ({ setSelectedOpportunity }) => {
+const Dashboard = ({ setSelectedOpportunity, setActiveTab }) => {
   // Filtro por cultura
   const [selectedCrop, setSelectedCrop] = useState('');
-  const uniqueCrops = [...new Set(opportunities.map(o => o.crop))];
+  const uniqueCrops = [...new Set(opportunities.map(o => o.product))];
 
-  // Badge simulação de nova oportunidade
+  // Pop-up animado de nova oportunidade
   const [newOpAlert, setNewOpAlert] = useState(false);
+  const [alertVisible, setAlertVisible] = useState(false);
+
   useEffect(() => {
-    const timer = setTimeout(() => setNewOpAlert(true), 12000); // Simula alerta
+    const timer = setTimeout(() => setNewOpAlert(true), 12000);
     return () => clearTimeout(timer);
   }, []);
+  useEffect(() => {
+    if (newOpAlert) {
+      setAlertVisible(true);
+      const hideTimer = setTimeout(() => setAlertVisible(false), 3500);
+      const offTimer = setTimeout(() => setNewOpAlert(false), 4200);
+      return () => {
+        clearTimeout(hideTimer);
+        clearTimeout(offTimer);
+      };
+    }
+  }, [newOpAlert]);
 
-  // Estatísticas
-  const cropFilteredOpps = opportunities.filter(o => !selectedCrop || o.crop === selectedCrop);
+  // Ref para pegar a instância do gráfico Bar
+  const barRef = useRef();
+
+  // Aplica filtro por cultura selecionada
+  const cropFilteredOpps = opportunities.filter(o => !selectedCrop || o.product === selectedCrop);
+
+  // Estatísticas em cima dos filtrados
   const totalOpportunities = cropFilteredOpps.length;
   const avgROI = (cropFilteredOpps.reduce((sum, opp) => sum + opp.roi, 0) / (totalOpportunities || 1)).toFixed(1);
   const highRiskCount = cropFilteredOpps.filter(opp => opp.riskLevel === 3).length;
   const totalVolume = cropFilteredOpps.reduce((sum, opp) => {
-    const vol = parseInt(opp.volume);
-    return sum + (isNaN(vol) ? 0 : vol);
+    const volMatch = String(opp.volume).match(/\d+/);
+    const vol = volMatch ? parseInt(volMatch[0]) : 0;
+    return sum + vol;
   }, 0);
 
-  // Top por ROI
+  // Top 5 oportunidades por ROI
   const topOpportunities = sortByROI(cropFilteredOpps).slice(0, 5);
 
-  // Bar Chart (TOP ROI)
+  // Chartjs de barras: clique envia oportunidade para o mapa
   const barChartData = {
     labels: topOpportunities.map(opp => opp.product),
     datasets: [{
       label: 'ROI (%)',
       data: topOpportunities.map(opp => opp.roi),
-      backgroundColor: topOpportunities.map(opp => opp.roi >= 100 ? 'rgba(0,217,255,0.6)' : opp.roi >= 50 ? 'rgba(124,58,237,0.6)' : 'rgba(239,68,68,0.6)'),
-      borderColor: topOpportunities.map(opp => opp.roi >= 100 ? '#00d9ff' : opp.roi >= 50 ? '#7c3aed' : '#ef4444'),
+      backgroundColor: topOpportunities.map(opp =>
+        opp.roi >= 100 ? 'rgba(0,217,255,0.6)'
+        : opp.roi >= 50 ? 'rgba(124,58,237,0.6)'
+        : 'rgba(239,68,68,0.6)'
+      ),
+      borderColor: topOpportunities.map(opp =>
+        opp.roi >= 100 ? '#00d9ff'
+        : opp.roi >= 50 ? '#7c3aed'
+        : '#ef4444'
+      ),
       borderWidth: 2,
       borderRadius: 8
     }]
   };
-
   const barChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -70,17 +95,10 @@ const Dashboard = ({ setSelectedOpportunity }) => {
     scales: {
       x: { grid: { color: 'rgba(0,217,255,0.1)' }, ticks: { color: '#00d9ff' } },
       y: { grid: { color: 'rgba(0,217,255,0.1)' }, ticks: { color: '#00d9ff', callback: v => v + '%' }, beginAtZero: true }
-    },
-    onClick: (event, elements) => {
-      if (elements.length > 0) {
-        const idx = elements[0].index;
-        const opp = topOpportunities[idx];
-        if (opp && setSelectedOpportunity) setSelectedOpportunity(opp);
-      }
     }
   };
 
-  // LineChart de Tendência de Preços (dados fixos de exemplo, pode trocar)
+  // Gráfico de tendência (dados mock)
   const priceTrendData = {
     labels: ['Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov'],
     datasets: [{
@@ -97,7 +115,6 @@ const Dashboard = ({ setSelectedOpportunity }) => {
       pointRadius: 6
     }]
   };
-
   const lineChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -127,21 +144,48 @@ const Dashboard = ({ setSelectedOpportunity }) => {
     }
   };
 
+  // --- ESSENCIAL PARA O CLIQUE FUNCIONAR NO GRÁFICO BAR ---
+ const handleBarClick = (nativeEvent) => {
+  const chart = barRef.current;
+  if (!chart) return;
+  const points = chart.getElementsAtEventForMode(
+    nativeEvent,
+    'nearest',
+    { intersect: true },
+    false
+  );
+  if (points && points.length > 0) {
+    const idx = points[0].index;
+    const opp = topOpportunities[idx];
+    if (opp && setSelectedOpportunity) setSelectedOpportunity(opp);
+    if (setActiveTab) setActiveTab('map'); // Troca para o Mapa ao clicar!
+  }
+};
+
+
   return (
     <div className="dashboard-container">
-      {newOpAlert && (
-        <span style={{
-          background: "linear-gradient(90deg,#00d9ff,#a78bfa)",
-          color: "#fff",
-          padding: "6px 12px",
-          borderRadius: "6px",
-          fontWeight: "bold",
-          marginBottom: "16px",
-          display: "inline-block",
-          animation: "blink 1.5s infinite"
-        }}>
+      {/* Pop-up animado: novo alerta, canto inferior direito */}
+      {(newOpAlert || alertVisible) && (
+        <div
+          style={{
+            position: 'fixed',
+            right: '30px',
+            bottom: '30px',
+            zIndex: 9999,
+            background: "linear-gradient(90deg,#00d9ff,#a78bfa)",
+            color: "#fff",
+            padding: "10px 22px",
+            borderRadius: "8px",
+            fontWeight: "bold",
+            boxShadow: "0 6px 18px #00d9ff22",
+            fontSize: "1em",
+            opacity: alertVisible ? 1 : 0,
+            transition: "opacity 0.7s ease"
+          }}
+        >
           Nova oportunidade detectada!
-        </span>
+        </div>
       )}
 
       <select
@@ -186,7 +230,13 @@ const Dashboard = ({ setSelectedOpportunity }) => {
 
       <div className="dashboard-charts" style={{ display: 'flex', gap: '30px', marginTop: '30px' }}>
         <div style={{ flex: 1, background: '#15192c', padding: '16px', borderRadius: '16px', minHeight: '280px' }}>
-          <Bar data={barChartData} options={barChartOptions} height={220} />
+         <Bar
+    ref={barRef}
+    data={barChartData}
+    options={barChartOptions}
+    height={220}
+    onClick={e => handleBarClick(e.nativeEvent)}
+  />
         </div>
         <div style={{ flex: 1, background: '#15192c', padding: '16px', borderRadius: '16px', minHeight: '280px' }}>
           <Line data={priceTrendData} options={lineChartOptions} height={220} />
