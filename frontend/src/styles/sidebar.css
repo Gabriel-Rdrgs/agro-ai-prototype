@@ -1,0 +1,347 @@
+/* ========================================
+   SIDEBAR - ESTILOS ESPECÍFICOS
+   ======================================== */
+
+/* Container de busca */
+.sidebar-search {
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--accent-primary);
+  flex-shrink: 0;
+}
+
+.sidebar-search input {
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 2px solid var(--accent-primary);
+  border-radius: var(--border-radius);
+  font-size: 13px;
+  outline: none;
+  transition: var(--transition-fast);
+  box-sizing: border-box;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-family: inherit;
+}
+
+.sidebar-search input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.sidebar-search input:focus {
+  border-color: var(--accent-secondary);
+  box-shadow: 0 0 12px rgba(0, 217, 255, 0.3);
+}
+
+/* Container de filtros */
+.sidebar-filters {
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--accent-primary);
+  flex-shrink: 0;
+}
+
+.filter-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-primary);
+  margin-bottom: var(--spacing-sm);
+  display: block;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.filter-buttons {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+  flex-wrap: wrap;
+}
+
+.filter-btn {
+  flex: 1;
+  min-width: 60px;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 2px solid var(--text-muted);
+  border-radius: var(--border-radius);
+  background: var(--bg-dark);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.filter-btn:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.filter-btn.active {
+  border-color: var(--accent-primary);
+  background: rgba(0, 217, 255, 0.1);
+  font-weight: 700;
+  color: var(--accent-primary);
+}
+
+/* Dropdown de ordenação */
+.sort-select {
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 2px solid var(--accent-primary);
+  border-radius: var(--border-radius);
+  font-size: 12px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  cursor: pointer;
+  outline: none;
+  transition: var(--transition-fast);
+  font-family: inherit;
+}
+
+.sort-select:hover,
+.sort-select:focus {
+  box-shadow: 0 0 12px rgba(0, 217, 255, 0.3);
+  border-color: var(--accent-secondary);
+}
+
+.sort-select option {
+  background: var(--bg-dark);
+  color: var(--text-primary);
+  padding: var(--spacing-sm);
+}
+
+/* Container da lista de oportunidades */
+.opportunities-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.empty-state {
+  padding: var(--spacing-xl) var(--spacing-md);
+  text-align: center;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+}
+
+.empty-state p {
+  margin: var(--spacing-sm) 0;
+  font-size: 13px;
+}
+
+.empty-state p:first-child {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+/* Card de oportunidade */
+.opportunity-card {
+  padding: var(--spacing-md);
+  border: 1px solid var(--accent-primary);
+  border-radius: var(--border-radius);
+  background: var(--bg-card);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  color: var(--text-primary);
+  font-family: inherit;
+}
+
+.opportunity-card:hover {
+  background: rgba(0, 217, 255, 0.1);
+  box-shadow: 0 0 15px rgba(0, 217, 255, 0.2);
+  transform: translateX(2px);
+}
+
+.opportunity-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--spacing-sm);
+  gap: var(--spacing-sm);
+}
+
+.opportunity-card-title {
+  flex: 1;
+}
+
+.opportunity-card h3 {
+  margin: 0 0 4px 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.opportunity-card p {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.roi-badge {
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: 2px solid;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.roi-badge.high {
+  background: rgba(0, 217, 255, 0.15);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.roi-badge.medium {
+  background: rgba(167, 139, 250, 0.15);
+  border-color: var(--accent-secondary);
+  color: var(--accent-secondary);
+}
+
+.roi-badge.low {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: var(--accent-warning);
+  color: var(--accent-warning);
+}
+
+/* Informações do card */
+.opportunity-info {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.opportunity-info span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.opportunity-info-price {
+  font-weight: 600;
+  color: var(--accent-primary);
+}
+
+.opportunity-details {
+  font-size: 10px;
+  color: var(--text-muted);
+  display: flex;
+  gap: var(--spacing-md);
+  padding-top: var(--spacing-xs);
+  border-top: 1px solid rgba(0, 217, 255, 0.1);
+}
+
+/* ========================================
+   MEDIA QUERIES - TABLET (768px)
+   ======================================== */
+@media (max-width: 768px) {
+  .filter-buttons {
+    gap: var(--spacing-xs);
+  }
+
+  .filter-btn {
+    padding: 6px 10px;
+    font-size: 10px;
+  }
+
+  .opportunity-card {
+    padding: var(--spacing-sm);
+  }
+
+  .opportunity-card h3 {
+    font-size: 12px;
+  }
+
+  .roi-badge {
+    padding: 3px 8px;
+    font-size: 10px;
+  }
+}
+
+/* ========================================
+   MEDIA QUERIES - MOBILE (375px)
+   ======================================== */
+@media (max-width: 375px) {
+  .sidebar-search {
+    padding: var(--spacing-sm);
+  }
+
+  .sidebar-search input {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    font-size: 12px;
+  }
+
+  .sidebar-filters {
+    padding: var(--spacing-sm);
+  }
+
+  .filter-label {
+    font-size: 10px;
+    margin-bottom: 6px;
+  }
+
+  .filter-buttons {
+    gap: 4px;
+    margin-bottom: var(--spacing-sm);
+  }
+
+  .filter-btn {
+    padding: 5px 8px;
+    font-size: 9px;
+    min-width: 50px;
+  }
+
+  .sort-select {
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+
+  .opportunities-list {
+    padding: 6px;
+    gap: 6px;
+  }
+
+  .opportunity-card {
+    padding: 8px;
+  }
+
+  .opportunity-card h3 {
+    font-size: 12px;
+    margin-bottom: 2px;
+  }
+
+  .opportunity-card p {
+    font-size: 10px;
+  }
+
+  .roi-badge {
+    padding: 2px 6px;
+    font-size: 9px;
+  }
+
+  .opportunity-info {
+    font-size: 10px;
+    margin-bottom: 4px;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .opportunity-details {
+    font-size: 9px;
+    gap: 6px;
+  }
+}

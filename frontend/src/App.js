@@ -1,9 +1,7 @@
 import React, { useState, useRef } from 'react';
-import theme from './styles/theme';
 import MapView from './components/Map/MapView';
 import Sidebar from './components/Sidebar/Sidebar';
 import Dashboard from './components/Dashboard/Dashboard';
-import './App.css';
 
 function App() {
   const [showSidebar, setShowSidebar] = useState(true);
@@ -13,10 +11,10 @@ function App() {
 
   const handleSelectOpportunity = (opportunity) => {
     console.log('Oportunidade selecionada:', opportunity);
-
     if (mapRef.current) {
       mapRef.current.focusOpportunity(opportunity);
     }
+    setSelectedOpportunity(opportunity);
   };
 
   const toggleSidebar = () => {
@@ -24,207 +22,92 @@ function App() {
   };
 
   return (
-    <div
-      className="App"
-      style={{
-        display: 'flex',
-        height: '100vh',
-        overflow: 'hidden',
-        flexDirection: 'column',
-        background: theme.colors.background,
-        fontFamily: theme.font,
-        color: theme.colors.textPrimary
-      }}
-    >
+    <div className="app">
       {/* Header fixo no topo */}
-      <header style={{
-        background: `linear-gradient(90deg, ${theme.colors.background} 60%, ${theme.colors.accent}22 100%)`,
-        padding: '20px',
-        color: theme.colors.textPrimary,
-        textAlign: 'center',
-        zIndex: 100,
-        boxShadow: theme.colors.cardGlow,
-        borderBottom: `2px solid ${theme.colors.accent}66`
-      }}>
-        <h1 style={{ margin: '0 0 5px 0', fontSize: '24px', letterSpacing: '1.5px', fontFamily: theme.font }}>
-          🌾 Sistema de Inteligência de Arbitragem Agrícola
-        </h1>
-        <p style={{ margin: 0, fontSize: '14px', opacity: 0.9 }}>
-          Protótipo v0.1 - Mapa de Oportunidades
-        </p>
+      <header className="app-header">
+        <h1>🚀 Sistema de Inteligência de Arbitragem Agrícola</h1>
+        <p>Protótipo v0.1 - Mapa de Oportunidades</p>
       </header>
 
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
-        {/* Sidebar (apenas visível na aba de mapa) */}
+      {/* Conteúdo principal */}
+      <div className="main-content">
+        {/* Sidebar - Visível apenas na aba de mapa */}
         {showSidebar && activeTab === 'map' && (
-          <div style={{ display: 'flex', flexDirection: 'column', width: '350px' }}>
+          <div className="sidebar-container">
             {/* Header da sidebar */}
-            <div style={{
-              padding: '15px 20px',
-              background: theme.colors.background,
-              color: theme.colors.textPrimary,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              boxShadow: theme.colors.cardGlow
-            }}>
+            <div className="sidebar-header">
               <div>
-                <h2 style={{ margin: '0 0 5px 0', fontSize: '18px', fontWeight: 'bold' }}>
-                  🌾 Oportunidades
-                </h2>
-                <p style={{ margin: 0, fontSize: '13px', opacity: 0.9, color: theme.colors.textMuted }}>
-                  12 de 12 exibidas
-                </p>
+                <h2>🌿 Oportunidades</h2>
+                <p>12 de 12 exibidas</p>
               </div>
               <button
                 onClick={toggleSidebar}
-                style={{
-                  background: 'none',
-                  border: `2px solid ${theme.colors.accent}`,
-                  color: theme.colors.accent,
-                  padding: '8px 12px',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '18px',
-                  fontWeight: 'bold',
-                  transition: theme.transition,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  minWidth: '36px',
-                  height: '36px',
-                  boxShadow: theme.colors.cardGlow
-                }}
+                className="sidebar-toggle-btn"
                 title="Ocultar lista"
               >
-                ◀
+                ✕
               </button>
             </div>
+
             {/* Conteúdo da sidebar */}
-            <Sidebar 
-              onSelectOpportunity={handleSelectOpportunity} 
-              hideHeader={true}
-            />
+            <div className="sidebar-content">
+              <Sidebar
+                onSelectOpportunity={handleSelectOpportunity}
+                hideHeader={true}
+              />
+            </div>
           </div>
         )}
 
         {/* Container do mapa/dashboard */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {/* Abas de navegação - FIXAS NO TOPO */}
-          <div style={{
-            display: 'flex',
-            background: theme.colors.background,
-            borderBottom: `2px solid ${theme.colors.accent}33`,
-            padding: '0 20px',
-            position: 'relative',
-            zIndex: 50
-          }}>
+        <div className="content-wrapper">
+          {/* Abas de navegação */}
+          <div className="tabs-nav">
             <button
               onClick={() => setActiveTab('map')}
-              style={{
-                background: activeTab === 'map' ? `${theme.colors.accent}1A` : 'transparent',
-                border: 'none',
-                borderBottom: activeTab === 'map' ? `2px solid ${theme.colors.accent}` : '2px solid transparent',
-                color: activeTab === 'map' ? theme.colors.accent : theme.colors.textMuted,
-                padding: '15px 25px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: 'bold',
-                transition: theme.transition,
-                marginBottom: '-2px',
-                letterSpacing: '1px'
-              }}
+              className={`tab-btn ${activeTab === 'map' ? 'active' : ''}`}
             >
               🗺️ MAPA
             </button>
             <button
               onClick={() => setActiveTab('dashboard')}
-              style={{
-                background: activeTab === 'dashboard' ? `${theme.colors.accent}1A` : 'transparent',
-                border: 'none',
-                borderBottom: activeTab === 'dashboard' ? `2px solid ${theme.colors.accent}` : '2px solid transparent',
-                color: activeTab === 'dashboard' ? theme.colors.accent : theme.colors.textMuted,
-                padding: '15px 25px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: 'bold',
-                transition: theme.transition,
-                marginBottom: '-2px',
-                letterSpacing: '1px'
-              }}
+              className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
             >
               📊 DASHBOARD
             </button>
           </div>
 
           {/* Conteúdo principal */}
-          <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+          <div className="tab-content">
+            {/* Botão para mostrar sidebar quando escondida */}
             {!showSidebar && activeTab === 'map' && (
               <button
                 onClick={toggleSidebar}
-                style={{
-                  position: 'absolute',
-                  top: '20px',
-                  right: '20px',
-                  zIndex: 1100,
-                  background: theme.colors.background,
-                  color: theme.colors.accent,
-                  border: `2px solid ${theme.colors.accent}`,
-                  padding: '12px 18px',
-                  borderRadius: theme.borderRadius,
-                  cursor: 'pointer',
-                  boxShadow: theme.colors.cardGlow,
-                  fontSize: '14px',
-                  fontWeight: 'bold',
-                  transition: theme.transition,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}
+                className="show-sidebar-btn"
               >
-                ▶ Mostrar Lista
+                📋 Mostrar Lista
               </button>
             )}
+
+            {/* Barra lateral decorativa quando sidebar está oculta */}
             {!showSidebar && activeTab === 'map' && (
-  <div
-    style={{
-      width: '60px',
-      height: '100vh',
-      position: 'absolute',
-      left: 0,
-      top: 0,
-      background: 'linear-gradient(135deg, #0a0e27 40%, #24284a 100%)',
-      borderRight: '2.5px solid #00d9ff',
-      boxShadow: '0 0 28px #00d9ff44, 0 0 80px #11131f inset',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 100,
-      transition: 'all 0.3s',
-      pointerEvents: 'none'
-    }}
-  >
-    <span
-      style={{
-        color: '#00d9ff',
-        fontWeight: 700,
-        fontFamily: theme.font,
-        textShadow: '0 0 15px #00d9ff88, 0 0 25px #00d9ff22',
-        fontSize: '1.6rem',
-        opacity: 0.9,
-      }}
-    >≡</span>
-  </div>
-)}
-
-            {/* Conteúdo (Mapa ou Dashboard) */}
-            {activeTab === 'map' ? (
-              <MapView selectedOpportunity={selectedOpportunity} ref={mapRef} />
-            ) : (
-              <div style={{ width: '100%', height: '100%', overflow: 'auto' }}>
-               <Dashboard setSelectedOpportunity={setSelectedOpportunity} setActiveTab={setActiveTab} />
-
+              <div className="sidebar-indicator">
+                <span>📍</span>
               </div>
+            )}
+
+            {/* Mapa ou Dashboard */}
+            {activeTab === 'map' && (
+              <div className="map-container">
+                <MapView ref={mapRef} selectedOpportunity={selectedOpportunity} />
+              </div>
+            )}
+
+            {activeTab === 'dashboard' && (
+              <Dashboard
+                setSelectedOpportunity={setSelectedOpportunity}
+                setActiveTab={setActiveTab}
+              />
             )}
           </div>
         </div>
