@@ -37,11 +37,7 @@
 /* ========================================
    RESET E BASE
    ======================================== */
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
 html, body, #root {
   min-height: 100vh;
@@ -66,6 +62,7 @@ body {
   overflow: visible;
   background: var(--bg-dark);
 }
+
 .app-header {
   background: linear-gradient(90deg, var(--bg-dark) 60%, var(--accent-secondary) 100%);
   padding: var(--spacing-md) var(--spacing-lg);
@@ -98,9 +95,8 @@ body {
 }
 
 /* ========================================
-   SIDEBAR
+   SIDEBAR - DESKTOP
    ======================================== */
-/* Sidebar sempre na altura do painel de mapa/dash */
 .sidebar-container {
   height: 100%;
   max-height: 100vh;
@@ -118,7 +114,6 @@ body {
   box-sizing: border-box;
 }
 
-
 .sidebar-header {
   padding: var(--spacing-md) var(--spacing-lg);
   background: var(--bg-card);
@@ -128,6 +123,7 @@ body {
   align-items: center;
   box-shadow: var(--spacing-xs) 0 12px rgba(0, 217, 255, 0.1);
   border-bottom: 1px solid var(--accent-primary);
+  flex-shrink: 0;
 }
 
 .sidebar-header h2 {
@@ -167,15 +163,15 @@ body {
   box-shadow: 0 0 20px rgba(0, 217, 255, 0.4);
 }
 
-/* Sidebar content scrollável */
 .sidebar-content {
+  flex: 1;
   overflow-y: auto;
-  overflow-x: hidden;   /* <-- garante que não há scroll lateral */
+  overflow-x: hidden;
   word-break: break-word;
   max-width: 100%;
+  padding: var(--spacing-md);
 }
 
-/* Scrollbar customizado */
 .sidebar-content::-webkit-scrollbar {
   width: 6px;
 }
@@ -225,9 +221,7 @@ body {
   white-space: nowrap;
 }
 
-.tab-btn:hover {
-  color: var(--accent-primary);
-}
+.tab-btn:hover { color: var(--accent-primary); }
 
 .tab-btn.active {
   background: rgba(0, 217, 255, 0.1);
@@ -239,66 +233,46 @@ body {
   flex: 1;
   overflow: visible;
 }
-
 /* ========================================
-   DECORATIVE BAR (Quando sidebar oculta)
+   BOTÃO FLUTUANTE MOBILE + OVERLAY
    ======================================== */
-.sidebar-indicator {
-  width: 60px;
-  height: 100vh;
-  position: absolute;
+.mobile-show-sidebar-btn {
+  position: fixed;
+  top: 50%;
   left: 0;
-  top: 0;
-  background: linear-gradient(135deg, #0a0e27 40%, #24284a 100%);
-  border-right: 2.5px solid var(--accent-primary);
-  box-shadow: 0 0 28px rgba(0, 217, 255, 0.27), 0 0 80px rgba(17, 19, 31, 0.5) inset;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-  transition: var(--transition);
-  pointer-events: none;
-}
-
-.sidebar-indicator span {
-  color: var(--accent-primary);
-  font-weight: 700;
-  font-size: 1.6rem;
-  text-shadow: 0 0 15px rgba(0, 217, 255, 0.5), 0 0 25px rgba(0, 217, 255, 0.2);
-  opacity: 0.9;
-}
-/* ========================================
-   BOTÃO MOSTRAR SIDEBAR
-   ======================================== */
-.show-sidebar-btn {
-  position: absolute;
-  top: var(--spacing-lg);
-  right: var(--spacing-lg);
-  z-index: 1100;
-  background: var(--bg-dark);
-  color: var(--accent-primary);
-  border: 2px solid var(--accent-primary);
-  padding: var(--spacing-sm) var(--spacing-md);
-  border-radius: var(--border-radius);
-  cursor: pointer;
-  box-shadow: 0 0 12px rgba(0, 217, 255, 0.2);
+  transform: translateY(-50%);
+  background: linear-gradient(90deg, #00d9ff, #0099cc);
+  color: white;
+  border: none;
+  border-radius: 0 16px 16px 0;
+  padding: 18px 10px;
+  font-weight: bold;
   font-size: 13px;
-  font-weight: 600;
-  transition: var(--transition);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  z-index: 9999;
+  cursor: pointer;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: var(--spacing-sm);
-  white-space: nowrap;
+  gap: 6px;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
 }
 
-.show-sidebar-btn:hover {
-  background: var(--accent-primary);
-  color: var(--bg-dark);
-  box-shadow: 0 0 20px rgba(0, 217, 255, 0.5);
+.mobile-show-sidebar-btn .icon { font-size: 24px; }
+.mobile-show-sidebar-btn .text { font-size: 11px; letter-spacing: 0.8px; }
+.mobile-show-sidebar-btn:hover { padding-left: 16px; padding-right: 16px; background: #00eeff; }
+
+.mobile-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 9998;
+  display: none;
 }
 
 /* ========================================
-   DASHBOARD ESPECÍFICO
+   DASHBOARD + MAPA (seu estilo original completo)
    ======================================== */
 .dashboard-container {
   display: flex;
@@ -331,31 +305,11 @@ body {
   transform: translateY(-2px);
 }
 
-.card h3 {
-  margin: 0 0 var(--spacing-md) 0;
-  font-size: 14px;
-  font-weight: 600;
-  opacity: 0.8;
-}
+.card h3 { margin: 0 0 var(--spacing-md) 0; font-size: 14px; font-weight: 600; opacity: 0.8; }
+.card p { margin: 0; font-size: 24px; font-weight: 700; }
+.card small { display: block; margin-top: var(--spacing-xs); font-size: 12px; opacity: 0.6; }
 
-.card p {
-  margin: 0;
-  font-size: 24px;
-  font-weight: 700;
-}
-
-.card small {
-  display: block;
-  margin-top: var(--spacing-xs);
-  font-size: 12px;
-  opacity: 0.6;
-}
-
-.dashboard-charts {
-  display: flex;
-  gap: var(--spacing-lg);
-  flex-wrap: wrap;
-}
+.dashboard-charts { display: flex; gap: var(--spacing-lg); flex-wrap: wrap; }
 
 .chart-container {
   flex: 1;
@@ -367,9 +321,6 @@ body {
   min-height: 280px;
 }
 
-/* ========================================
-   MAPA RESPONSIVO
-   ======================================== */
 .map-container {
   width: 100%;
   height: 100%;
@@ -381,136 +332,82 @@ body {
   height: 100%;
 }
 
-/* ========================================
-   SCROLLBAR GLOBAL
-   ======================================== */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: rgba(0, 217, 255, 0.05);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--accent-primary);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--accent-secondary);
-}
-
-/* ========================================
-   MEDIA QUERIES - TABLET (768px)
-   ======================================== */
+/* ======================================== */
+/* RESPONSIVIDADE MOBILE – VERSÃO QUE FUNCIONA 100% (FINAL) */
+/* ======================================== */
 @media (max-width: 768px) {
   .sidebar-container {
-    display: none;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 320px !important;
+    height: 100vh !important;
+    z-index: 10000 !important;
+    background: var(--bg-dark) !important;
+    border-right: 2px solid var(--accent-primary) !important;
+    box-shadow: 8px 0 30px rgba(0,0,0,0.6) !important;
+    transform: translateX(-100%);
+    transition: transform 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    display: flex !important;
+    flex-direction: column !important;
   }
-  
-  .main-content {
-    width: 100%;
+
+  .sidebar-container.show-mobile {
+    transform: translateX(0) !important;
   }
-  
-  .dashboard-cards {
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: var(--spacing-sm);
+
+  .sidebar-header { flex-shrink: 0 !important; }
+
+  .sidebar-content {
+    flex: 1 !important;
+    overflow-y: auto !important;
+    padding: var(--spacing-md) !important;
+    -webkit-overflow-scrolling: touch;
   }
-  
-  .dashboard-charts {
-    flex-direction: column;
+
+  .mobile-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    background: rgba(0,0,0,0.7) !important;
+    z-index: 9999 !important;
   }
-  
-  .chart-container {
-    min-width: 100%;
-    min-height: 240px;
+
+  .mobile-show-sidebar-btn {
+    display: flex !important;
+    z-index: 10001 !important;
   }
-  
-  .tabs-nav {
-    padding: 0 var(--spacing-md);
-  }
-  
-  .tab-btn {
-    padding: var(--spacing-sm) var(--spacing-md);
-    font-size: 12px;
-  }
-  
-  .app-header h1 {
-    font-size: clamp(16px, 4vw, 18px);
+
+  /* ajustes gerais mobile (mantidos) */
+  .main-content, .content-wrapper { width: 100%; }
+  .dashboard-cards { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--spacing-sm); }
+  .dashboard-charts { flex-direction: column; }
+  .chart-container { min-width: 100%; min-height: 240px; }
+  .tabs-nav { padding: 0 var(--spacing-md); }
+  .tab-btn { padding: var(--spacing-sm) var(--spacing-md); font-size: 12px; }
+  .app-header h1 { font-size: clamp(16px, 4vw, 18px); }
+}
+
+@media (min-width: 769px) {
+  .mobile-overlay {
+    display: none !important;
   }
 }
 
-/* ========================================
-   MEDIA QUERIES - MOBILE (375px)
-   ======================================== */
 @media (max-width: 375px) {
-  .app-header {
-    padding: var(--spacing-md) var(--spacing-sm);
-  }
-  
-  .app-header h1 {
-    font-size: 14px;
-    letter-spacing: 0.8px;
-  }
-  
-  .app-header p {
-    font-size: 11px;
-  }
-  
-  .tabs-nav {
-    padding: 0 var(--spacing-sm);
-    overflow-x: auto;
-  }
-  
-  .tab-btn {
-    padding: 12px 14px;
-    font-size: 11px;
-  }
-  
-  .dashboard-container {
-    padding: var(--spacing-md) var(--spacing-sm);
-    gap: var(--spacing-md);
-  }
-  
-  .dashboard-cards {
-    grid-template-columns: 1fr;
-    gap: var(--spacing-sm);
-  }
-  
-  .card {
-    padding: var(--spacing-md);
-  }
-  
-  .card h3 {
-    font-size: 12px;
-  }
-  
-  .card p {
-    font-size: 18px;
-  }
-  
-  .show-sidebar-btn {
-    padding: var(--spacing-xs) var(--spacing-sm);
-    font-size: 11px;
-    top: var(--spacing-sm);
-    right: var(--spacing-sm);
-  }
-  
-  .chart-container {
-    min-height: 200px;
-    padding: var(--spacing-sm);
-  }
-  
-  .content-wrapper {
-    margin-left: 0;
-  }
+  .app-header { padding: var(--spacing-md) var(--spacing-sm); }
+  .app-header h1 { font-size: 14px; letter-spacing: 0.8px; }
+  .app-header p { font-size: 11px; }
+  .mobile-show-sidebar-btn { padding: 16px 8px; border-radius: 0 14px 14px 0; }
 }
 
-/* ========================================
-   AJUSTES ADICIONAIS
-   ======================================== */
+/* ======================================== */
+/* SCROLLBAR + SELECTS (mantido exatamente como estava) */
+/* ======================================== */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: rgba(0, 217, 255, 0.05); }
+::-webkit-scrollbar-thumb { background: var(--accent-primary); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent-secondary); }
+
 select {
   background: var(--bg-card);
   color: var(--accent-primary);

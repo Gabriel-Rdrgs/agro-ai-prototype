@@ -91,10 +91,11 @@
 @media (max-width: 900px) {
   .dashboard-charts {
     flex-direction: column;
+    gap: 10px;
   }
   .dashboard-cards {
     flex-direction: column;
-    gap: 15px;
+    gap: 10px;
   }
   .dashboard-cards .card, .dashboard-charts > div {
     min-width: 140px;

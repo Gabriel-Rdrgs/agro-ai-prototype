@@ -10,7 +10,6 @@ const Sidebar = ({ onSelectOpportunity, hideHeader = false }) => {
   const getFilteredOpportunities = () => {
     let filtered = [...opportunities];
 
-    // Filtro por busca
     if (searchTerm) {
       filtered = filtered.filter(opp =>
         opp.product.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -19,7 +18,6 @@ const Sidebar = ({ onSelectOpportunity, hideHeader = false }) => {
       );
     }
 
-    // Filtro por ROI
     if (filter === 'high') {
       filtered = filtered.filter(opp => opp.roi >= 100);
     } else if (filter === 'medium') {
@@ -28,7 +26,6 @@ const Sidebar = ({ onSelectOpportunity, hideHeader = false }) => {
       filtered = filtered.filter(opp => opp.roi < 50);
     }
 
-    // Ordenação
     if (sortBy === 'roi') {
       filtered.sort((a, b) => b.roi - a.roi);
     } else if (sortBy === 'risk') {
@@ -55,7 +52,7 @@ const Sidebar = ({ onSelectOpportunity, hideHeader = false }) => {
   };
 
   return (
-    <div className="sidebar-container">
+    <>
       {/* Busca */}
       <div className="sidebar-search">
         <input
@@ -122,20 +119,16 @@ const Sidebar = ({ onSelectOpportunity, hideHeader = false }) => {
               className="opportunity-card"
               onClick={() => onSelectOpportunity(opp)}
             >
-              {/* Header do card */}
               <div className="opportunity-card-header">
                 <div className="opportunity-card-title">
                   <h3>{opp.product}</h3>
-                  <p>
-                    📍 {opp.city}, {opp.state}
-                  </p>
+                  <p>📍 {opp.city}, {opp.state}</p>
                 </div>
                 <div className={`roi-badge ${getROIColor(opp.roi)}`}>
                   {opp.roi}%
                 </div>
               </div>
 
-              {/* Informações do card */}
               <div className="opportunity-info">
                 <span>
                   <strong className="opportunity-info-price">
@@ -147,7 +140,6 @@ const Sidebar = ({ onSelectOpportunity, hideHeader = false }) => {
                 </span>
               </div>
 
-              {/* Detalhes */}
               <div className="opportunity-details">
                 <span>📦 {opp.volume}</span>
                 <span>⚠️ Risco {opp.risk}</span>
@@ -156,7 +148,7 @@ const Sidebar = ({ onSelectOpportunity, hideHeader = false }) => {
           ))
         )}
       </div>
-    </div>
+    </>
   );
 };
 

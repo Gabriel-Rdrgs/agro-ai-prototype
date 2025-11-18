@@ -1,13 +1,25 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import MapView from './components/Map/MapView';
 import Sidebar from './components/Sidebar/Sidebar';
 import Dashboard from './components/Dashboard/Dashboard';
 
 function App() {
-  const [showSidebar, setShowSidebar] = useState(true);
-  const [activeTab, setActiveTab] = useState('map'); // 'map' ou 'dashboard'
+  // Sidebar começa aberta só em desktop
+  const [showSidebar, setShowSidebar] = useState(window.innerWidth > 768);
+  const [activeTab, setActiveTab] = useState('map');
   const mapRef = useRef(null);
   const [selectedOpportunity, setSelectedOpportunity] = useState(null);
+
+  // Ajusta automaticamente ao redimensionar
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth > 768) {
+        setShowSidebar(true);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const handleSelectOpportunity = (opportunity) => {
     console.log('Oportunidade selecionada:', opportunity);
@@ -18,23 +30,32 @@ function App() {
   };
 
   const toggleSidebar = () => {
-    setShowSidebar(!showSidebar);
+    setShowSidebar(prev => !prev);
   };
 
   return (
     <div className="app">
-      {/* Header fixo no topo */}
+      {/* Cabeçalho SEMPRE visível */}
       <header className="app-header">
-        <h1>🚀 Sistema de Inteligência de Arbitragem Agrícola</h1>
+        <h1>🚀Sistema de Inteligência de Arbitragem Agrícola</h1>
         <p>Protótipo v0.1 - Mapa de Oportunidades</p>
       </header>
 
       {/* Conteúdo principal */}
       <div className="main-content">
-        {/* Sidebar - Visível apenas na aba de mapa */}
+
+        {/* Overlay escuro mobile – TEM QUE VIR ANTES da sidebar */}
+        {showSidebar && activeTab === 'map' && window.innerWidth <= 768 && (
+          <div 
+            className="mobile-overlay" 
+            onClick={toggleSidebar}
+            style={{ zIndex: 9998 }} // garante que fique atrás da sidebar
+          />
+        )}
+
+        {/* Sidebar com drawer mobile – agora fica por cima do overlay */}
         {showSidebar && activeTab === 'map' && (
-          <div className="sidebar-container">
-            {/* Header da sidebar */}
+          <div className={`sidebar-container ${showSidebar ? 'show-mobile' : ''}`}>
             <div className="sidebar-header">
               <div>
                 <h2>🌿 Oportunidades</h2>
@@ -44,12 +65,12 @@ function App() {
                 onClick={toggleSidebar}
                 className="sidebar-toggle-btn"
                 title="Ocultar lista"
+                aria-label="Fechar sidebar"
               >
                 ✕
               </button>
             </div>
 
-            {/* Conteúdo da sidebar */}
             <div className="sidebar-content">
               <Sidebar
                 onSelectOpportunity={handleSelectOpportunity}
@@ -59,9 +80,10 @@ function App() {
           </div>
         )}
 
-        {/* Container do mapa/dashboard */}
+        {/* Área principal (mapa + dashboard) */}
         <div className="content-wrapper">
-          {/* Abas de navegação */}
+
+          {/* Abas */}
           <div className="tabs-nav">
             <button
               onClick={() => setActiveTab('map')}
@@ -77,32 +99,29 @@ function App() {
             </button>
           </div>
 
-          {/* Conteúdo principal */}
+          {/* Conteúdo da aba */}
           <div className="tab-content">
-            {/* Botão para mostrar sidebar quando escondida */}
-            {!showSidebar && activeTab === 'map' && (
+
+            {/* Botão flutuante mobile */}
+            {activeTab === 'map' && !showSidebar && (
               <button
                 onClick={toggleSidebar}
-                className="show-sidebar-btn"
+                className="mobile-show-sidebar-btn"
+                aria-label="Abrir lista de oportunidades"
               >
-                📋 Mostrar Lista
+                <span className="icon">📋</span>
+                <span className="text">Lista</span>
               </button>
             )}
 
-            {/* Barra lateral decorativa quando sidebar está oculta */}
-            {!showSidebar && activeTab === 'map' && (
-              <div className="sidebar-indicator">
-                <span>📍</span>
-              </div>
-            )}
-
-            {/* Mapa ou Dashboard */}
+            {/* Mapa */}
             {activeTab === 'map' && (
               <div className="map-container">
                 <MapView ref={mapRef} selectedOpportunity={selectedOpportunity} />
               </div>
             )}
 
+            {/* Dashboard */}
             {activeTab === 'dashboard' && (
               <Dashboard
                 setSelectedOpportunity={setSelectedOpportunity}
