@@ -85,7 +85,7 @@ const MapView = React.forwardRef((props, ref) => {
         onMouseLeave={(e) => !e.buttons && setLegendVisible(false)}
       >
         <h4 className="legend-title">
-          📊 Legenda ROI {legendVisible ? '' : '(toque para ver)'}
+          📊 Legenda ROI {legendVisible ? '' : '(pressione para ver)'}
         </h4>
 
         {legendVisible && (
