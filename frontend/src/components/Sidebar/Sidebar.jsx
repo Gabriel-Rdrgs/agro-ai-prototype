@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
-import { opportunities } from '../../data/mockOpportunities';
 import '../../styles/sidebar.css';
 
-const Sidebar = ({ onSelectOpportunity, hideHeader = false }) => {
+// RECEBE 'opportunities' DO PAI AGORA
+const Sidebar = ({ onSelectOpportunity, hideHeader = false, opportunities = [] }) => {
   const [filter, setFilter] = useState('all');
   const [sortBy, setSortBy] = useState('roi');
   const [searchTerm, setSearchTerm] = useState('');
 
   const getFilteredOpportunities = () => {
+    // Usa a lista que veio do pai
     let filtered = [...opportunities];
 
     if (searchTerm) {

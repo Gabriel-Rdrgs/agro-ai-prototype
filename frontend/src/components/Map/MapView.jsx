@@ -3,9 +3,9 @@ import { MapContainer, TileLayer, Marker, Popup, useMap, GeoJSON } from 'react-l
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import theme from '../../styles/theme';
-import { opportunities } from '../../data/mockOpportunities';
+// REMOVIDO: import { opportunities } from '../../data/mockOpportunities'; 
 import { createRiskIcon } from '../../data/mapIcons';
-import "../../styles/mapview.css"; //← novo CSS externo
+import "../../styles/mapview.css"; 
 
 // Fix Leaflet icon para React
 delete L.Icon.Default.prototype._getIconUrl;
@@ -20,7 +20,11 @@ const MapController = ({ center, zoom }) => {
   return null;
 };
 
+// ADICIONADO 'opportunities' aqui
 const MapView = React.forwardRef((props, ref) => {
+  // Podemos desestruturar opportunities de props, ou usar props.opportunities
+  const { opportunities = [] } = props;
+
   const [geojsonMunicipios, setGeojsonMunicipios] = useState(null);
   const [geojsonStates, setGeojsonStates] = useState(null);
   const [mapStyle, setMapStyle] = useState('padrao');
@@ -29,7 +33,7 @@ const MapView = React.forwardRef((props, ref) => {
   const [activeMarkerId, setActiveMarkerId] = useState(null);
   const [selectedOpportunity, setSelectedOpportunity] = useState(null);
   const [selectedState, setSelectedState] = useState(null);
-  const [legendVisible, setLegendVisible] = useState(false); // ← novo state da legenda
+  const [legendVisible, setLegendVisible] = useState(false); 
 
   const brazilCenter = [-14.235, -51.9253];
 
@@ -77,7 +81,7 @@ const MapView = React.forwardRef((props, ref) => {
       fontFamily: theme.font,
       color: theme.colors.textPrimary
     }}>
-      {/* Legenda melhorada (CSS externo) */}
+      {/* Legenda e Controles mantidos ... */}
       <div 
         className={`map-legend ${legendVisible ? 'visible' : ''}`}
         onClick={() => setLegendVisible(v => !v)}
@@ -105,7 +109,6 @@ const MapView = React.forwardRef((props, ref) => {
         )}
       </div>
 
-      {/* Controles de visualização */}
       <div style={{
         position: 'absolute', top: 22, left: 80, zIndex: 2000, background: theme.colors.background,
         borderRadius: theme.borderRadius, boxShadow: theme.colors.cardGlow, padding: '6px 14px'
@@ -164,7 +167,7 @@ const MapView = React.forwardRef((props, ref) => {
           />
         )}
 
-        {/* Botões de Zoom personalizados */}
+        {/* Botões de Zoom ... */}
         <div style={{
           position: 'absolute',
           top: '20px',
@@ -231,7 +234,8 @@ const MapView = React.forwardRef((props, ref) => {
             })}
           />
         )}
-        {/* Todos os marcadores das oportunidades */}
+        
+        {/* USANDO A PROP 'opportunities' AQUI NO MAPA */}
         {opportunities.map((opp) => (
           <Marker
             key={opp.id}
@@ -248,6 +252,7 @@ const MapView = React.forwardRef((props, ref) => {
             }}
           >
             <Popup maxWidth={350} minWidth={250}>
+              {/* O conteúdo do popup é o mesmo, pois usa 'opp' do map */}
               <div style={{
                 padding: '8px',
                 fontFamily: theme.font,

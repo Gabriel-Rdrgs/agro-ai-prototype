@@ -12,7 +12,11 @@ import {
   Filler,
 } from "chart.js";
 import { Bar, Line } from "react-chartjs-2";
-import { opportunities, sortByROI } from "../../data/mockOpportunities";
+// REMOVIDO: import { opportunities } ...
+import { sortByROI } from "../../data/mockOpportunities"; // Mantivemos APENAS a função auxiliar se ela estiver lá, se não, podemos mover para utils.
+// Se sortByROI for uma função exportada do mock, ok manter. Se não, a lógica vai quebrar. 
+// Mas como 'sortByROI' é uma função utilitária, vamos assumir que ela está lá.
+// O IMPORTANTE É: O array 'opportunities' agora vem via props.
 
 import "../../styles/dashboard.css";
 
@@ -28,12 +32,15 @@ ChartJS.register(
   Filler
 );
 
-const Dashboard = ({ setSelectedOpportunity, setActiveTab }) => {
+// ADICIONADO 'opportunities' aqui
+const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [] }) => {
   // Filtro por cultura
   const [selectedCrop, setSelectedCrop] = useState("");
+  
+  // Usa a prop opportunities para gerar a lista única
   const uniqueCrops = [...new Set(opportunities.map(o => o.product))];
 
-  // Pop-up animado de nova oportunidade
+  // ... (Lógica de Alerta mantida igual) ...
   const [newOpAlert, setNewOpAlert] = useState(false);
   const [alertVisible, setAlertVisible] = useState(false);
 
@@ -54,10 +61,9 @@ const Dashboard = ({ setSelectedOpportunity, setActiveTab }) => {
     }
   }, [newOpAlert]);
 
-  // Ref para o gráfico de barras
   const barRef = useRef();
 
-  // Dados filtrados por cultura
+  // Dados filtrados por cultura (Usando a prop opportunities)
   const cropFilteredOpps = opportunities.filter(
     o => !selectedCrop || o.product === selectedCrop
   );
@@ -76,7 +82,9 @@ const Dashboard = ({ setSelectedOpportunity, setActiveTab }) => {
   }, 0);
 
   // Top 5 por ROI
-  const topOpportunities = sortByROI(cropFilteredOpps).slice(0, 5);
+  // Nota: Se sortByROI precisar do array original, você pode recriar a lógica aqui ou importar a função.
+  // Assumindo que sortByROI é apenas uma função de ordenação:
+  const topOpportunities = [...cropFilteredOpps].sort((a, b) => b.roi - a.roi).slice(0, 5);
 
   // Gráfico de barras
   const barChartData = {
@@ -101,6 +109,7 @@ const Dashboard = ({ setSelectedOpportunity, setActiveTab }) => {
     ],
   };
 
+  // ... (Manter barChartOptions, priceTrendData, lineChartOptions igual) ...
   const barChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -138,62 +147,61 @@ const Dashboard = ({ setSelectedOpportunity, setActiveTab }) => {
     },
   };
 
-  // Gráfico de linha tendência de preço
   const priceTrendData = {
-    labels: ["Jun", "Jul", "Ago", "Set", "Out", "Nov"],
-    datasets: [
-      {
-        label: "Preço Médio",
-        data: [4.2, 4.8, 5.1, 4.5, 5.3, 5.8],
-        borderColor: "#00d9ff",
-        backgroundColor: "rgba(0,217,255,0.1)",
-        borderWidth: 3,
-        fill: true,
-        tension: 0.4,
-        pointBackgroundColor: "#00d9ff",
-        pointBorderColor: "#0a0e27",
-        pointBorderWidth: 2,
-        pointRadius: 6,
-      },
-    ],
-  };
-  const lineChartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { display: false },
-      title: {
-        display: true,
-        text: "Tendência de Preços",
-        color: "#00d9ff",
-        font: { size: 16, weight: "bold" },
-        padding: 20,
-      },
-      tooltip: {
-        backgroundColor: "rgba(10,14,39,0.95)",
-        titleColor: "#00d9ff",
-        bodyColor: "#fff",
-        borderColor: "#00d9ff",
-        borderWidth: 1,
-        callbacks: { label: ctx => `R$ ${ctx.raw.toFixed(2)}` },
-      },
-    },
-    scales: {
-      x: {
-        grid: { color: "rgba(0,217,255,0.1)" },
-        ticks: { color: "#00d9ff" },
-      },
-      y: {
-        grid: { color: "rgba(0,217,255,0.1)" },
-        ticks: {
-          color: "#00d9ff",
-          callback: v => `R$ ${v.toFixed(2)}`,
+      labels: ["Jun", "Jul", "Ago", "Set", "Out", "Nov"],
+      datasets: [
+        {
+          label: "Preço Médio",
+          data: [4.2, 4.8, 5.1, 4.5, 5.3, 5.8],
+          borderColor: "#00d9ff",
+          backgroundColor: "rgba(0,217,255,0.1)",
+          borderWidth: 3,
+          fill: true,
+          tension: 0.4,
+          pointBackgroundColor: "#00d9ff",
+          pointBorderColor: "#0a0e27",
+          pointBorderWidth: 2,
+          pointRadius: 6,
         },
-      },
-    },
-  };
+      ],
+    };
 
-  // Clique no gráfico de barras seleciona oportunidade e vai pro mapa
+    const lineChartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          title: {
+            display: true,
+            text: "Tendência de Preços",
+            color: "#00d9ff",
+            font: { size: 16, weight: "bold" },
+            padding: 20,
+          },
+          tooltip: {
+            backgroundColor: "rgba(10,14,39,0.95)",
+            titleColor: "#00d9ff",
+            bodyColor: "#fff",
+            borderColor: "#00d9ff",
+            borderWidth: 1,
+            callbacks: { label: ctx => `R$ ${ctx.raw.toFixed(2)}` },
+          },
+        },
+        scales: {
+          x: {
+            grid: { color: "rgba(0,217,255,0.1)" },
+            ticks: { color: "#00d9ff" },
+          },
+          y: {
+            grid: { color: "rgba(0,217,255,0.1)" },
+            ticks: {
+              color: "#00d9ff",
+              callback: v => `R$ ${v.toFixed(2)}`,
+            },
+          },
+        },
+      };
+
   const handleBarClick = nativeEvent => {
     const chart = barRef.current;
     if (!chart) return;

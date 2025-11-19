@@ -2,15 +2,39 @@ import React, { useState, useRef, useEffect } from 'react';
 import MapView from './components/Map/MapView';
 import Sidebar from './components/Sidebar/Sidebar';
 import Dashboard from './components/Dashboard/Dashboard';
+// 1. Importamos nossa nova camada de serviço
+import { OpportunityService } from './services/opportunityService';
 
 function App() {
-  // Sidebar começa aberta só em desktop
+  // 2. Novos estados para controlar os dados e o carregamento
+  const [opportunities, setOpportunities] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Estados originais de UI
   const [showSidebar, setShowSidebar] = useState(window.innerWidth > 768);
   const [activeTab, setActiveTab] = useState('map');
   const mapRef = useRef(null);
   const [selectedOpportunity, setSelectedOpportunity] = useState(null);
 
-  // Ajusta automaticamente ao redimensionar
+  // 3. Effect que busca os dados ao iniciar (simulando o Backend)
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
+        // Aqui acontece a mágica: o App pede ao Service, que pede aos dados (ou API futura)
+        const data = await OpportunityService.getAll();
+        setOpportunities(data);
+      } catch (error) {
+        console.error("Erro ao carregar dados:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  // Effect original de resize
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth > 768) {
@@ -33,39 +57,53 @@ function App() {
     setShowSidebar(prev => !prev);
   };
 
+  // Tela de carregamento simples
+  if (isLoading) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh', 
+        backgroundColor: '#0a0e27', 
+        color: '#00d9ff',
+        fontFamily: 'sans-serif'
+      }}>
+        <h3>🚀 Carregando Inteligência Agrícola...</h3>
+      </div>
+    );
+  }
+
   return (
     <div className="app">
-      {/* Cabeçalho SEMPRE visível */}
       <header className="app-header">
-        <h1>🚀Sistema de Inteligência de Arbitragem Agrícola</h1>
+        <h1>🚀 Sistema de Inteligência de Arbitragem Agrícola</h1>
         <p>Protótipo v0.1 - Mapa de Oportunidades</p>
       </header>
 
-      {/* Conteúdo principal */}
       <div className="main-content">
-
-        {/* Overlay escuro mobile – TEM QUE VIR ANTES da sidebar */}
+        {/* Overlay Mobile */}
         {showSidebar && activeTab === 'map' && window.innerWidth <= 768 && (
           <div 
             className="mobile-overlay" 
             onClick={toggleSidebar}
-            style={{ zIndex: 9998 }} // garante que fique atrás da sidebar
+            style={{ zIndex: 9998 }} 
           />
         )}
 
-        {/* Sidebar com drawer mobile – agora fica por cima do overlay */}
+        {/* Sidebar */}
         {showSidebar && activeTab === 'map' && (
           <div className={`sidebar-container ${showSidebar ? 'show-mobile' : ''}`}>
             <div className="sidebar-header">
               <div>
                 <h2>🌿 Oportunidades</h2>
-                <p>12 de 12 exibidas</p>
+                {/* Mostra a contagem real baseada nos dados carregados */}
+                <p>{opportunities.length} encontradas</p>
               </div>
               <button
                 onClick={toggleSidebar}
                 className="sidebar-toggle-btn"
                 title="Ocultar lista"
-                aria-label="Fechar sidebar"
               >
                 ✕
               </button>
@@ -75,15 +113,14 @@ function App() {
               <Sidebar
                 onSelectOpportunity={handleSelectOpportunity}
                 hideHeader={true}
+                // 4. Passamos os dados para a Sidebar
+                opportunities={opportunities}
               />
             </div>
           </div>
         )}
 
-        {/* Área principal (mapa + dashboard) */}
         <div className="content-wrapper">
-
-          {/* Abas */}
           <div className="tabs-nav">
             <button
               onClick={() => setActiveTab('map')}
@@ -99,33 +136,34 @@ function App() {
             </button>
           </div>
 
-          {/* Conteúdo da aba */}
           <div className="tab-content">
-
-            {/* Botão flutuante mobile */}
             {activeTab === 'map' && !showSidebar && (
               <button
                 onClick={toggleSidebar}
                 className="mobile-show-sidebar-btn"
-                aria-label="Abrir lista de oportunidades"
               >
                 <span className="icon">📋</span>
                 <span className="text">Lista</span>
               </button>
             )}
 
-            {/* Mapa */}
             {activeTab === 'map' && (
               <div className="map-container">
-                <MapView ref={mapRef} selectedOpportunity={selectedOpportunity} />
+                <MapView 
+                  ref={mapRef} 
+                  selectedOpportunity={selectedOpportunity}
+                  // 4. Passamos os dados para o Mapa
+                  opportunities={opportunities}
+                />
               </div>
             )}
 
-            {/* Dashboard */}
             {activeTab === 'dashboard' && (
               <Dashboard
                 setSelectedOpportunity={setSelectedOpportunity}
                 setActiveTab={setActiveTab}
+                // 4. Passamos os dados para o Dashboard
+                opportunities={opportunities}
               />
             )}
           </div>

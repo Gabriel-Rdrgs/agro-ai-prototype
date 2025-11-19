@@ -322,9 +322,18 @@ body {
 }
 
 .map-container {
+  min-height: 100vh;
+  height: calc(100vh - 130px); /* ou 100vh se o header for fixo */
   width: 100%;
-  height: 100%;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 217, 255, 0.2);
   position: relative;
+}
+
+/* Garante que o mapa ocupe todo o espaço disponível */
+.map-container > div {
+  height: 100% !important;
 }
 
 .leaflet-container {
