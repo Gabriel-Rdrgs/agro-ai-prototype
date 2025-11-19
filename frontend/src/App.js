@@ -88,15 +88,33 @@ function App() {
 
   return (
     <div className="app">
-      <header className="app-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingLeft: '2rem', paddingRight: '2rem' }}>
-        <div style={{ textAlign: 'left' }}>
-            <h1 style={{ fontSize: '20px', margin: 0 }}>🚀 AgroArbitrage AI</h1>
+      <header className="app-header" style={{ 
+        position: 'relative', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center', // Centraliza o título
+        padding: '0 2rem',
+        height: 'auto',
+        minHeight: '70px' 
+      }}>
+        {/* Título Centralizado */}
+        <div style={{ textAlign: 'center', zIndex: 1 }}>
+            <h1 style={{ fontSize: 'clamp(18px, 4vw, 24px)', margin: 0 }}>🚀 AgroArbitrage AI</h1>
             <p style={{ fontSize: '12px', opacity: 0.8, margin: 0 }}>Protótipo v0.1</p>
         </div>
         
-        {/* 👤 ÁREA DO USUÁRIO */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-            <div style={{ textAlign: 'right', display: window.innerWidth > 600 ? 'block' : 'none' }}>
+        {/* 👤 ÁREA DO USUÁRIO (Fixa na direita) */}
+        <div style={{ 
+            position: 'absolute', 
+            right: '2rem', 
+            top: '50%', 
+            transform: 'translateY(-50%)',
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '15px',
+            zIndex: 2
+        }}>
+            <div style={{ textAlign: 'right', display: window.innerWidth > 768 ? 'block' : 'none' }}>
                 <span style={{ display: 'block', fontSize: '14px', fontWeight: 'bold' }}>Olá, {user.name}</span>
                 <span style={{ fontSize: '11px', color: '#94a3b8' }}>Analista Sênior</span>
             </div>
@@ -109,8 +127,12 @@ function App() {
                     padding: '8px 12px', 
                     borderRadius: '6px',
                     cursor: 'pointer',
-                    fontSize: '12px'
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    transition: 'all 0.2s'
                 }}
+                onMouseOver={(e) => e.target.style.background = 'rgba(255,255,255,0.2)'}
+                onMouseOut={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
             >
                 Sair
             </button>
