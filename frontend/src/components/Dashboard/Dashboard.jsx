@@ -13,6 +13,7 @@ import {
 } from "chart.js";
 import { Bar, Line } from "react-chartjs-2";
 import { StorageService } from '../../services/storageService';
+import { PdfService } from '../../services/pdfService';
 import "../../styles/dashboard.css";
 
 // Registro dos componentes do Chart.js
@@ -28,7 +29,6 @@ ChartJS.register(
   Filler
 );
 
-// 1. Recebemos onLoadScenario nas props
 const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [], onLoadScenario }) => {
   // --- ESTADOS ---
   const [selectedCrop, setSelectedCrop] = useState("");
@@ -94,6 +94,22 @@ const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [], o
   const handleDeleteScenario = (id) => {
     const updated = StorageService.delete(id);
     setSavedScenarios(updated);
+  };
+
+  // Função para Exportar PDF
+  const handleExportDashboard = () => {
+    const dashboardData = {
+        kpis: {
+            total: totalOpportunities,
+            avgROI: avgROI,
+            highRisk: highRiskCount,
+            volume: totalVolume
+        },
+        top5: topOpportunities,
+        saved: savedScenarios
+    };
+
+    PdfService.generateDashboardReport(dashboardData, "Paulo (Sócio)");
   };
 
   // --- CONFIGURAÇÃO DOS GRÁFICOS ---
@@ -235,19 +251,42 @@ const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [], o
         </div>
       )}
 
-      {/* FILTRO */}
-      <div className="dashboard-crop-filter">
-        <select
-          value={selectedCrop}
-          onChange={e => setSelectedCrop(e.target.value)}
-        >
-          <option value="">Todas culturas</option>
-          {uniqueCrops.map(crop => (
-            <option key={crop} value={crop}>
-              {crop}
-            </option>
-          ))}
-        </select>
+      {/* HEADER: FILTRO + BOTÃO EXPORTAR */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div className="dashboard-crop-filter" style={{marginBottom: 0}}>
+            <select
+              value={selectedCrop}
+              onChange={e => setSelectedCrop(e.target.value)}
+            >
+              <option value="">Todas culturas</option>
+              {uniqueCrops.map(crop => (
+                <option key={crop} value={crop}>
+                  {crop}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <button 
+            onClick={handleExportDashboard}
+            style={{
+                background: '#1e293b',
+                color: '#facc15', // Amarelo
+                border: '1px solid #facc15',
+                padding: '8px 16px',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(250, 204, 21, 0.1)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = '#1e293b'}
+          >
+            📄 Relatório Gerencial
+          </button>
       </div>
 
       {/* CARDS (KPIs) */}
@@ -274,7 +313,7 @@ const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [], o
         </div>
       </div>
 
-      {/* ÁREA DE CENÁRIOS SALVOS (ATUALIZADO COM CLIQUE) */}
+      {/* ÁREA DE CENÁRIOS SALVOS */}
       {savedScenarios.length > 0 && (
         <div style={{ marginBottom: '30px' }}>
             <h3 style={{ color: '#fff', marginBottom: '15px', borderLeft: '4px solid #10b981', paddingLeft: '10px' }}>
@@ -284,7 +323,7 @@ const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [], o
                 {savedScenarios.map(scenario => (
                     <div 
                         key={scenario.id} 
-                        // 🚀 EVENTO CLICK PARA CARREGAR
+                        // AÇÃO: CLIQUE NO CARD PARA CARREGAR
                         onClick={() => onLoadScenario && onLoadScenario(scenario)}
                         style={{ 
                             background: '#15192c', 
@@ -293,16 +332,15 @@ const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [], o
                             border: '1px solid #334155', 
                             position: 'relative', 
                             boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-                            cursor: 'pointer', // Indica clicável
+                            cursor: 'pointer', 
                             transition: 'transform 0.2s, border-color 0.2s'
                         }}
-                        // Efeitos visuais de hover
                         onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.borderColor = '#00d9ff'; }}
                         onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.borderColor = '#334155'; }}
                     >
                         <button 
                           onClick={(e) => {
-                              e.stopPropagation(); // 🛑 Impede que o clique no X carregue o cenário
+                              e.stopPropagation(); // Impede o clique de carregar
                               handleDeleteScenario(scenario.id);
                           }} 
                           style={{ position: 'absolute', top: 10, right: 10, background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '16px', zIndex: 2 }}

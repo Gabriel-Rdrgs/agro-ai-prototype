@@ -2,12 +2,25 @@ import React, { useState, useEffect } from 'react';
 import { OpportunityService } from '../../services/opportunityService';
 import { opportunities } from '../../data/mockOpportunities';
 import { StorageService } from '../../services/storageService';
+import { PdfService } from '../../services/pdfService';
 import '../../styles/calculator.css';
 
 const RoiCalculator = ({ onVisualizeRoute, initialData }) => {
   // --- ESTADOS ---
   const [showAdvanced, setShowAdvanced] = useState(false);
-  
+  const handleExportPDF = () => {
+  if (!result) return;
+
+  // Prepara os dados para o relatório
+  const reportData = {
+    input: formData,
+    result: result,
+    origin: calculatedOrigin
+  };
+
+  // Gera o PDF (passando nome do usuário hardcoded por enquanto, ou via props se quiser)
+  PdfService.generateReport(reportData, "Paulo (Sócio)");
+};
   // Estado do formulário com valores padrão
   const [formData, setFormData] = useState({
     product: 'Tomate',
@@ -286,23 +299,34 @@ const RoiCalculator = ({ onVisualizeRoute, initialData }) => {
                   </div>
                 </div>
                 
-                {/* BOTÕES DE AÇÃO */}
-                <div style={{ display: 'flex', gap: '10px', marginTop: '1.5rem' }}>
-                    <button 
-                        onClick={handleShowRoute} 
-                        className="view-route-btn"
-                        style={{ flex: 1, margin: 0 }}
-                    >
-                        🗺️ Ver Rota
-                    </button>
-                    <button 
-                        onClick={handleSaveScenario} 
-                        className="view-route-btn"
-                        style={{ flex: 1, margin: 0, borderColor: '#10b981', color: '#10b981' }}
-                    >
-                        💾 Salvar
-                    </button>
-                </div>
+            {/* BOTÕES DE AÇÃO */}
+            <div style={{ display: 'flex', gap: '10px', marginTop: '1.5rem' }}>
+              <button 
+                onClick={handleShowRoute} 
+                className="view-route-btn"
+                style={{ flex: 1, margin: 0 }}
+              > 
+                🗺️ Ver Rota
+              </button>
+
+              {/* BOTÃO DE SALVAR */}
+              <button 
+                onClick={handleSaveScenario} 
+                className="view-route-btn"
+                style={{ flex: 1, margin: 0, borderColor: '#10b981', color: '#10b981' }}
+              >
+                💾 Salvar
+              </button>
+
+              {/* 🚀 NOVO BOTÃO: PDF */}
+              <button 
+              onClick={handleExportPDF} 
+              className="view-route-btn"
+              style={{ flex: 1, margin: 0, borderColor: '#facc15', color: '#facc15' }}
+              >
+              📄 PDF
+              </button>
+            </div>
 
                 {result.isHighRisk && (
                    <div className="risk-alert">
