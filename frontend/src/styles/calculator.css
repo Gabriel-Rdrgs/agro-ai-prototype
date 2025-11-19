@@ -381,3 +381,25 @@
     align-items: flex-start; /* Topo no mobile */
   }
 }
+.view-route-btn {
+  margin-top: 1.5rem;
+  width: 100%;
+  background: #1e293b; /* Fundo escuro */
+  color: #00d9ff; /* Texto neon */
+  border: 2px solid #00d9ff;
+  padding: 12px;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.view-route-btn:hover {
+  background: rgba(0, 217, 255, 0.1);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 217, 255, 0.2);
+}

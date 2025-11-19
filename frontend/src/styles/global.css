@@ -39,27 +39,30 @@
    ======================================== */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+/* 🔥 MUDANÇA 1: Travar o scroll da página principal */
 html, body, #root {
-  min-height: 100vh;
   height: 100%;
-  overflow: auto;
+  margin: 0;
+  padding: 0;
+  overflow: hidden; /* Remove a barra de rolagem do navegador */
+  background: var(--bg-dark);
 }
 
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: var(--bg-dark);
   color: var(--text-primary);
 }
 
 /* ========================================
    LAYOUT PRINCIPAL - APP
    ======================================== */
+/* 🔥 MUDANÇA 2: App ocupa 100% da tela e organiza em coluna */
 .app {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
-  height: auto;
-  overflow: visible;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
   background: var(--bg-dark);
 }
 
@@ -71,7 +74,9 @@ body {
   z-index: 100;
   box-shadow: 0 4px 12px rgba(0, 217, 255, 0.2);
   border-bottom: 2px solid var(--accent-primary);
-  flex-shrink: 0;
+  
+  /* 🔥 MUDANÇA 3: Header fixo no topo (não encolhe) */
+  flex: 0 0 auto; 
 }
 
 .app-header h1 {
@@ -87,11 +92,13 @@ body {
   opacity: 0.9;
 }
 
+/* 🔥 MUDANÇA 4: Conteúdo principal ocupa o resto da altura */
 .main-content {
   display: flex;
-  flex: 1;
-  overflow: visible;
+  flex: 1; /* Ocupa todo o espaço vertical restante */
+  overflow: hidden; /* Garante que nada vaze para fora */
   position: relative;
+  height: 100%;
 }
 
 /* ========================================
@@ -99,7 +106,7 @@ body {
    ======================================== */
 .sidebar-container {
   height: 100%;
-  max-height: 100vh;
+  /* max-height removido pois o pai já limita */
   display: flex;
   flex-direction: column;
   width: 350px;
@@ -192,8 +199,9 @@ body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow: visible;
+  overflow: hidden; /* 🔥 Importante para não rolar a tela toda */
   position: relative;
+  height: 100%;
 }
 
 .tabs-nav {
@@ -203,7 +211,7 @@ body {
   padding: 0 var(--spacing-lg);
   position: relative;
   z-index: 40;
-  flex-shrink: 0;
+  flex: 0 0 auto; /* 🔥 Nav fixa, não encolhe */
 }
 
 .tab-btn {
@@ -230,9 +238,13 @@ body {
 }
 
 .tab-content {
-  flex: 1;
-  overflow: visible;
+  flex: 1; /* Ocupa o resto da altura */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* O scroll será interno de cada componente */
 }
+
 /* ========================================
    BOTÃO FLUTUANTE MOBILE + OVERLAY
    ======================================== */
@@ -272,16 +284,25 @@ body {
 }
 
 /* ========================================
-   DASHBOARD + MAPA (seu estilo original completo)
+   DASHBOARD + MAPA + CALCULADORA
    ======================================== */
+
+/* 🔥 MUDANÇA 5: Dashboard com scroll interno independente */
 .dashboard-container {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
-  height: auto;
-  overflow-y: auto;
+  height: 100%; /* 🔥 O segredo: Ocupa 100% do pai (.tab-content), não da tela */
+  overflow-y: auto; /* 🔥 Ativa o scroll interno */
   padding: var(--spacing-lg);
   gap: var(--spacing-lg);
+  padding-bottom: 80px; /* Espaço extra no final para respiro */
+}
+
+/* Mesmo para a calculadora (caso use o container padrão dela) */
+.calculator-container {
+  height: 100%;
+  overflow-y: auto;
+  padding-bottom: 80px;
 }
 
 .dashboard-cards {
@@ -321,13 +342,14 @@ body {
   min-height: 280px;
 }
 
+/* 🔥 MUDANÇA 6: Mapa ocupa 100% do espaço flexível */
 .map-container {
-  min-height: 100vh;
-  height: calc(100vh - 130px); /* ou 100vh se o header for fixo */
+  flex: 1;
   width: 100%;
-  border-radius: 16px;
+  height: 100%; /* Força preencher o tab-content */
+  border-radius: 0; /* Remove borda arredondada para colar nas bordas */
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0, 217, 255, 0.2);
+  box-shadow: none; /* Remove sombra interna pois agora é tela cheia */
   position: relative;
 }
 
@@ -342,7 +364,7 @@ body {
 }
 
 /* ======================================== */
-/* RESPONSIVIDADE MOBILE – VERSÃO QUE FUNCIONA 100% (FINAL) */
+/* RESPONSIVIDADE MOBILE */
 /* ======================================== */
 @media (max-width: 768px) {
   .sidebar-container {
@@ -386,7 +408,7 @@ body {
     z-index: 10001 !important;
   }
 
-  /* ajustes gerais mobile (mantidos) */
+  /* ajustes gerais mobile */
   .main-content, .content-wrapper { width: 100%; }
   .dashboard-cards { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--spacing-sm); }
   .dashboard-charts { flex-direction: column; }
@@ -410,7 +432,7 @@ body {
 }
 
 /* ======================================== */
-/* SCROLLBAR + SELECTS (mantido exatamente como estava) */
+/* SCROLLBAR + SELECTS */
 /* ======================================== */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: rgba(0, 217, 255, 0.05); }

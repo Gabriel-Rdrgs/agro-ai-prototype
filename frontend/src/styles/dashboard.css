@@ -2,7 +2,6 @@
 .dashboard-container {
   padding: 28px 30px 30px 30px;
   background: #0a0e27;
-  min-height: 100vh;
 }
 .dashboard-cards {
   display: flex;

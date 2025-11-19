@@ -6,22 +6,26 @@ import { OpportunityService } from './services/opportunityService';
 import RoiCalculator from './components/Calculator/RoiCalculator';
 
 function App() {
-  // 2. Novos estados para controlar os dados e o carregamento
+  // Estados de dados e carregamento
   const [opportunities, setOpportunities] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const handleClearRoute = () => {
+    setCustomRoute(null); // Limpa a rota e volta ao mapa normal
+  };
+  // 🚀 NOVO ESTADO: Rota customizada vinda da Calculadora
+  const [customRoute, setCustomRoute] = useState(null);
 
-  // Estados originais de UI
+  // Estados de UI
   const [showSidebar, setShowSidebar] = useState(window.innerWidth > 768);
   const [activeTab, setActiveTab] = useState('map');
   const mapRef = useRef(null);
   const [selectedOpportunity, setSelectedOpportunity] = useState(null);
 
-  // 3. Effect que busca os dados ao iniciar (simulando o Backend)
+  // Effect que busca os dados ao iniciar
   useEffect(() => {
     const fetchData = async () => {
       try {
         setIsLoading(true);
-        // Aqui acontece a mágica: o App pede ao Service, que pede aos dados (ou API futura)
         const data = await OpportunityService.getAll();
         setOpportunities(data);
       } catch (error) {
@@ -34,7 +38,7 @@ function App() {
     fetchData();
   }, []);
 
-  // Effect original de resize
+  // Effect de resize
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth > 768) {
@@ -47,17 +51,32 @@ function App() {
 
   const handleSelectOpportunity = (opportunity) => {
     console.log('Oportunidade selecionada:', opportunity);
+    
+    // 🚀 ATUALIZAÇÃO: Limpa a rota customizada ao selecionar item da lista
+    setCustomRoute(null);
+
     if (mapRef.current) {
       mapRef.current.focusOpportunity(opportunity);
     }
     setSelectedOpportunity(opportunity);
   };
 
+  // 🚀 NOVA FUNÇÃO: Recebe os dados da rota da Calculadora
+  const handleVisualizeRoute = (routeData) => {
+    console.log("Visualizando rota calculada:", routeData);
+    setCustomRoute(routeData); // Salva a rota
+    setActiveTab('map'); // Força a ida para o mapa
+    
+    // Fecha sidebar no mobile para priorizar o mapa
+    if (window.innerWidth <= 768) {
+      setShowSidebar(false);
+    }
+  };
+
   const toggleSidebar = () => {
     setShowSidebar(prev => !prev);
   };
 
-  // Tela de carregamento simples
   if (isLoading) {
     return (
       <div style={{ 
@@ -97,7 +116,6 @@ function App() {
             <div className="sidebar-header">
               <div>
                 <h2>🌿 Oportunidades</h2>
-                {/* Mostra a contagem real baseada nos dados carregados */}
                 <p>{opportunities.length} encontradas</p>
               </div>
               <button
@@ -113,7 +131,6 @@ function App() {
               <Sidebar
                 onSelectOpportunity={handleSelectOpportunity}
                 hideHeader={true}
-                // 4. Passamos os dados para a Sidebar
                 opportunities={opportunities}
               />
             </div>
@@ -134,7 +151,6 @@ function App() {
             >
               📊 DASHBOARD
             </button>
-            {/* NOVA ABA AQUI 👇 */}
             <button
               onClick={() => setActiveTab('calculator')}
               className={`tab-btn ${activeTab === 'calculator' ? 'active' : ''}`}
@@ -144,6 +160,7 @@ function App() {
           </div>
 
           <div className="tab-content">
+            {/* Botão flutuante mobile */}
             {activeTab === 'map' && !showSidebar && (
               <button
                 onClick={toggleSidebar}
@@ -154,28 +171,35 @@ function App() {
               </button>
             )}
 
+            {/* Mapa */}
             {activeTab === 'map' && (
               <div className="map-container">
                 <MapView 
                   ref={mapRef} 
                   selectedOpportunity={selectedOpportunity}
-                  // 4. Passamos os dados para o Mapa
                   opportunities={opportunities}
+                  customRoute={customRoute}
+                  // ADICIONAR ESTA LINHA 👇
+                  onClearRoute={handleClearRoute} 
                 />
               </div>
             )}
 
+            {/* Dashboard */}
             {activeTab === 'dashboard' && (
               <Dashboard
                 setSelectedOpportunity={setSelectedOpportunity}
                 setActiveTab={setActiveTab}
-                // 4. Passamos os dados para o Dashboard
                 opportunities={opportunities}
               />
             )}
-            {/* NOVO CONTEÚDO 👇 */}
+
+            {/* Calculadora */}
             {activeTab === 'calculator' && (
-              <RoiCalculator />
+              <RoiCalculator 
+                 // 🚀 Passando a função de callback
+                 onVisualizeRoute={handleVisualizeRoute}
+              />
             )}
           </div>
         </div>
