@@ -4,174 +4,148 @@ import Sidebar from './components/Sidebar/Sidebar';
 import Dashboard from './components/Dashboard/Dashboard';
 import { OpportunityService } from './services/opportunityService';
 import RoiCalculator from './components/Calculator/RoiCalculator';
+import Login from './components/Auth/Login'; // <--- IMPORTAR LOGIN
 
 function App() {
-  // Estados de dados e carregamento
-  const [opportunities, setOpportunities] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const handleClearRoute = () => {
-    setCustomRoute(null); // Limpa a rota e volta ao mapa normal
-  };
-  // 🚀 NOVO ESTADO: Rota customizada vinda da Calculadora
-  const [customRoute, setCustomRoute] = useState(null);
+  // 🔐 ESTADO DE AUTENTICAÇÃO
+  const [user, setUser] = useState(null); // null = não logado
 
-  // Estados de UI
+  const [opportunities, setOpportunities] = useState([]);
+  const [isLoading, setIsLoading] = useState(false); // Começa false pois o login vem primeiro
+  const [customRoute, setCustomRoute] = useState(null);
   const [showSidebar, setShowSidebar] = useState(window.innerWidth > 768);
   const [activeTab, setActiveTab] = useState('map');
   const mapRef = useRef(null);
   const [selectedOpportunity, setSelectedOpportunity] = useState(null);
 
-  // Effect que busca os dados ao iniciar
+  // Carrega dados APENAS quando o usuário loga
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setIsLoading(true);
-        const data = await OpportunityService.getAll();
-        setOpportunities(data);
-      } catch (error) {
-        console.error("Erro ao carregar dados:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+    if (user) {
+      const fetchData = async () => {
+        try {
+          setIsLoading(true);
+          const data = await OpportunityService.getAll();
+          setOpportunities(data);
+        } catch (error) {
+          console.error("Erro ao carregar dados:", error);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      fetchData();
+    }
+  }, [user]); // Dependência: user
 
-    fetchData();
-  }, []);
-
-  // Effect de resize
   useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth > 768) {
-        setShowSidebar(true);
-      }
+      if (window.innerWidth > 768) setShowSidebar(true);
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   const handleSelectOpportunity = (opportunity) => {
-    console.log('Oportunidade selecionada:', opportunity);
-    
-    // 🚀 ATUALIZAÇÃO: Limpa a rota customizada ao selecionar item da lista
     setCustomRoute(null);
-
     if (mapRef.current) {
       mapRef.current.focusOpportunity(opportunity);
     }
     setSelectedOpportunity(opportunity);
   };
 
-  // 🚀 NOVA FUNÇÃO: Recebe os dados da rota da Calculadora
   const handleVisualizeRoute = (routeData) => {
-    console.log("Visualizando rota calculada:", routeData);
-    setCustomRoute(routeData); // Salva a rota
-    setActiveTab('map'); // Força a ida para o mapa
-    
-    // Fecha sidebar no mobile para priorizar o mapa
-    if (window.innerWidth <= 768) {
-      setShowSidebar(false);
-    }
+    setCustomRoute(routeData);
+    setActiveTab('map');
+    if (window.innerWidth <= 768) setShowSidebar(false);
   };
 
-  const toggleSidebar = () => {
-    setShowSidebar(prev => !prev);
+  const handleClearRoute = () => {
+    setCustomRoute(null);
   };
 
+  const toggleSidebar = () => setShowSidebar(prev => !prev);
+
+  // 🔐 FUNÇÃO DE LOGIN
+  const handleLogin = (userData) => {
+    setUser(userData);
+  };
+
+  // 🔐 FUNÇÃO DE LOGOUT
+  const handleLogout = () => {
+    setUser(null);
+    setCustomRoute(null);
+    setActiveTab('map');
+  };
+
+  // 🛑 SE NÃO TIVER USER, MOSTRA TELA DE LOGIN
+  if (!user) {
+    return <Login onLogin={handleLogin} />;
+  }
+
+  // 🛑 SE TIVER USER MAS ESTIVER CARREGANDO DADOS
   if (isLoading) {
-    return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: '100vh', 
-        backgroundColor: '#0a0e27', 
-        color: '#00d9ff',
-        fontFamily: 'sans-serif'
-      }}>
-        <h3>🚀 Carregando Inteligência Agrícola...</h3>
-      </div>
-    );
+    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#0a0e27', color: '#00d9ff', fontFamily: 'sans-serif' }}><h3>🚀 Carregando Inteligência...</h3></div>;
   }
 
   return (
     <div className="app">
-      <header className="app-header">
-        <h1>🚀 Sistema de Inteligência de Arbitragem Agrícola</h1>
-        <p>Protótipo v0.1 - Mapa de Oportunidades</p>
+      <header className="app-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingLeft: '2rem', paddingRight: '2rem' }}>
+        <div style={{ textAlign: 'left' }}>
+            <h1 style={{ fontSize: '20px', margin: 0 }}>🚀 AgroArbitrage AI</h1>
+            <p style={{ fontSize: '12px', opacity: 0.8, margin: 0 }}>Protótipo v0.1</p>
+        </div>
+        
+        {/* 👤 ÁREA DO USUÁRIO */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+            <div style={{ textAlign: 'right', display: window.innerWidth > 600 ? 'block' : 'none' }}>
+                <span style={{ display: 'block', fontSize: '14px', fontWeight: 'bold' }}>Olá, {user.name}</span>
+                <span style={{ fontSize: '11px', color: '#94a3b8' }}>Analista Sênior</span>
+            </div>
+            <button 
+                onClick={handleLogout}
+                style={{
+                    background: 'rgba(255,255,255,0.1)', 
+                    border: '1px solid rgba(255,255,255,0.2)', 
+                    color: 'white', 
+                    padding: '8px 12px', 
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '12px'
+                }}
+            >
+                Sair
+            </button>
+        </div>
       </header>
 
       <div className="main-content">
-        {/* Overlay Mobile */}
         {showSidebar && activeTab === 'map' && window.innerWidth <= 768 && (
-          <div 
-            className="mobile-overlay" 
-            onClick={toggleSidebar}
-            style={{ zIndex: 9998 }} 
-          />
+          <div className="mobile-overlay" onClick={toggleSidebar} style={{ zIndex: 9998 }} />
         )}
 
-        {/* Sidebar */}
         {showSidebar && activeTab === 'map' && (
           <div className={`sidebar-container ${showSidebar ? 'show-mobile' : ''}`}>
             <div className="sidebar-header">
-              <div>
-                <h2>🌿 Oportunidades</h2>
-                <p>{opportunities.length} encontradas</p>
-              </div>
-              <button
-                onClick={toggleSidebar}
-                className="sidebar-toggle-btn"
-                title="Ocultar lista"
-              >
-                ✕
-              </button>
+              <div><h2>🌿 Oportunidades</h2><p>{opportunities.length} encontradas</p></div>
+              <button onClick={toggleSidebar} className="sidebar-toggle-btn">✕</button>
             </div>
-
             <div className="sidebar-content">
-              <Sidebar
-                onSelectOpportunity={handleSelectOpportunity}
-                hideHeader={true}
-                opportunities={opportunities}
-              />
+              <Sidebar onSelectOpportunity={handleSelectOpportunity} hideHeader={true} opportunities={opportunities} />
             </div>
           </div>
         )}
 
         <div className="content-wrapper">
           <div className="tabs-nav">
-            <button
-              onClick={() => setActiveTab('map')}
-              className={`tab-btn ${activeTab === 'map' ? 'active' : ''}`}
-            >
-              🗺️ MAPA
-            </button>
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
-            >
-              📊 DASHBOARD
-            </button>
-            <button
-              onClick={() => setActiveTab('calculator')}
-              className={`tab-btn ${activeTab === 'calculator' ? 'active' : ''}`}
-            >
-              🧮 SIMULADOR
-            </button>
+            <button onClick={() => setActiveTab('map')} className={`tab-btn ${activeTab === 'map' ? 'active' : ''}`}>🗺️ MAPA</button>
+            <button onClick={() => setActiveTab('dashboard')} className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}>📊 DASHBOARD</button>
+            <button onClick={() => setActiveTab('calculator')} className={`tab-btn ${activeTab === 'calculator' ? 'active' : ''}`}>🧮 SIMULADOR</button>
           </div>
 
           <div className="tab-content">
-            {/* Botão flutuante mobile */}
             {activeTab === 'map' && !showSidebar && (
-              <button
-                onClick={toggleSidebar}
-                className="mobile-show-sidebar-btn"
-              >
-                <span className="icon">📋</span>
-                <span className="text">Lista</span>
-              </button>
+              <button onClick={toggleSidebar} className="mobile-show-sidebar-btn"><span className="icon">📋</span><span className="text">Lista</span></button>
             )}
 
-            {/* Mapa */}
             {activeTab === 'map' && (
               <div className="map-container">
                 <MapView 
@@ -179,27 +153,17 @@ function App() {
                   selectedOpportunity={selectedOpportunity}
                   opportunities={opportunities}
                   customRoute={customRoute}
-                  // ADICIONAR ESTA LINHA 👇
                   onClearRoute={handleClearRoute} 
                 />
               </div>
             )}
 
-            {/* Dashboard */}
             {activeTab === 'dashboard' && (
-              <Dashboard
-                setSelectedOpportunity={setSelectedOpportunity}
-                setActiveTab={setActiveTab}
-                opportunities={opportunities}
-              />
+              <Dashboard setSelectedOpportunity={setSelectedOpportunity} setActiveTab={setActiveTab} opportunities={opportunities} />
             )}
 
-            {/* Calculadora */}
             {activeTab === 'calculator' && (
-              <RoiCalculator 
-                 // 🚀 Passando a função de callback
-                 onVisualizeRoute={handleVisualizeRoute}
-              />
+              <RoiCalculator onVisualizeRoute={handleVisualizeRoute} />
             )}
           </div>
         </div>
