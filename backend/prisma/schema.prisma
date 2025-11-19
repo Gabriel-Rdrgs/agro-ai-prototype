@@ -1,0 +1,41 @@
+// backend/prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Tabela de Oportunidades
+model Opportunity {
+  id          Int      @id @default(autoincrement())
+  product     String   // Ex: Tomate
+  category    String   // Ex: Hortaliça
+  
+  // Localização Origem
+  city        String
+  state       String
+  lat         Float
+  lng         Float
+
+  // Dados Financeiros
+  buyPrice    Float    // Preço Compra
+  sellPrice   Float    // Preço Venda
+  
+  // Dados Destino
+  sellLocation String  // Nome do destino (Ex: Mato Grosso)
+  destLat      Float?  // Latitude Destino (Opcional por enquanto)
+  destLng      Float?  // Longitude Destino
+
+  // Detalhes
+  volume      String   // Ex: "50 toneladas"
+  riskLevel   Int      // 1=Baixo, 2=Médio, 3=Alto
+  climate     String   // Ex: "Chuva moderada"
+  description String?
+  season      String?  // Ex: "Novembro"
+
+  createdAt   DateTime @default(now())
+}

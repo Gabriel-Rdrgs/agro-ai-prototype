@@ -1,23 +1,25 @@
-import { opportunities } from '../data/mockOpportunities';
+// frontend/src/services/opportunityService.js
 
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+// URL da sua API Node.js
+const API_URL = 'http://localhost:3001/api';
 
-// FATOR DE SINUOSIDADE (BRASIL)
-// Estradas não são linhas retas. Adicionamos ~35% de margem à distância linear
-// para simular curvas e trajetos rodoviários reais.
-const ROAD_FACTOR = 1.35; 
+const ROAD_FACTOR = 1.35;
 
-// Coordenadas de fallback para destinos comuns
 const DESTINATIONS = {
   'São Paulo': { lat: -23.5505, lng: -46.6333 },
   'Mato Grosso': { lat: -15.6014, lng: -56.0979 },
   'Rio de Janeiro': { lat: -22.9068, lng: -43.1729 },
-  'Exportação (Porto Santos)': { lat: -23.9608, lng: -46.3331 }
+  'Exportação (Porto Santos)': { lat: -23.9608, lng: -46.3331 },
+  'Porto de Santos': { lat: -23.9608, lng: -46.3331 },
+  'Santa Catarina': { lat: -27.5954, lng: -48.5480 },
+  'Indústria de Suco': { lat: -21.7946, lng: -48.1766 },
+  'Nordeste': { lat: -8.0476, lng: -34.8770 },
+  'Sul e Sudeste': { lat: -23.5505, lng: -46.6333 },
+  'Paraná': { lat: -25.4284, lng: -49.2733 }
 };
 
-// Função Haversine (Distância em Linha Reta)
 const calculateLinearDistance = (lat1, lon1, lat2, lon2) => {
-  const R = 6371; // Raio da terra em km
+  const R = 6371; 
   const dLat = (lat2 - lat1) * (Math.PI / 180);
   const dLon = (lon2 - lon1) * (Math.PI / 180);
   const a = 
@@ -29,71 +31,79 @@ const calculateLinearDistance = (lat1, lon1, lat2, lon2) => {
 
 export const OpportunityService = {
   getAll: async () => {
-    await delay(300);
-    return [...opportunities];
+    try {
+      const response = await fetch(`${API_URL}/opportunities`);
+      if (!response.ok) throw new Error('Falha na conexão com API');
+      
+      const data = await response.json();
+
+      return data.map(opp => {
+        const buy = Number(opp.buyPrice);
+        const sell = Number(opp.sellPrice);
+        
+        // 🧠 CÁLCULO AUTOMÁTICO DO ROI
+        // (Lucro Bruto / Custo) * 100
+        let calculatedRoi = 0;
+        if (buy > 0) {
+            calculatedRoi = ((sell - buy) / buy) * 100;
+        }
+
+        return {
+          ...opp,
+          position: [opp.lat, opp.lng],
+          sellPosition: (opp.destLat && opp.destLng) ? [opp.destLat, opp.destLng] : null,
+          buyPrice: buy,
+          sellPrice: sell,
+          // Injetamos o ROI calculado para o Dashboard pintar as cores certas
+          roi: Math.round(calculatedRoi) 
+        };
+      });
+    } catch (error) {
+      console.error("Erro ao buscar oportunidades:", error);
+      return [];
+    }
   },
 
   getById: async (id) => {
-    await delay(200);
-    return opportunities.find(op => op.id === id);
+    const all = await OpportunityService.getAll();
+    return all.find(op => op.id === id);
   },
 
-  // CÁLCULO INTELIGENTE
   calculateROI: async ({ 
-    buyPrice, 
-    sellPrice, 
-    volume, 
-    productName,
-    originCoords, 
-    destinationName, 
-    dieselPrice = 6.50, 
-    truckConsumption = 3.5, 
-    spoilageRate = 0, 
-    storageDays = 0, 
-    storageCostPerDay = 15 
+    buyPrice, sellPrice, volume, originCoords, destinationName, 
+    dieselPrice = 6.50, truckConsumption = 3.5, spoilageRate = 0, 
+    storageDays = 0, storageCostPerDay = 15 
   }) => {
-    await delay(600); 
+    // Simula delay
+    await new Promise(resolve => setTimeout(resolve, 400)); 
 
-    // 1. Receita e Custos Básicos
     const volumeKg = volume * 1000;
     const grossRevenue = sellPrice * volumeKg;
     const grossCost = buyPrice * volumeKg;
 
-    // 2. Cálculo de Frete com Fator Rodoviário
     let freightCost = 0;
     let roadDistanceKm = 0;
 
     const destCoords = DESTINATIONS[destinationName] || { lat: -23.55, lng: -46.63 };
     
     if (originCoords && originCoords.length === 2) {
-      // Calcula reta e multiplica pelo fator de estrada (1.35)
       const linearDist = calculateLinearDistance(originCoords[0], originCoords[1], destCoords.lat, destCoords.lng);
       roadDistanceKm = linearDist * ROAD_FACTOR;
 
-      // Lógica de Diesel: (Distancia / Consumo) * Preço * 1.1 (taxa de retorno vazio/pedágio simplificado)
       const litersNeeded = roadDistanceKm / truckConsumption;
       const singleTripCost = litersNeeded * dieselPrice;
+      freightCost = singleTripCost * 1.1; 
       
-      // Consideramos ida + 10% de amortização de retorno
-      freightCost = singleTripCost * 1.1;
-      
-      // Ajuste por volume (Caminhão Truck ~25ton)
-      // Se volume > 25, precisa de mais viagens
       const trucksNeeded = Math.max(1, Math.ceil(volume / 25));
       freightCost = freightCost * trucksNeeded;
-
     } else {
-      // Fallback seguro
       freightCost = 2000 * (volume / 10); 
       roadDistanceKm = 1500;
     }
 
-    // 3. Perdas e Armazenamento
     const lostRevenue = grossRevenue * (spoilageRate / 100);
     const netRevenue = grossRevenue - lostRevenue;
     const totalStorageCost = storageDays * storageCostPerDay * volume;
-
-    // 4. Totalização
     const totalOperationalCost = grossCost + freightCost + totalStorageCost;
     const profit = netRevenue - totalOperationalCost;
     const roi = (profit / totalOperationalCost) * 100;
@@ -104,7 +114,7 @@ export const OpportunityService = {
       totalCost: parseFloat(totalOperationalCost.toFixed(2)),
       details: {
         freightCost: parseFloat(freightCost.toFixed(2)),
-        distanceKm: Math.round(roadDistanceKm), // Retorna a distância "rodoviária" simulada
+        distanceKm: Math.round(roadDistanceKm),
         spoilageLoss: parseFloat(lostRevenue.toFixed(2)),
         storageCost: parseFloat(totalStorageCost.toFixed(2))
       },
