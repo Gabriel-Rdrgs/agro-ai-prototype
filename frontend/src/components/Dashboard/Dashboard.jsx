@@ -12,14 +12,10 @@ import {
   Filler,
 } from "chart.js";
 import { Bar, Line } from "react-chartjs-2";
-// REMOVIDO: import { opportunities } ...
-import { sortByROI } from "../../data/mockOpportunities"; // Mantivemos APENAS a função auxiliar se ela estiver lá, se não, podemos mover para utils.
-// Se sortByROI for uma função exportada do mock, ok manter. Se não, a lógica vai quebrar. 
-// Mas como 'sortByROI' é uma função utilitária, vamos assumir que ela está lá.
-// O IMPORTANTE É: O array 'opportunities' agora vem via props.
-
+import { StorageService } from '../../services/storageService';
 import "../../styles/dashboard.css";
 
+// Registro dos componentes do Chart.js
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -32,18 +28,24 @@ ChartJS.register(
   Filler
 );
 
-// ADICIONADO 'opportunities' aqui
-const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [] }) => {
-  // Filtro por cultura
+// 1. Recebemos onLoadScenario nas props
+const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [], onLoadScenario }) => {
+  // --- ESTADOS ---
   const [selectedCrop, setSelectedCrop] = useState("");
-  
-  // Usa a prop opportunities para gerar a lista única
-  const uniqueCrops = [...new Set(opportunities.map(o => o.product))];
-
-  // ... (Lógica de Alerta mantida igual) ...
   const [newOpAlert, setNewOpAlert] = useState(false);
   const [alertVisible, setAlertVisible] = useState(false);
+  const [savedScenarios, setSavedScenarios] = useState([]);
 
+  const barRef = useRef();
+
+  // --- EFEITOS ---
+
+  // 1. Carregar cenários salvos ao iniciar
+  useEffect(() => {
+    setSavedScenarios(StorageService.getAll());
+  }, []);
+
+  // 2. Simulação de Alerta "Nova Oportunidade" (Timer)
   useEffect(() => {
     const timer = setTimeout(() => setNewOpAlert(true), 12000);
     return () => clearTimeout(timer);
@@ -61,44 +63,49 @@ const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [] })
     }
   }, [newOpAlert]);
 
-  const barRef = useRef();
+  // --- LÓGICA DE DADOS ---
 
-  // Dados filtrados por cultura (Usando a prop opportunities)
+  // Filtro por cultura
+  const uniqueCrops = [...new Set(opportunities.map(o => o.product))];
+  
   const cropFilteredOpps = opportunities.filter(
     o => !selectedCrop || o.product === selectedCrop
   );
 
-  // Estatísticas
+  // Estatísticas (KPIs)
   const totalOpportunities = cropFilteredOpps.length;
   const avgROI = cropFilteredOpps.length
-    ? (
-        cropFilteredOpps.reduce((sum, opp) => sum + opp.roi, 0) / totalOpportunities
-      ).toFixed(1)
+    ? (cropFilteredOpps.reduce((sum, opp) => sum + opp.roi, 0) / totalOpportunities).toFixed(1)
     : 0;
   const highRiskCount = cropFilteredOpps.filter(opp => opp.riskLevel === 3).length;
+  
+  // Extração de números da string de volume (ex: "50 toneladas" -> 50)
   const totalVolume = cropFilteredOpps.reduce((sum, opp) => {
     const volMatch = String(opp.volume).match(/\d+/);
     return sum + (volMatch ? parseInt(volMatch[0], 10) : 0);
   }, 0);
 
-  // Top 5 por ROI
-  // Nota: Se sortByROI precisar do array original, você pode recriar a lógica aqui ou importar a função.
-  // Assumindo que sortByROI é apenas uma função de ordenação:
-  const topOpportunities = [...cropFilteredOpps].sort((a, b) => b.roi - a.roi).slice(0, 5);
+  // Top 5 Oportunidades (Ordenadas por ROI)
+  const topOpportunities = [...cropFilteredOpps]
+    .sort((a, b) => b.roi - a.roi)
+    .slice(0, 5);
 
-  // Gráfico de barras
+  // Função para deletar cenário salvo
+  const handleDeleteScenario = (id) => {
+    const updated = StorageService.delete(id);
+    setSavedScenarios(updated);
+  };
+
+  // --- CONFIGURAÇÃO DOS GRÁFICOS ---
+
   const barChartData = {
     labels: topOpportunities.map(opp => opp.product),
     datasets: [
       {
-        label: "ROI",
+        label: "ROI (%)",
         data: topOpportunities.map(opp => opp.roi),
         backgroundColor: topOpportunities.map(opp =>
-          opp.roi > 100
-            ? "rgba(0,217,255,0.6)"
-            : opp.roi > 50
-            ? "rgba(124,58,237,0.6)"
-            : "rgba(239,68,68,0.6)"
+          opp.roi > 100 ? "rgba(0,217,255,0.6)" : opp.roi > 50 ? "rgba(124,58,237,0.6)" : "rgba(239,68,68,0.6)"
         ),
         borderColor: topOpportunities.map(opp =>
           opp.roi > 100 ? "#00d9ff" : opp.roi > 50 ? "#7c3aed" : "#ef4444"
@@ -109,7 +116,6 @@ const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [] })
     ],
   };
 
-  // ... (Manter barChartOptions, priceTrendData, lineChartOptions igual) ...
   const barChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -128,7 +134,61 @@ const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [] })
         bodyColor: "#fff",
         borderColor: "#00d9ff",
         borderWidth: 1,
-        callbacks: { label: ctx => `ROI: ${ctx.raw}` },
+        callbacks: { label: ctx => `ROI: ${ctx.raw}%` },
+      },
+    },
+    scales: {
+      x: {
+        grid: { color: "rgba(0,217,255,0.1)" },
+        ticks: { color: "#00d9ff" },
+      },
+      y: {
+        grid: { color: "rgba(0,217,255,0.1)" },
+        ticks: { color: "#00d9ff" },
+        beginAtZero: true,
+      },
+    },
+  };
+
+  // Dados Mockados para Tendência
+  const priceTrendData = {
+    labels: ["Jun", "Jul", "Ago", "Set", "Out", "Nov"],
+    datasets: [
+      {
+        label: "Preço Médio (R$)",
+        data: [4.2, 4.8, 5.1, 4.5, 5.3, 5.8],
+        borderColor: "#00d9ff",
+        backgroundColor: "rgba(0,217,255,0.1)",
+        borderWidth: 3,
+        fill: true,
+        tension: 0.4,
+        pointBackgroundColor: "#00d9ff",
+        pointBorderColor: "#0a0e27",
+        pointBorderWidth: 2,
+        pointRadius: 6,
+      },
+    ],
+  };
+
+  const lineChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      title: {
+        display: true,
+        text: "Tendência de Preços",
+        color: "#00d9ff",
+        font: { size: 16, weight: "bold" },
+        padding: 20,
+      },
+      tooltip: {
+        backgroundColor: "rgba(10,14,39,0.95)",
+        titleColor: "#00d9ff",
+        bodyColor: "#fff",
+        borderColor: "#00d9ff",
+        borderWidth: 1,
+        callbacks: { label: ctx => `R$ ${ctx.raw.toFixed(2)}` },
       },
     },
     scales: {
@@ -140,69 +200,14 @@ const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [] })
         grid: { color: "rgba(0,217,255,0.1)" },
         ticks: {
           color: "#00d9ff",
-          callback: v => v,
+          callback: v => `R$ ${v.toFixed(2)}`,
         },
-        beginAtZero: true,
       },
     },
   };
 
-  const priceTrendData = {
-      labels: ["Jun", "Jul", "Ago", "Set", "Out", "Nov"],
-      datasets: [
-        {
-          label: "Preço Médio",
-          data: [4.2, 4.8, 5.1, 4.5, 5.3, 5.8],
-          borderColor: "#00d9ff",
-          backgroundColor: "rgba(0,217,255,0.1)",
-          borderWidth: 3,
-          fill: true,
-          tension: 0.4,
-          pointBackgroundColor: "#00d9ff",
-          pointBorderColor: "#0a0e27",
-          pointBorderWidth: 2,
-          pointRadius: 6,
-        },
-      ],
-    };
-
-    const lineChartOptions = {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          title: {
-            display: true,
-            text: "Tendência de Preços",
-            color: "#00d9ff",
-            font: { size: 16, weight: "bold" },
-            padding: 20,
-          },
-          tooltip: {
-            backgroundColor: "rgba(10,14,39,0.95)",
-            titleColor: "#00d9ff",
-            bodyColor: "#fff",
-            borderColor: "#00d9ff",
-            borderWidth: 1,
-            callbacks: { label: ctx => `R$ ${ctx.raw.toFixed(2)}` },
-          },
-        },
-        scales: {
-          x: {
-            grid: { color: "rgba(0,217,255,0.1)" },
-            ticks: { color: "#00d9ff" },
-          },
-          y: {
-            grid: { color: "rgba(0,217,255,0.1)" },
-            ticks: {
-              color: "#00d9ff",
-              callback: v => `R$ ${v.toFixed(2)}`,
-            },
-          },
-        },
-      };
-
-  const handleBarClick = nativeEvent => {
+  // Clique no gráfico de barras -> Leva ao Mapa
+  const handleBarClick = (nativeEvent) => {
     const chart = barRef.current;
     if (!chart) return;
     const points = chart.getElementsAtEventForMode(
@@ -214,20 +219,23 @@ const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [] })
     if (points?.length) {
       const idx = points[0].index;
       const opp = topOpportunities[idx];
-      if (opp) setSelectedOpportunity && setSelectedOpportunity(opp);
-      if (setActiveTab) setActiveTab("map");
+      if (opp) {
+        setSelectedOpportunity(opp);
+        setActiveTab("map");
+      }
     }
   };
 
   return (
     <div className="dashboard-container">
-      {/* Alerta nova oportunidade */}
+      {/* ALERTA FLUTUANTE */}
       {newOpAlert && alertVisible && (
         <div className="dashboard-alert">
           Nova oportunidade detectada!
         </div>
       )}
-      {/* Filtro por cultura */}
+
+      {/* FILTRO */}
       <div className="dashboard-crop-filter">
         <select
           value={selectedCrop}
@@ -241,7 +249,8 @@ const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [] })
           ))}
         </select>
       </div>
-      {/* Cards de estatísticas */}
+
+      {/* CARDS (KPIs) */}
       <div className="dashboard-cards">
         <div className="card oportunidades">
           <h3>Oportunidades</h3>
@@ -250,7 +259,7 @@ const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [] })
         </div>
         <div className="card roi">
           <h3>ROI Médio</h3>
-          <p className="roi">{avgROI}</p>
+          <p className="roi">{avgROI}%</p>
           <small>Retorno sobre investimento</small>
         </div>
         <div className="card high-risk">
@@ -264,22 +273,79 @@ const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [] })
           <small>Toneladas disponíveis</small>
         </div>
       </div>
-      {/* Gráficos */}
+
+      {/* ÁREA DE CENÁRIOS SALVOS (ATUALIZADO COM CLIQUE) */}
+      {savedScenarios.length > 0 && (
+        <div style={{ marginBottom: '30px' }}>
+            <h3 style={{ color: '#fff', marginBottom: '15px', borderLeft: '4px solid #10b981', paddingLeft: '10px' }}>
+                📂 Cenários Simulados (Clique para Carregar)
+            </h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '15px' }}>
+                {savedScenarios.map(scenario => (
+                    <div 
+                        key={scenario.id} 
+                        // 🚀 EVENTO CLICK PARA CARREGAR
+                        onClick={() => onLoadScenario && onLoadScenario(scenario)}
+                        style={{ 
+                            background: '#15192c', 
+                            padding: '20px', 
+                            borderRadius: '12px', 
+                            border: '1px solid #334155', 
+                            position: 'relative', 
+                            boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                            cursor: 'pointer', // Indica clicável
+                            transition: 'transform 0.2s, border-color 0.2s'
+                        }}
+                        // Efeitos visuais de hover
+                        onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.borderColor = '#00d9ff'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.borderColor = '#334155'; }}
+                    >
+                        <button 
+                          onClick={(e) => {
+                              e.stopPropagation(); // 🛑 Impede que o clique no X carregue o cenário
+                              handleDeleteScenario(scenario.id);
+                          }} 
+                          style={{ position: 'absolute', top: 10, right: 10, background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '16px', zIndex: 2 }}
+                          title="Remover cenário"
+                        >
+                          ✕
+                        </button>
+                        
+                        <h4 style={{ color: '#00d9ff', margin: '0 0 8px 0', fontSize: '16px' }}>{scenario.input.product}</h4>
+                        
+                        <div style={{display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px'}}>
+                           <span style={{fontSize: '12px', color: '#cbd5e1'}}>Para:</span>
+                           <strong style={{fontSize: '13px', color: '#fff'}}>{scenario.input.destinationName}</strong>
+                        </div>
+
+                        <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '20px', fontWeight: 'bold', color: scenario.result.roi >= 20 ? '#10b981' : '#facc15' }}>
+                                ROI {scenario.result.roi}%
+                            </span>
+                            <span style={{ fontSize: '11px', color: '#64748b' }}>
+                                {new Date(scenario.savedAt).toLocaleDateString()}
+                            </span>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+      )}
+
+      {/* GRÁFICOS */}
       <div className="dashboard-charts">
-        <div>
+        <div className="chart-container">
           <Bar
             ref={barRef}
             data={barChartData}
             options={barChartOptions}
-            height={220}
             onClick={e => handleBarClick(e.nativeEvent)}
           />
         </div>
-        <div>
+        <div className="chart-container">
           <Line
             data={priceTrendData}
             options={lineChartOptions}
-            height={220}
           />
         </div>
       </div>
