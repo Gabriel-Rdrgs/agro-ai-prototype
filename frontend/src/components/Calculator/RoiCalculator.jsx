@@ -5,22 +5,10 @@ import { StorageService } from '../../services/storageService';
 import { PdfService } from '../../services/pdfService';
 import '../../styles/calculator.css';
 
-const RoiCalculator = ({ onVisualizeRoute, initialData }) => {
+const RoiCalculator = ({ onVisualizeRoute, initialData, currentDollar }) => {
   // --- ESTADOS ---
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const handleExportPDF = () => {
-  if (!result) return;
-
-  // Prepara os dados para o relatório
-  const reportData = {
-    input: formData,
-    result: result,
-    origin: calculatedOrigin
-  };
-
-  // Gera o PDF (passando nome do usuário hardcoded por enquanto, ou via props se quiser)
-  PdfService.generateReport(reportData, "Paulo (Sócio)");
-};
+  
   // Estado do formulário com valores padrão
   const [formData, setFormData] = useState({
     product: 'Tomate',
@@ -165,8 +153,30 @@ const RoiCalculator = ({ onVisualizeRoute, initialData }) => {
     alert("✅ Cenário salvo com sucesso! Veja na aba Dashboard.");
   };
 
+  const handleExportPDF = () => {
+    if (!result) return;
+  
+    // Prepara os dados para o relatório
+    const reportData = {
+      input: formData,
+      result: result,
+      origin: calculatedOrigin,
+      currentDollar: currentDollar // Envia cotação atual para o PDF
+    };
+  
+    // Gera o PDF (passando nome do usuário hardcoded por enquanto)
+    PdfService.generateReport(reportData, "Paulo (Sócio)");
+  };
+
+  // --- HELPER FUNCTIONS ---
   const formatMoney = (value) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+  };
+
+  // Helper para mostrar valor em Dólar
+  const toUSD = (valBrl) => {
+    if (!currentDollar || !valBrl) return '---';
+    return (valBrl / currentDollar).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
   };
 
   return (
@@ -192,11 +202,19 @@ const RoiCalculator = ({ onVisualizeRoute, initialData }) => {
 
             <div className="form-row">
               <div className="form-group">
-                <label>Preço Compra (kg)</label>
+                <label>
+                    Preço Compra (kg) 
+                    {/* MOSTRA USD SE DISPONÍVEL */}
+                    {currentDollar > 0 && <span style={{fontSize: '11px', color: '#10b981', marginLeft: '6px'}}>({toUSD(formData.buyPrice)})</span>}
+                </label>
                 <input type="number" min="0" step="0.01" name="buyPrice" value={formData.buyPrice} onChange={handleInputChange} required />
               </div>
               <div className="form-group">
-                <label>Preço Venda (kg)</label>
+                <label>
+                    Preço Venda (kg)
+                    {/* MOSTRA USD SE DISPONÍVEL */}
+                    {currentDollar > 0 && <span style={{fontSize: '11px', color: '#10b981', marginLeft: '6px'}}>({toUSD(formData.sellPrice)})</span>}
+                </label>
                 <input type="number" min="0" step="0.01" name="sellPrice" value={formData.sellPrice} onChange={handleInputChange} required />
               </div>
             </div>
@@ -276,10 +294,22 @@ const RoiCalculator = ({ onVisualizeRoute, initialData }) => {
                     <span className={`value ${result.profit > 0 ? 'highlight' : 'negative'}`}>
                       {formatMoney(result.profit)}
                     </span>
+                    {/* BOX DE USD */}
+                    {currentDollar > 0 && (
+                      <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: '4px', padding: '2px 6px', marginTop: '4px', fontSize: '12px', color: '#cbd5e1', display: 'inline-block' }}>
+                        🇺🇸 {toUSD(result.profit)}
+                      </div>
+                    )}
                   </div>
                   <div className="metric-item">
                     <span className="label">Custo Total</span>
                     <span className="value">{formatMoney(result.totalCost)}</span>
+                    {/* BOX DE USD */}
+                    {currentDollar > 0 && (
+                      <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: '4px', padding: '2px 6px', marginTop: '4px', fontSize: '12px', color: '#cbd5e1', display: 'inline-block' }}>
+                        🇺🇸 {toUSD(result.totalCost)}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -299,34 +329,30 @@ const RoiCalculator = ({ onVisualizeRoute, initialData }) => {
                   </div>
                 </div>
                 
-            {/* BOTÕES DE AÇÃO */}
-            <div style={{ display: 'flex', gap: '10px', marginTop: '1.5rem' }}>
-              <button 
-                onClick={handleShowRoute} 
-                className="view-route-btn"
-                style={{ flex: 1, margin: 0 }}
-              > 
-                🗺️ Ver Rota
-              </button>
-
-              {/* BOTÃO DE SALVAR */}
-              <button 
-                onClick={handleSaveScenario} 
-                className="view-route-btn"
-                style={{ flex: 1, margin: 0, borderColor: '#10b981', color: '#10b981' }}
-              >
-                💾 Salvar
-              </button>
-
-              {/* 🚀 NOVO BOTÃO: PDF */}
-              <button 
-              onClick={handleExportPDF} 
-              className="view-route-btn"
-              style={{ flex: 1, margin: 0, borderColor: '#facc15', color: '#facc15' }}
-              >
-              📄 PDF
-              </button>
-            </div>
+                {/* BOTÕES DE AÇÃO */}
+                <div style={{ display: 'flex', gap: '10px', marginTop: '1.5rem' }}>
+                    <button 
+                        onClick={handleShowRoute} 
+                        className="view-route-btn"
+                        style={{ flex: 1, margin: 0 }}
+                    >
+                        🗺️ Ver Rota
+                    </button>
+                    <button 
+                        onClick={handleSaveScenario} 
+                        className="view-route-btn"
+                        style={{ flex: 1, margin: 0, borderColor: '#10b981', color: '#10b981' }}
+                    >
+                        💾 Salvar
+                    </button>
+                    <button 
+                        onClick={handleExportPDF} 
+                        className="view-route-btn"
+                        style={{ flex: 1, margin: 0, borderColor: '#facc15', color: '#facc15' }}
+                    >
+                        📄 PDF
+                    </button>
+                </div>
 
                 {result.isHighRisk && (
                    <div className="risk-alert">

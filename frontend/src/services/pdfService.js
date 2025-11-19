@@ -32,6 +32,11 @@ export const PdfService = {
     doc.text(`Gerado em: ${today}`, 196, 20, { align: 'right' });
     doc.text(`Responsável: ${userName}`, 196, 28, { align: 'right' });
 
+    // Exibe cotação do dólar se houver
+    if (scenarioData.currentDollar) {
+        doc.text(`Cotação Base USD: R$ ${scenarioData.currentDollar.toFixed(4)}`, 196, 36, { align: 'right' });
+    }
+
     // --- CORPO DO RELATÓRIO ---
     let yPos = 55;
     
@@ -63,40 +68,48 @@ export const PdfService = {
     doc.text('2. Detalhamento Financeiro', 14, yPos);
 
     const formatMoney = (val) => `R$ ${val.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+    
+    const formatUSD = (val) => {
+        if (!scenarioData.currentDollar || !val) return '-';
+        const usdVal = val / scenarioData.currentDollar;
+        return `US$ ${usdVal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+    };
 
     // Prepara os dados da tabela
     const grossRevenue = (scenarioData.result.profit || 0) + (scenarioData.result.totalCost || 0);
     const costGoods = (scenarioData.input.buyPrice || 0) * (scenarioData.input.volume || 0) * 1000;
     
     const tableBody = [
-      ['Receita Bruta Estimada', formatMoney(grossRevenue)],
-      ['(-) Custo da Mercadoria', formatMoney(costGoods)],
-      ['(-) Frete Logístico', formatMoney(scenarioData.result.details.freightCost)],
-      ['(-) Perdas/Quebra', formatMoney(scenarioData.result.details.spoilageLoss)],
-      ['(-) Armazenagem', formatMoney(scenarioData.result.details.storageCost)],
+      ['Receita Bruta Estimada', formatMoney(grossRevenue), formatUSD(grossRevenue)],
+      ['(-) Custo da Mercadoria', formatMoney(costGoods), formatUSD(costGoods)],
+      ['(-) Frete Logístico', formatMoney(scenarioData.result.details.freightCost), formatUSD(scenarioData.result.details.freightCost)],
+      ['(-) Perdas/Quebra', formatMoney(scenarioData.result.details.spoilageLoss), formatUSD(scenarioData.result.details.spoilageLoss)],
+      ['(-) Armazenagem', formatMoney(scenarioData.result.details.storageCost), formatUSD(scenarioData.result.details.storageCost)],
       [
         { content: 'LUCRO LÍQUIDO PROJETADO', styles: { fontStyle: 'bold', fillColor: [220, 252, 231] } }, 
-        { content: formatMoney(scenarioData.result.profit), styles: { fontStyle: 'bold', textColor: [21, 128, 61] } }
+        { content: formatMoney(scenarioData.result.profit), styles: { fontStyle: 'bold', textColor: [21, 128, 61] } },
+        { content: formatUSD(scenarioData.result.profit), styles: { fontStyle: 'bold', textColor: [21, 128, 61] } }
       ],
     ];
 
     autoTable(doc, {
       startY: yPos + 5,
-      head: [['Item', 'Valor']],
+      head: [['Item', 'Valor (R$)', 'Valor (USD)']],
       body: tableBody,
       theme: 'grid',
       headStyles: { fillColor: darkBg, textColor: primaryColor },
       styles: { fontSize: 10 },
       columnStyles: {
-        0: { cellWidth: 130 },
-        1: { cellWidth: 40, halign: 'right' },
+        0: { cellWidth: 90 },
+        1: { cellWidth: 50, halign: 'right' },
+        2: { cellWidth: 50, halign: 'right' },
       },
     });
 
     // 3. KPIs e Risco
     yPos = doc.lastAutoTable.finalY + 20;
     doc.setFontSize(14);
-    doc.setTextColor(0, 0, 0); // Garante preto para o título
+    doc.setTextColor(0, 0, 0); 
     doc.text('3. Indicadores de Performance (KPIs)', 14, yPos);
 
     yPos += 10;

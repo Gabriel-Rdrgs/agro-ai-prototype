@@ -29,7 +29,7 @@ ChartJS.register(
   Filler
 );
 
-const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [], onLoadScenario }) => {
+const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [], onLoadScenario, currentDollar }) => {
   // --- ESTADOS ---
   const [selectedCrop, setSelectedCrop] = useState("");
   const [newOpAlert, setNewOpAlert] = useState(false);
@@ -251,22 +251,39 @@ const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [], o
         </div>
       )}
 
-      {/* HEADER: FILTRO + BOTÃO EXPORTAR */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <div className="dashboard-crop-filter" style={{marginBottom: 0}}>
-            <select
-              value={selectedCrop}
-              onChange={e => setSelectedCrop(e.target.value)}
-            >
-              <option value="">Todas culturas</option>
-              {uniqueCrops.map(crop => (
-                <option key={crop} value={crop}>
-                  {crop}
-                </option>
-              ))}
-            </select>
+      {/* HEADER: FILTROS, DÓLAR E BOTÃO EXPORTAR */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+              {/* Filtro */}
+              <div className="dashboard-crop-filter" style={{marginBottom: 0}}>
+                <select value={selectedCrop} onChange={e => setSelectedCrop(e.target.value)}>
+                  <option value="">Todas culturas</option>
+                  {uniqueCrops.map(crop => (<option key={crop} value={crop}>{crop}</option>))}
+                </select>
+              </div>
+
+              {/* Badge do Dólar */}
+              {currentDollar > 0 && (
+                  <div style={{ 
+                      background: 'rgba(16, 185, 129, 0.1)', 
+                      border: '1px solid #10b981', 
+                      color: '#10b981',
+                      padding: '8px 12px', 
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      fontWeight: 'bold',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                  }}>
+                      <span>🇺🇸 USD PTAX:</span>
+                      <span style={{ color: '#fff' }}>R$ {currentDollar.toFixed(4)}</span>
+                  </div>
+              )}
           </div>
 
+          {/* Botão Exportar PDF */}
           <button 
             onClick={handleExportDashboard}
             style={{
@@ -323,7 +340,7 @@ const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [], o
                 {savedScenarios.map(scenario => (
                     <div 
                         key={scenario.id} 
-                        // AÇÃO: CLIQUE NO CARD PARA CARREGAR
+                        // AÇÃO: CLIQUE NO CARD PARA CARREGAR NA CALCULADORA
                         onClick={() => onLoadScenario && onLoadScenario(scenario)}
                         style={{ 
                             background: '#15192c', 
@@ -340,7 +357,7 @@ const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [], o
                     >
                         <button 
                           onClick={(e) => {
-                              e.stopPropagation(); // Impede o clique de carregar
+                              e.stopPropagation(); // Impede o clique de carregar ao deletar
                               handleDeleteScenario(scenario.id);
                           }} 
                           style={{ position: 'absolute', top: 10, right: 10, background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '16px', zIndex: 2 }}

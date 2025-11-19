@@ -18,6 +18,9 @@ function App() {
   const [customRoute, setCustomRoute] = useState(null); // Rota vinda da Calculadora
   const [scenarioToLoad, setScenarioToLoad] = useState(null); // Cenário salvo vindo do Dashboard
   
+  // 💵 Extrai a cotação atual (pega da primeira oportunidade ou usa fallback)
+  const currentDollar = opportunities.length > 0 ? opportunities[0].dollarRate : 0;
+  
   // Estados de UI
   const [showSidebar, setShowSidebar] = useState(window.innerWidth > 768);
   const [activeTab, setActiveTab] = useState('map');
@@ -273,15 +276,19 @@ function App() {
                 setSelectedOpportunity={setSelectedOpportunity}
                 setActiveTab={setActiveTab}
                 opportunities={opportunities}
-                onLoadScenario={handleLoadScenario} // Passa função para carregar cenário
+                onLoadScenario={handleLoadScenario}
+                // 🚀 NOVA PROP
+                currentDollar={currentDollar} 
               />
             )}
 
             {/* 3. CALCULADORA */}
             {activeTab === 'calculator' && (
               <RoiCalculator 
-                 onVisualizeRoute={handleVisualizeRoute} // Passa função para ver rota
-                 initialData={scenarioToLoad} // Passa dados do cenário salvo
+                 onVisualizeRoute={handleVisualizeRoute} 
+                 initialData={scenarioToLoad}
+                 // 🚀 NOVA PROP
+                 currentDollar={currentDollar}
               />
             )}
           </div>

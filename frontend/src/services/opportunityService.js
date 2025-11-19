@@ -41,8 +41,6 @@ export const OpportunityService = {
         const buy = Number(opp.buyPrice);
         const sell = Number(opp.sellPrice);
         
-        // 🧠 CÁLCULO AUTOMÁTICO DO ROI
-        // (Lucro Bruto / Custo) * 100
         let calculatedRoi = 0;
         if (buy > 0) {
             calculatedRoi = ((sell - buy) / buy) * 100;
@@ -54,8 +52,10 @@ export const OpportunityService = {
           sellPosition: (opp.destLat && opp.destLng) ? [opp.destLat, opp.destLng] : null,
           buyPrice: buy,
           sellPrice: sell,
-          // Injetamos o ROI calculado para o Dashboard pintar as cores certas
-          roi: Math.round(calculatedRoi) 
+          roi: Math.round(calculatedRoi),
+          // NOVOS CAMPOS REAIS
+          priceUsd: opp.priceUsd, 
+          currentDollar: opp.dollarRate 
         };
       });
     } catch (error) {
