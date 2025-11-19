@@ -9,7 +9,7 @@ import "../../styles/mapview.css";
 // Fix Leaflet icon para React
 delete L.Icon.Default.prototype._getIconUrl;
 
-// --- 1. NOVOS ÍCONES PARA A ROTA ---
+// --- 1. ÍCONES PERSONALIZADOS ---
 const originIcon = new L.Icon({
     iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
     shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
@@ -22,8 +22,7 @@ const destIcon = new L.Icon({
     iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
 });
 
-// --- 2. CONTROLADOR DO MAPA ATUALIZADO ---
-// Agora aceita 'bounds' para focar na rota inteira
+// --- 2. CONTROLADOR DE MAPA (ZOOM E PAN) ---
 const MapController = ({ center, zoom, bounds }) => {
   const map = useMap();
   useEffect(() => {
@@ -42,37 +41,28 @@ const MapView = React.forwardRef((props, ref) => {
   const [geojsonMunicipios, setGeojsonMunicipios] = useState(null);
   const [geojsonStates, setGeojsonStates] = useState(null);
   const [mapStyle, setMapStyle] = useState('padrao');
-  const [mapCenter, setMapCenter] = useState([-14.235, -51.9253]); // Centro do Brasil padrão
+  const [mapCenter, setMapCenter] = useState([-14.235, -51.9253]);
   const [mapZoom, setMapZoom] = useState(4);
-  const [mapBounds, setMapBounds] = useState(null); // Novo estado para limites
-
+  const [mapBounds, setMapBounds] = useState(null);
+  
   const [activeMarkerId, setActiveMarkerId] = useState(null);
   const [selectedOpportunity, setSelectedOpportunity] = useState(null);
   const [selectedState, setSelectedState] = useState(null);
   const [legendVisible, setLegendVisible] = useState(false); 
 
+  // 🔥 AQUI ESTAVA O ERRO: Definição da constante brazilCenter
   const brazilCenter = [-14.235, -51.9253];
 
-  useEffect(() => {
-    fetch('/municipios.geojson')
-      .then(resp => resp.json())
-      .then(data => setGeojsonMunicipios(data));
-  }, []);
+  // Carrega dados geográficos
+  useEffect(() => { fetch('/municipios.geojson').then(r=>r.json()).then(setGeojsonMunicipios); }, []);
+  useEffect(() => { fetch('/estados.geojson').then(r=>r.json()).then(setGeojsonStates); }, []);
 
-  useEffect(() => {
-    fetch('/estados.geojson')
-      .then(resp => resp.json())
-      .then(data => setGeojsonStates(data));
-  }, []);
-
-  // --- 3. EFEITO PARA ROTA CUSTOMIZADA ---
+  // --- EFEITO: ROTA CUSTOMIZADA (SIMULADOR) ---
   useEffect(() => {
     if (customRoute) {
-      // Cria um retângulo visual (bounds) que engloba origem e destino
       const bounds = L.latLngBounds([customRoute.origin, customRoute.destination]);
       setMapBounds(bounds);
-      
-      // Limpa seleções individuais para focar na simulação
+      // Limpa seleções manuais para focar na rota simulada
       setSelectedOpportunity(null);
       setSelectedState(null);
     } else {
@@ -87,10 +77,11 @@ const MapView = React.forwardRef((props, ref) => {
       setActiveMarkerId(opportunity.id);
       setSelectedOpportunity(opportunity);
       setSelectedState(opportunity.state);
-      setMapBounds(null); // Reseta bounds se for foco manual
+      setMapBounds(null);
     }
   }));
 
+  // EFEITO: SELEÇÃO MANUAL VIA PROPS
   useEffect(() => {
     if (props.selectedOpportunity) {
       setMapCenter(props.selectedOpportunity.position);
@@ -104,26 +95,23 @@ const MapView = React.forwardRef((props, ref) => {
 
   const formatPrice = (price) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price);
-
-  return (
+return (
     <div style={{
-      height: '100%', // 🔍 ALTERADO DE '100vh' PARA '100%'
+      height: '100%', 
       width: '100%',
       position: 'relative',
       background: theme.colors.background,
       fontFamily: theme.font,
-      color: theme.colors.textPrimary,
-      zIndex: 1 // Garante base de pilha
+      color: theme.colors.textPrimary
     }}>
       
-      {/* --- CARD FLUTUANTE DA ROTA (ATUALIZADO COM BOTÃO FECHAR) --- */}
+      {/* --- CARD FLUTUANTE DA ROTA --- */}
       {customRoute && (
         <div className="route-info-card fade-in" style={{
-            position: 'absolute', top: 80, right: 20, width: 280, zIndex: 2000,
+            position: 'absolute', top: 20, right: 20, width: 280, zIndex: 2000,
             background: '#0f172ae6', backdropFilter: 'blur(10px)', border: '1px solid #00d9ff',
             borderRadius: 12, padding: 16, boxShadow: '0 8px 32px rgba(0,0,0,0.5)'
         }}>
-            {/* --- BOTÃO FECHAR (X) --- */}
             <button 
               onClick={onClearRoute}
               style={{
@@ -132,12 +120,8 @@ const MapView = React.forwardRef((props, ref) => {
                 cursor: 'pointer', fontSize: '16px', fontWeight: 'bold',
                 padding: '5px', lineHeight: 1
               }}
-              title="Fechar rota e voltar"
-              onMouseEnter={(e) => e.target.style.color = '#ef4444'}
-              onMouseLeave={(e) => e.target.style.color = '#94a3b8'}
-            >
-              ✕
-            </button>
+              title="Fechar rota"
+            >✕</button>
 
             <h4 style={{ margin: '0 0 10px 0', color: '#00d9ff', borderBottom: '1px solid #334155', paddingBottom: 8, paddingRight: 20 }}>
                 🚚 Rota Simulada
@@ -166,7 +150,7 @@ const MapView = React.forwardRef((props, ref) => {
         </div>
       )}
 
-      {/* Legenda (Mantida Original) */}
+      {/* LEGENDA */}
       <div 
         className={`map-legend ${legendVisible ? 'visible' : ''}`}
         onClick={() => setLegendVisible(v => !v)}
@@ -187,7 +171,7 @@ const MapView = React.forwardRef((props, ref) => {
         )}
       </div>
 
-      {/* Seletor de Estilo (Mantido Original) */}
+      {/* CONTROLE DE VISUALIZAÇÃO */}
       <div style={{
         position: 'absolute', top: 22, left: 80, zIndex: 2000, background: theme.colors.background,
         borderRadius: theme.borderRadius, boxShadow: theme.colors.cardGlow, padding: '6px 14px'
@@ -213,13 +197,12 @@ const MapView = React.forwardRef((props, ref) => {
         center={brazilCenter}
         zoom={4}
         style={{ height: '100%', width: '100%' }}
-        scrollWheelZoom={true}
+        scrollWheelZoom={true} 
         zoomControl={false}
       >
-        {/* Passamos mapBounds para o controller */}
         <MapController center={mapCenter} zoom={mapZoom} bounds={mapBounds} />
 
-        {/* Estados */}
+        {/* CAMADA DE ESTADOS (GEOJSON) */}
         {geojsonStates && (
           <GeoJSON
             data={geojsonStates}
@@ -247,7 +230,7 @@ const MapView = React.forwardRef((props, ref) => {
           />
         )}
 
-        {/* Botões de Zoom Manuais (Mantidos do seu código original) */}
+        {/* BOTÕES DE ZOOM MANUAIS */}
         <div style={{
           position: 'absolute', top: '20px', left: '20px', zIndex: 1000,
           display: 'flex', flexDirection: 'column', gap: '5px'
@@ -262,18 +245,9 @@ const MapView = React.forwardRef((props, ref) => {
           >−</button>
         </div>
 
-        <TileLayer
-          attribution='&copy; OpenStreetMap contributors'
-          url={
-            mapStyle === 'padrao'
-              ? 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-              : mapStyle === 'dark'
-              ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-              : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-          }
-        />
+        <TileLayer attribution='&copy; OpenStreetMap' url={mapStyle === 'padrao' ? 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png' : mapStyle === 'dark' ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'} />
 
-        {/* Destaque do município selecionado (Mantido Original) */}
+        {/* DESTAQUE DO MUNICÍPIO */}
         {geojsonMunicipios && selectedOpportunity && (
           <GeoJSON
             key={selectedOpportunity.id || selectedOpportunity.city}
@@ -296,7 +270,7 @@ const MapView = React.forwardRef((props, ref) => {
           />
         )}
 
-        {/* --- 5. ROTA CUSTOMIZADA (Visualização da Calculadora) --- */}
+        {/* ROTA CUSTOMIZADA (Simulador) */}
         {customRoute && (
             <>
                 <Polyline 
@@ -312,25 +286,39 @@ const MapView = React.forwardRef((props, ref) => {
             </>
         )}
 
-        {/* --- ROTA MANUAL (Clique na lista) --- */}
+        {/* ROTA MANUAL (Correção do MARK) */}
         {!customRoute && selectedOpportunity && selectedOpportunity.sellPosition && (
           <>
             <Polyline 
                 positions={[selectedOpportunity.position, selectedOpportunity.sellPosition]} 
                 pathOptions={{ color: theme.colors.accent, dashArray: '10, 10', weight: 3, opacity: 0.8 }} 
             />
-            <Marker position={selectedOpportunity.sellPosition}>
+            {/* Ícone Corrigido e Popup Estilizado */}
+            <Marker position={selectedOpportunity.sellPosition} icon={destIcon}>
                 <Popup>
-                  <div style={{color: 'black', textAlign: 'center'}}>
-                    <strong>🏁 Destino</strong><br/>
-                    {selectedOpportunity.sellLocation}
+                  <div style={{
+                    padding: '10px',
+                    fontFamily: theme.font,
+                    background: `${theme.colors.background}F2`,
+                    color: theme.colors.textPrimary,
+                    borderRadius: '8px',
+                    textAlign: 'center',
+                    minWidth: '120px',
+                    boxShadow: theme.colors.cardGlow
+                  }}>
+                    <strong style={{color: '#ef4444', fontSize: '14px', display: 'block', marginBottom: '4px'}}>
+                      🏁 Destino Previsto
+                    </strong>
+                    <span style={{fontSize: '13px', color: theme.colors.textMuted}}>
+                      {selectedOpportunity.sellLocation}
+                    </span>
                   </div>
                 </Popup>
             </Marker>
           </>
         )}
         
-        {/* Marcadores das oportunidades (Mantido Original) */}
+        {/* MARCADORES PRINCIPAIS */}
         {!customRoute && opportunities.map((opp) => (
           <Marker
             key={opp.id}
@@ -343,10 +331,16 @@ const MapView = React.forwardRef((props, ref) => {
                 setSelectedState(opp.state);
                 setMapCenter(opp.position);
                 setMapZoom(6);
+              },
+              // 🔥 LIMPEZA DE SELEÇÃO AO FECHAR O POPUP
+              popupclose: () => {
+                setSelectedOpportunity(prev => (prev?.id === opp.id ? null : prev));
+                setSelectedState(prev => (prev === opp.state ? null : prev));
+                setActiveMarkerId(prev => (prev === opp.id ? null : prev));
               }
             }}
           >
-            <Popup maxWidth={350} minWidth={250}>
+            <Popup maxWidth={350} minWidth={250} autoPanPadding={[50, 50]}>
               <div style={{
                 padding: '8px',
                 fontFamily: theme.font,
@@ -355,7 +349,6 @@ const MapView = React.forwardRef((props, ref) => {
                 borderRadius: '12px',
                 boxShadow: theme.colors.cardGlow
               }}>
-                {/* Header */}
                 <div style={{ borderBottom: `2px solid ${theme.colors.accent}`, paddingBottom: '10px', marginBottom: '12px' }}>
                   <h3 style={{ margin: '0 0 5px 0', color: theme.colors.accent, fontSize: '16px', fontWeight: 'bold', letterSpacing: '1.5px' }}>
                     {opp.product}
@@ -365,14 +358,12 @@ const MapView = React.forwardRef((props, ref) => {
                   </p>
                 </div>
 
-                {/* ROI Badge */}
                 <div style={{ background: opp.roi >= 100 ? '#dcfce7' : opp.roi >= 50 ? '#fef3c7' : '#fee2e2', padding: '8px 12px', borderRadius: '6px', marginBottom: '12px', textAlign: 'center' }}>
                   <span style={{ fontSize: '20px', fontWeight: 'bold', color: opp.roi >= 100 ? '#15803d' : opp.roi >= 50 ? '#b45309' : '#dc2626' }}>
                     🎯 {opp.roi}% ROI
                   </span>
                 </div>
 
-                {/* Informações principais */}
                 <div style={{ marginBottom: '12px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', padding: '6px', background: `${theme.colors.background}99`, borderRadius: '4px' }}>
                     <span style={{ fontSize: '12px', fontWeight: '600', color: theme.colors.textPrimary }}>💰 Compra:</span>
@@ -388,22 +379,18 @@ const MapView = React.forwardRef((props, ref) => {
                   </div>
                 </div>
 
-                {/* Risco */}
                 <div style={{ padding: '8px', background: opp.riskLevel === 1 ? '#22c55e20' : opp.riskLevel === 2 ? `${theme.colors.secondary}20` : '#fee2e2', borderLeft: `4px solid ${opp.riskLevel === 1 ? '#22c55e' : opp.riskLevel === 2 ? theme.colors.secondary : '#dc2626'}`, borderRadius: '4px', marginBottom: '10px' }}>
                   <span style={{ fontSize: '12px', fontWeight: '600', color: theme.colors.textPrimary }}>⚠️ Risco: {opp.risk}</span>
                 </div>
 
-                {/* Clima */}
                 <div style={{ padding: '8px', background: '#eff6ff', borderRadius: '4px', marginBottom: '10px' }}>
                   <span style={{ fontSize: '12px', color: '#1e40af' }}>🌤️ {opp.climate}</span>
                 </div>
 
-                {/* Descrição */}
                 <div style={{ fontSize: '11px', color: theme.colors.textMuted, lineHeight: '1.4', marginTop: '10px', padding: '8px', background: `${theme.colors.background}99`, borderRadius: '4px' }}>
                   {opp.description}
                 </div>
 
-                {/* Footer */}
                 <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: `1px solid ${theme.colors.textMuted}`, display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: theme.colors.textMuted }}>
                   <span>📂 {opp.category}</span>
                   <span>📅 {opp.season}</span>
