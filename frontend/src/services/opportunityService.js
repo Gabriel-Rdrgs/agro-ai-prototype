@@ -1,6 +1,7 @@
 // frontend/src/services/opportunityService.js
 
 // URL da sua API Node.js
+// Se estiver rodando localmente, usa a porta 3001
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 const ROAD_FACTOR = 1.35;
@@ -30,6 +31,7 @@ const calculateLinearDistance = (lat1, lon1, lat2, lon2) => {
 };
 
 export const OpportunityService = {
+  // Busca todas as oportunidades do Backend
   getAll: async () => {
     try {
       const response = await fetch(`${API_URL}/opportunities`);
@@ -53,7 +55,6 @@ export const OpportunityService = {
           buyPrice: buy,
           sellPrice: sell,
           roi: Math.round(calculatedRoi),
-          // NOVOS CAMPOS REAIS
           priceUsd: opp.priceUsd, 
           currentDollar: opp.dollarRate 
         };
@@ -69,12 +70,24 @@ export const OpportunityService = {
     return all.find(op => op.id === id);
   },
 
+  // 🚀 A FUNÇÃO QUE FALTAVA: BUSCAR CLIMA
+  getWeather: async (lat, lng) => {
+    try {
+        const response = await fetch(`${API_URL}/weather?lat=${lat}&lng=${lng}`);
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (error) {
+        console.error("Erro ao buscar clima:", error);
+        return null;
+    }
+  },
+
+  // Cálculo de ROI e Logística
   calculateROI: async ({ 
     buyPrice, sellPrice, volume, originCoords, destinationName, 
     dieselPrice = 6.50, truckConsumption = 3.5, spoilageRate = 0, 
     storageDays = 0, storageCostPerDay = 15 
   }) => {
-    // Simula delay
     await new Promise(resolve => setTimeout(resolve, 400)); 
 
     const volumeKg = volume * 1000;

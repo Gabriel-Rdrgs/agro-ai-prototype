@@ -1,7 +1,7 @@
 // backend/server.js
 const express = require('express');
 const cors = require('cors');
-const axios = require('axios'); // <--- Importamos o Axios
+const axios = require('axios'); // <--- O "Navegador" do servidor
 const { PrismaClient } = require('@prisma/client');
 
 const app = express();
@@ -10,77 +10,89 @@ const prisma = new PrismaClient();
 app.use(cors());
 app.use(express.json());
 
-// --- FUNÇÕES AUXILIARES (Inteligência Externa) ---
+// --- FUNÇÕES DE INTELIGÊNCIA (DADOS EXTERNOS) ---
 
-// 1. Busca Dólar (AwesomeAPI)
+// 1. Busca Dólar em Tempo Real (AwesomeAPI - Grátis e Confiável)
 async function getDollarRate() {
   try {
+    console.log('💵 Buscando cotação do Dólar...');
     const response = await axios.get('https://economia.awesomeapi.com.br/last/USD-BRL');
-    return parseFloat(response.data.USDBRL.bid);
+    const rate = parseFloat(response.data.USDBRL.bid);
+    console.log(`✅ Dólar atual: R$ ${rate}`);
+    return rate;
   } catch (error) {
-    console.error("Erro ao buscar dólar:", error.message);
-    return 5.50; // Fallback seguro se a API cair
+    console.error("❌ Erro ao buscar dólar (usando fallback):", error.message);
+    return 5.80; // Valor de segurança se a API cair
   }
 }
 
-// 2. Busca Clima (OpenMeteo - Gratuito e sem chave)
+// 2. Busca Clima (OpenMeteo - Gratuito)
 async function getWeather(lat, lng) {
   try {
+    // Busca temperatura atual e código do clima (chuva, sol, etc)
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true&timezone=America%2FSao_Paulo`;
     const response = await axios.get(url);
-    return {
-      temp: response.data.current_weather.temperature,
-      code: response.data.current_weather.weathercode
-    };
+    return response.data.current_weather;
   } catch (error) {
-    return null; // Sem clima se der erro
+    console.error("Erro ao buscar clima:", error.message);
+    return null;
   }
 }
 
-// --- ROTAS ---
+// --- ROTAS DA API ---
 
 app.get('/', (req, res) => {
-  res.send('🚀 AgroArbitrage API (Com Dados Reais) está rodando!');
+  res.send('🚀 AgroArbitrage API (Inteligente) está rodando!');
 });
 
-// Rota Principal: Oportunidades + Dados Vivos
+// Rota Principal: Oportunidades + Dólar
 app.get('/api/opportunities', async (req, res) => {
   try {
-    // 1. Busca dados estáticos no Banco (SQLite)
+    // 1. Busca dados no Banco Local (SQLite)
     const opportunities = await prisma.opportunity.findMany();
 
-    // 2. Busca dados vivos (Dólar) - Uma vez só para todos
+    // 2. Busca dados na Nuvem (Dólar)
+    // Fazemos isso uma vez só para não travar a requisição
     const dollarRate = await getDollarRate();
 
-    // 3. Enriquecimento (Mistura Banco + Mundo Real)
-    // Nota: Num app real, faríamos cache do clima. Aqui faremos sob demanda simplificada.
-    // Para não ficar lento, vamos injetar apenas o Dólar agora e deixar o clima para um endpoint de detalhe,
-    // OU pegar o clima apenas para as primeiras oportunidades para não travar o load.
-    
+    // 3. Enriquecimento de Dados
     const enrichedOpportunities = opportunities.map(opp => ({
       ...opp,
-      // Adicionamos campos virtuais calculados
+      // Adiciona o preço em Dólar calculado na hora
       priceUsd: parseFloat((opp.sellPrice / dollarRate).toFixed(2)),
-      dollarRate: dollarRate, // Mandamos a cotação junto para o front saber
+      // Envia a cotação junto para o Frontend mostrar no Dashboard
+      dollarRate: dollarRate, 
     }));
 
     res.json(enrichedOpportunities);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Erro ao buscar oportunidades' });
+    res.status(500).json({ error: 'Erro interno ao buscar oportunidades' });
   }
 });
 
-// Rota Nova: Clima em Tempo Real (Chamada pelo Frontend quando clica no mapa)
+// Rota de Detalhe: Clima Local (Chamada quando clica no mapa)
 app.get('/api/weather', async (req, res) => {
   const { lat, lng } = req.query;
-  if (!lat || !lng) return res.status(400).json({ error: 'Lat/Lng obrigatórios' });
 
-  const weather = await getWeather(lat, lng);
-  res.json(weather || { temp: 'N/A', condition: 'Indisponível' });
+  if (!lat || !lng) {
+    return res.status(400).json({ error: 'Latitude e Longitude são obrigatórias' });
+  }
+
+  const weatherData = await getWeather(lat, lng);
+  
+  if (weatherData) {
+    res.json({
+      temp: weatherData.temperature,
+      code: weatherData.weathercode, // Código WMO (ex: 0 = Céu Limpo, 61 = Chuva)
+      wind: weatherData.windspeed
+    });
+  } else {
+    res.status(500).json({ error: 'Dados climáticos indisponíveis' });
+  }
 });
 
 const PORT = 3001;
 app.listen(PORT, () => {
-  console.log(`🔥 Servidor Inteligente rodando em http://localhost:${PORT}`);
+  console.log(`🔥 Servidor rodando em http://localhost:${PORT}`);
 });

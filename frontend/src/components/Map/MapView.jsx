@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import theme from '../../styles/theme';
 import { createRiskIcon } from '../../data/mapIcons';
+import { OpportunityService } from '../../services/opportunityService';
 import "../../styles/mapview.css"; 
 
 // Fix Leaflet icon para React
@@ -21,6 +22,18 @@ const destIcon = new L.Icon({
     shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
     iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
 });
+
+// --- HELPER: Tradutor de Clima (WMO Codes) ---
+const getWeatherDesc = (code) => {
+    if (code === undefined) return { icon: '🌤️', text: 'Buscando...' };
+    if (code <= 3) return { icon: '☀️', text: 'Céu Limpo/Parcial' };
+    if (code <= 48) return { icon: '🌫️', text: 'Neblina' };
+    if (code <= 67) return { icon: '🌧️', text: 'Chuva Leve/Mod' };
+    if (code <= 77) return { icon: '❄️', text: 'Granizo/Neve' };
+    if (code <= 82) return { icon: '⛈️', text: 'Chuva Forte' };
+    if (code <= 99) return { icon: '⚡', text: 'Tempestade' };
+    return { icon: '☁️', text: 'Nublado' };
+};
 
 // --- 2. CONTROLADOR DE MAPA (ZOOM E PAN) ---
 const MapController = ({ center, zoom, bounds }) => {
@@ -49,8 +62,10 @@ const MapView = React.forwardRef((props, ref) => {
   const [selectedOpportunity, setSelectedOpportunity] = useState(null);
   const [selectedState, setSelectedState] = useState(null);
   const [legendVisible, setLegendVisible] = useState(false); 
+  
+  // Novo Estado: Clima
+  const [weatherData, setWeatherData] = useState(null);
 
-  // 🔥 AQUI ESTAVA O ERRO: Definição da constante brazilCenter
   const brazilCenter = [-14.235, -51.9253];
 
   // Carrega dados geográficos
@@ -62,7 +77,6 @@ const MapView = React.forwardRef((props, ref) => {
     if (customRoute) {
       const bounds = L.latLngBounds([customRoute.origin, customRoute.destination]);
       setMapBounds(bounds);
-      // Limpa seleções manuais para focar na rota simulada
       setSelectedOpportunity(null);
       setSelectedState(null);
     } else {
@@ -70,28 +84,36 @@ const MapView = React.forwardRef((props, ref) => {
     }
   }, [customRoute]);
 
-  useImperativeHandle(ref, () => ({
-    focusOpportunity: (opportunity) => {
-      setMapCenter(opportunity.position);
-      setMapZoom(6);
-      setActiveMarkerId(opportunity.id);
-      setSelectedOpportunity(opportunity);
-      setSelectedState(opportunity.state);
-      setMapBounds(null);
-    }
-  }));
-
-  // EFEITO: SELEÇÃO MANUAL VIA PROPS
+  // --- EFEITO: SELEÇÃO MANUAL E CLIMA ---
   useEffect(() => {
     if (props.selectedOpportunity) {
-      setMapCenter(props.selectedOpportunity.position);
-      setMapZoom(6);
-      setActiveMarkerId(props.selectedOpportunity.id);
-      setSelectedOpportunity(props.selectedOpportunity);
-      setSelectedState(props.selectedOpportunity.state);
-      setMapBounds(null);
+        // Se veio via props (clique no dashboard)
+        handleSelection(props.selectedOpportunity);
     }
   }, [props.selectedOpportunity]);
+
+  // Função centralizada de seleção
+  const handleSelection = (opp) => {
+      setWeatherData(null); // Reseta clima anterior
+      setMapCenter(opp.position);
+      setMapZoom(6);
+      setActiveMarkerId(opp.id);
+      setSelectedOpportunity(opp);
+      setSelectedState(opp.state);
+      setMapBounds(null);
+
+      // Busca Clima Real
+      if (opp.position && opp.position.length === 2) {
+          OpportunityService.getWeather(opp.position[0], opp.position[1])
+            .then(data => setWeatherData(data));
+      }
+  };
+
+  useImperativeHandle(ref, () => ({
+    focusOpportunity: (opportunity) => {
+      handleSelection(opportunity);
+    }
+  }));
 
   const formatPrice = (price) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price);
@@ -383,8 +405,15 @@ return (
                   <span style={{ fontSize: '12px', fontWeight: '600', color: theme.colors.textPrimary }}>⚠️ Risco: {opp.risk}</span>
                 </div>
 
+                {/* 🚀 CLIMA EM TEMPO REAL */}
                 <div style={{ padding: '8px', background: '#eff6ff', borderRadius: '4px', marginBottom: '10px' }}>
-                  <span style={{ fontSize: '12px', color: '#1e40af' }}>🌤️ {opp.climate}</span>
+                  <span style={{ fontSize: '12px', color: '#1e40af' }}>
+                    {/* Se já temos weatherData para ESTE item, mostra. Se não, mostra o mock ou 'Carregando...' */}
+                    {selectedOpportunity && selectedOpportunity.id === opp.id && weatherData 
+                        ? `${getWeatherDesc(weatherData.code).icon} ${weatherData.temp}°C • ${getWeatherDesc(weatherData.code).text}`
+                        : `🌤️ ${opp.climate || 'Análise Climática'}` 
+                    }
+                  </span>
                 </div>
 
                 <div style={{ fontSize: '11px', color: theme.colors.textMuted, lineHeight: '1.4', marginTop: '10px', padding: '8px', background: `${theme.colors.background}99`, borderRadius: '4px' }}>
