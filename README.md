@@ -1,102 +1,115 @@
-# 🌾 Sistema de Arbitragem Agrícola Inteligente
+# 🚀 AgroArbitrage AI (Protótipo v0.1)
 
-## 📋 Descrição
-Plataforma web de inteligência artificial para identificar oportunidades de arbitragem no mercado agrícola brasileiro, cruzando dados climáticos, preços regionais e volumetria. Prototipado para uso em tomadas de decisão rápidas para produtores e consultores.
+> **Plataforma de Inteligência Estratégica para Arbitragem Agrícola.**
+> Transformando dados climáticos e de mercado em oportunidades de lucro líquido.
 
-## 🗂️ Estrutura do Projeto
+![React](https://img.shields.io/badge/React-18-blue) ![Leaflet](https://img.shields.io/badge/Maps-Leaflet-green) ![Chart.js](https://img.shields.io/badge/Data-Chart.js-orange) ![License](https://img.shields.io/badge/Status-MVP_Ready-brightgreen)
 
-agro-ai-prototype/
-├── frontend/    # React app: mapa interativo, dashboard, responsividade mobile/desktop
-├── backend/     # Node.js API (dados, lógica, endpoints)
-├── data/        # GeoJSON IBGE, dados mockados de oportunidades
-└── docs/        # Documentação de funcionalidades, padrões e decisões do projeto
+---
 
-## 🛠️ Stack Tecnológico
-Frontend: React.js - Leaflet.js - Chart.js - CSS Modules
+## 📋 Sobre o Projeto
 
-Backend: Node.js - Express (API REST)
+O **AgroArbitrage AI** é uma ferramenta de suporte à decisão (DSS) projetada para identificar janelas de oportunidade de arbitragem no mercado agrícola brasileiro.
 
-Banco: JSON/SQLite (mock/data real)
+O sistema cruza dados de **preço de compra (origem)**, **preço de venda (destino)** e **variáveis logísticas** para calcular o ROI real de operações, mitigando riscos climáticos e de quebra de safra.
 
-Deploy: Vercel (frontend) - Railway (backend)
+### 🎯 Objetivo do Protótipo
+Validar a tese de que a visualização geoespacial combinada com simulação financeira reduz o tempo de decisão de dias para minutos.
 
-Design: Figma (protótipos UI/UX)
+---
 
-## 📈 Principais Funcionalidades
+## ✨ Funcionalidades Principais
 
-Mapa interativo: Visualização geográfica das oportunidades, legendas dinâmicas, filtros por estado/município/produto.
+### 1. 🗺️ Inteligência Geoespacial (Mapa Interativo)
+* **Visualização de Clusters:** Marcadores inteligentes que mostram o produto e o ROI instantâneo.
+* **Rotas Logísticas Visuais:** Desenho automático do trajeto entre Origem e Destino com cálculo de distância rodoviária.
+* **Indicadores Visuais:** Cores semânticas para Risco (🟢 Baixo, 🟡 Médio, 🔴 Alto).
+* **Zoom Inteligente:** Ajuste automático de foco ao visualizar uma rota específica.
 
-Sidebar Responsiva: Filtros, navegação e seleção adaptados para desktop/tablet/mobile, com botão flutuante para exibição em resoluções menores.
+### 2. 🧮 Simulador de Logística Avançada
+Calculadora proprietária que vai além da conta de padaria:
+* **Custo de Frete Dinâmico:** Baseado na distância rodoviária (Fator de Sinuosidade 1.35) e preço do diesel.
+* **Gestão de Perdas:** Input para taxa de quebra (%) e dias de armazenamento.
+* **Persistência:** Capacidade de **Salvar Cenários** para comparação posterior (LocalStorage).
 
-Dashboard: Cards estatísticos, gráficos de tendência/ROI, análise de risco e volume.
+### 3. 📊 Dashboard Executivo
+* **KPIs em Tempo Real:** Volume total disponível, ROI médio do portfólio e alertas de risco.
+* **Tendência de Preços:** Gráficos históricos para identificar sazonalidade.
+* **Gestão de Cenários:** Acesso rápido às simulações salvas anteriormente.
 
-Legenda dinâmica: Transparência e destaque interativo, otimizada para mobile.
+### 4. 📄 Exportação de Relatórios (PDF)
+* **Relatórios Executivos:** Geração instantânea de documentos para negociação.
+* **Relatório de Dashboard:** Visão geral do mercado para investidores.
+* **Relatório de Simulação:** Detalhamento de custos, mapa da operação e projeção de lucro líquido.
 
-Header/tabs fixos: Cabeçalho sempre visível, facilitando navegação entre mapa e dashboard.
+### 5. 🔐 Segurança & Acesso
+* Sistema de Login simulado.
+* Controle de sessão e personalização do ambiente (Header com perfil).
 
-## ✅ Problemas resolvidos (v0.1)
-Legenda do mapa era “invasiva” em mobile: agora transparente, destacada ao toque, sempre visível mas não cobre área útil.
+---
 
-Sidebar inacessível em dispositivos móveis: botão flutuante adicionado, garantindo abertura fácil.
+## 🛠️ Arquitetura Técnica
 
-Header/tabs sumiam após interações com o mapa: estrutura reorganizada, header fixo e visível em qualquer contexto.
+Este projeto segue uma arquitetura **Frontend-First** robusta, preparada para escalabilidade:
 
-## 🚦 Testes & Uso
-Testes realizados em Chrome DevTools (simulador de dispositivos), desktop e mobile real.
+```mermaid
+graph TD
+    A[UI Components] --> B[Service Layer]
+    B --> C{Data Source}
+    C -->|Protótipo| D[Mock Data / LocalStorage]
+    C -->|Produção| E[API Python/Node]
+```
 
-Scroll do dashboard garantido após ajustes de container, margin-top e overflow.
+* **Service Layer Pattern:** Toda a lógica de negócios (cálculo de ROI, busca de dados, persistência, PDF) está isolada em `src/services`. Os componentes visuais (`MapView`, `Dashboard`) apenas renderizam dados. Isso permite plugar um Backend real no futuro sem refazer o Frontend.
+* **Layout App-Like:** Utilização de CSS Flexbox avançado para garantir uma experiência de aplicativo nativo (sem conflitos de scroll entre mapa e página).
+* **Componentização:** Estrutura modular (`components/Map`, `components/Calculator`, `components/Auth`) facilitando manutenção e testes.
 
-UI testada para responsividade, sobreposição e usabilidade em todos os fluxos principais.
+### Stack Tecnológico
+* **Core:** React.js (Create React App)
+* **Mapas:** React-Leaflet + OpenStreetMap
+* **Gráficos:** Chart.js + React-Chartjs-2
+* **Relatórios:** jsPDF + AutoTable
+* **Estilização:** CSS Modules / Global Styles (Dark Theme)
 
-## 📝 Como rodar
+---
 
-bash
+## 🚀 Como Rodar
 
-### Instalar dependências
-cd frontend
-npm install
+### Pré-requisitos
+* Node.js instalado (v16 ou superior)
 
-### Rodar app local
-npm start
-Backend (mock dados):
+### Passo a Passo
 
-bash
+1.  **Clone o repositório**
+    ```bash
+    git clone [https://github.com/seu-usuario/agro-ai-prototype.git](https://github.com/seu-usuario/agro-ai-prototype.git)
+    cd agro-ai-prototype/frontend
+    ```
 
-cd backend
-npm install
-npm run dev
-Acesse http://localhost:3000.
+2.  **Instale as dependências**
+    ```bash
+    npm install
+    
 
-## 💡 Padrões & Diretrizes de Código
-Componentização clara com arquivos de estilo separados por página (ex: mapview.css, dashboard.css).
+3.  **Inicie a aplicação**
+    ```bash
+    npm start
 
-Variáveis globais para cores, espaçamento e breakpoints.
+    O sistema abrirá em `http://localhost:3000`.
 
-Classes dedicadas para elementos dinâmicos (legend, sidebar, controls).
+### 🔑 Credenciais de Acesso (Demo)
+Para acessar o protótipo, utilize as credenciais de sócio:
+* **E-mail:** `paulo@agro.com`
+* **Senha:** `123456`
 
-Utilize sempre media queries para garantir UX ideal em mobile/tablet/desktop.
+---
 
-Documentação de decisões visuais e técnicas disponível em docs/.
+## 📅 Roadmap (Próximos Passos)
 
-## 📸 Screenshots
+* [ ] **Fase 2 (Backend):** Integração com API Python para modelos de IA.
+* [ ] **Dados Vivos:** Conexão com APIs da CONAB e INPE (Clima).
+* [ ] **Alertas Push:** Notificação via WhatsApp para oportunidades urgentes.
 
-### Mapa Interativo
-![Mapa Interativo](docs/screenshot-map.png)
+---
 
-### Dashboard Analítico
-![Dashboard](docs/screenshot-dashboard.png)
-
-### Responsividade (Mobile)
-![Mobile](docs/screenshot-mobile.png)
-
-## 🙋‍♂️ Desenvolvedor
-Gabriel Rodrigues
-
-## 📞 Cliente
-Paulo – Sistema IA Agrícola
-
-## 🏁 Timeline
-Protótipo: 14/11 - 28/11 (2 semanas)
-
-Versão final: +4 semanas após aprovação
-
+Desenvolvido com 💻 e ☕ por **Gabriel Rodrigues**.
