@@ -2,8 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import MapView from './components/Map/MapView';
 import Sidebar from './components/Sidebar/Sidebar';
 import Dashboard from './components/Dashboard/Dashboard';
-// 1. Importamos nossa nova camada de serviço
 import { OpportunityService } from './services/opportunityService';
+import RoiCalculator from './components/Calculator/RoiCalculator';
 
 function App() {
   // 2. Novos estados para controlar os dados e o carregamento
@@ -134,6 +134,13 @@ function App() {
             >
               📊 DASHBOARD
             </button>
+            {/* NOVA ABA AQUI 👇 */}
+            <button
+              onClick={() => setActiveTab('calculator')}
+              className={`tab-btn ${activeTab === 'calculator' ? 'active' : ''}`}
+            >
+              🧮 SIMULADOR
+            </button>
           </div>
 
           <div className="tab-content">
@@ -165,6 +172,10 @@ function App() {
                 // 4. Passamos os dados para o Dashboard
                 opportunities={opportunities}
               />
+            )}
+            {/* NOVO CONTEÚDO 👇 */}
+            {activeTab === 'calculator' && (
+              <RoiCalculator />
             )}
           </div>
         </div>
