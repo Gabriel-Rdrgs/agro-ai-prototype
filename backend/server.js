@@ -3,6 +3,8 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios'); // <--- O "Navegador" do servidor
 const { PrismaClient } = require('@prisma/client');
+const authController = require('./authController');
+const authMiddleware = require('./authMiddleware');
 
 const app = express();
 const prisma = new PrismaClient();
@@ -38,6 +40,10 @@ async function getWeather(lat, lng) {
     return null;
   }
 }
+// --- ROTAS DE AUTENTICAÇÃO ---
+app.post('/api/auth/register', authController.register);
+app.post('/api/auth/login', authController.login);
+
 
 // --- ROTAS DA API ---
 
@@ -46,7 +52,7 @@ app.get('/', (req, res) => {
 });
 
 // Rota Principal: Oportunidades + Dólar
-app.get('/api/opportunities', async (req, res) => {
+app.get('/api/opportunities', authMiddleware, async (req, res) => {
   try {
     // 1. Busca dados no Banco Local (SQLite)
     const opportunities = await prisma.opportunity.findMany();
@@ -72,7 +78,7 @@ app.get('/api/opportunities', async (req, res) => {
 });
 
 // Rota de Detalhe: Clima Local (Chamada quando clica no mapa)
-app.get('/api/weather', async (req, res) => {
+app.get('/api/weather', authMiddleware, async (req, res) => {
   const { lat, lng } = req.query;
 
   if (!lat || !lng) {
@@ -94,5 +100,5 @@ app.get('/api/weather', async (req, res) => {
 
 const PORT = 3001;
 app.listen(PORT, () => {
-  console.log(`🔥 Servidor rodando em http://localhost:${PORT}`);
+  console.log(`🔥 Servidor Inteligente rodando em http://localhost:${PORT}`);
 });

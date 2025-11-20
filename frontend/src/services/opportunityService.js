@@ -4,6 +4,7 @@
 // Se estiver rodando localmente, usa a porta 3001
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
+// Fatores para cálculo logístico
 const ROAD_FACTOR = 1.35;
 
 const DESTINATIONS = {
@@ -19,8 +20,15 @@ const DESTINATIONS = {
   'Paraná': { lat: -25.4284, lng: -49.2733 }
 };
 
+// Helper para pegar o token de autenticação do localStorage
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('token');
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
+};
+
+// Função auxiliar para cálculo de distância linear (Haversine)
 const calculateLinearDistance = (lat1, lon1, lat2, lon2) => {
-  const R = 6371; 
+  const R = 6371; // Raio da Terra em km
   const dLat = (lat2 - lat1) * (Math.PI / 180);
   const dLon = (lon2 - lon1) * (Math.PI / 180);
   const a = 
@@ -31,18 +39,31 @@ const calculateLinearDistance = (lat1, lon1, lat2, lon2) => {
 };
 
 export const OpportunityService = {
-  // Busca todas as oportunidades do Backend
+  // --- 1. BUSCA DE DADOS (API) ---
+  
   getAll: async () => {
     try {
-      const response = await fetch(`${API_URL}/opportunities`);
+      // Faz a requisição enviando o Token de Segurança
+      const response = await fetch(`${API_URL}/opportunities`, {
+        headers: getAuthHeaders()
+      });
+
+      // Se der erro de autenticação (401/403), podemos lançar erro específico
+      if (response.status === 401 || response.status === 403) {
+         console.warn("Sessão expirada ou token inválido");
+         // Em um app real, redirecionaríamos para login aqui
+      }
+
       if (!response.ok) throw new Error('Falha na conexão com API');
       
       const data = await response.json();
 
+      // ADAPTER: Transforma os dados do Banco para o formato do Frontend
       return data.map(opp => {
         const buy = Number(opp.buyPrice);
         const sell = Number(opp.sellPrice);
         
+        // Calcula o ROI dinamicamente (pois o banco não salva isso)
         let calculatedRoi = 0;
         if (buy > 0) {
             calculatedRoi = ((sell - buy) / buy) * 100;
@@ -50,11 +71,13 @@ export const OpportunityService = {
 
         return {
           ...opp,
+          // Junta lat/lng num array para o Leaflet
           position: [opp.lat, opp.lng],
           sellPosition: (opp.destLat && opp.destLng) ? [opp.destLat, opp.destLng] : null,
           buyPrice: buy,
           sellPrice: sell,
           roi: Math.round(calculatedRoi),
+          // Passa os dados extras de inteligência (Dólar)
           priceUsd: opp.priceUsd, 
           currentDollar: opp.dollarRate 
         };
@@ -70,10 +93,13 @@ export const OpportunityService = {
     return all.find(op => op.id === id);
   },
 
-  // 🚀 A FUNÇÃO QUE FALTAVA: BUSCAR CLIMA
+  // --- 2. INTEGRAÇÃO CLIMÁTICA ---
+  
   getWeather: async (lat, lng) => {
     try {
-        const response = await fetch(`${API_URL}/weather?lat=${lat}&lng=${lng}`);
+        const response = await fetch(`${API_URL}/weather?lat=${lat}&lng=${lng}`, {
+            headers: getAuthHeaders()
+        });
         if (!response.ok) return null;
         return await response.json();
     } catch (error) {
@@ -82,12 +108,14 @@ export const OpportunityService = {
     }
   },
 
-  // Cálculo de ROI e Logística
+  // --- 3. SIMULADOR (LÓGICA DE NEGÓCIO LOCAL) ---
+  
   calculateROI: async ({ 
     buyPrice, sellPrice, volume, originCoords, destinationName, 
     dieselPrice = 6.50, truckConsumption = 3.5, spoilageRate = 0, 
     storageDays = 0, storageCostPerDay = 15 
   }) => {
+    // Simula um pequeno delay para parecer "pensamento" da IA
     await new Promise(resolve => setTimeout(resolve, 400)); 
 
     const volumeKg = volume * 1000;
@@ -97,23 +125,32 @@ export const OpportunityService = {
     let freightCost = 0;
     let roadDistanceKm = 0;
 
+    // Busca coordenadas do destino no mapa estático (fallback)
     const destCoords = DESTINATIONS[destinationName] || { lat: -23.55, lng: -46.63 };
     
     if (originCoords && originCoords.length === 2) {
+      // 1. Calcula distância linear
       const linearDist = calculateLinearDistance(originCoords[0], originCoords[1], destCoords.lat, destCoords.lng);
+      // 2. Aplica fator de sinuosidade para estimar estrada real
       roadDistanceKm = linearDist * ROAD_FACTOR;
 
+      // 3. Calcula diesel
       const litersNeeded = roadDistanceKm / truckConsumption;
       const singleTripCost = litersNeeded * dieselPrice;
-      freightCost = singleTripCost * 1.1; 
       
+      // Custo Ida + 10% amortização volta
+      let tripCost = singleTripCost * 1.1; 
+      
+      // Ajuste por volume (Caminhão Truck ~25ton)
       const trucksNeeded = Math.max(1, Math.ceil(volume / 25));
-      freightCost = freightCost * trucksNeeded;
+      freightCost = tripCost * trucksNeeded;
     } else {
+      // Fallback seguro se não tiver coordenadas
       freightCost = 2000 * (volume / 10); 
       roadDistanceKm = 1500;
     }
 
+    // Cálculos finais
     const lostRevenue = grossRevenue * (spoilageRate / 100);
     const netRevenue = grossRevenue - lostRevenue;
     const totalStorageCost = storageDays * storageCostPerDay * volume;

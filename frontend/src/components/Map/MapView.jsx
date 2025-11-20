@@ -91,10 +91,12 @@ const MapView = React.forwardRef((props, ref) => {
         handleSelection(props.selectedOpportunity);
     }
   }, [props.selectedOpportunity]);
-
+  const [weatherLoading, setWeatherLoading] = useState(false);
   // Função centralizada de seleção
-  const handleSelection = (opp) => {
-      setWeatherData(null); // Reseta clima anterior
+const handleSelection = (opp) => {
+      setWeatherData(null); 
+      setWeatherLoading(true); // 1. Inicia loading
+      
       setMapCenter(opp.position);
       setMapZoom(6);
       setActiveMarkerId(opp.id);
@@ -102,10 +104,15 @@ const MapView = React.forwardRef((props, ref) => {
       setSelectedState(opp.state);
       setMapBounds(null);
 
-      // Busca Clima Real
       if (opp.position && opp.position.length === 2) {
           OpportunityService.getWeather(opp.position[0], opp.position[1])
-            .then(data => setWeatherData(data));
+            .then(data => {
+                setWeatherData(data);
+                setWeatherLoading(false); // 2. Termina loading
+            })
+            .catch(() => setWeatherLoading(false));
+      } else {
+          setWeatherLoading(false);
       }
   };
 
@@ -406,15 +413,17 @@ return (
                 </div>
 
                 {/* 🚀 CLIMA EM TEMPO REAL */}
-                <div style={{ padding: '8px', background: '#eff6ff', borderRadius: '4px', marginBottom: '10px' }}>
-                  <span style={{ fontSize: '12px', color: '#1e40af' }}>
-                    {/* Se já temos weatherData para ESTE item, mostra. Se não, mostra o mock ou 'Carregando...' */}
-                    {selectedOpportunity && selectedOpportunity.id === opp.id && weatherData 
-                        ? `${getWeatherDesc(weatherData.code).icon} ${weatherData.temp}°C • ${getWeatherDesc(weatherData.code).text}`
-                        : `🌤️ ${opp.climate || 'Análise Climática'}` 
-                    }
-                  </span>
-                </div>
+                <div style={{ padding: '8px', background: '#eff6ff', borderRadius: '4px', marginBottom: '10px', minHeight: '35px', display: 'flex', alignItems: 'center' }}>
+    <span style={{ fontSize: '12px', color: '#1e40af' }}>
+      {weatherLoading ? (
+          <span>⏳ Conectando satélite...</span>
+      ) : (selectedOpportunity && selectedOpportunity.id === opp.id && weatherData) ? (
+          <span>{getWeatherDesc(weatherData.code).icon} <b>{weatherData.temp}°C</b> • {getWeatherDesc(weatherData.code).text}</span>
+      ) : (
+          <span>🌤️ {opp.climate || 'Sem dados locais'}</span> 
+      )}
+    </span>
+  </div>
 
                 <div style={{ fontSize: '11px', color: theme.colors.textMuted, lineHeight: '1.4', marginTop: '10px', padding: '8px', background: `${theme.colors.background}99`, borderRadius: '4px' }}>
                   {opp.description}

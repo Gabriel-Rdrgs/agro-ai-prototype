@@ -39,3 +39,12 @@ model Opportunity {
 
   createdAt   DateTime @default(now())
 }
+// Tabela de Usuários (NOVO)
+model User {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String   @unique
+  password  String   // Será salva criptografada (hash)
+  role      String   @default("analyst") // admin, analyst, viewer
+  createdAt DateTime @default(now())
+}
