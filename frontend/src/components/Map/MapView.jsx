@@ -1,5 +1,6 @@
 import React, { useState, useImperativeHandle, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap, GeoJSON, Polyline } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, GeoJSON, Polyline, Tooltip } from 'react-leaflet';
+import MarkerClusterGroup from 'react-leaflet-cluster';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import theme from '../../styles/theme';
@@ -7,7 +8,7 @@ import { createRiskIcon } from '../../data/mapIcons';
 import { OpportunityService } from '../../services/opportunityService';
 import "../../styles/mapview.css"; 
 
-// Fix Leaflet icon para React
+// Fix Leaflet icon
 delete L.Icon.Default.prototype._getIconUrl;
 
 // --- 1. ÍCONES PERSONALIZADOS ---
@@ -23,7 +24,7 @@ const destIcon = new L.Icon({
     iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
 });
 
-// --- HELPER: Tradutor de Clima (WMO Codes) ---
+// --- HELPER: Tradutor de Clima ---
 const getWeatherDesc = (code) => {
     if (code === undefined) return { icon: '🌤️', text: 'Buscando...' };
     if (code <= 3) return { icon: '☀️', text: 'Céu Limpo/Parcial' };
@@ -35,7 +36,7 @@ const getWeatherDesc = (code) => {
     return { icon: '☁️', text: 'Nublado' };
 };
 
-// --- 2. CONTROLADOR DE MAPA (ZOOM E PAN) ---
+// --- 2. CONTROLADOR DE MAPA ---
 const MapController = ({ center, zoom, bounds }) => {
   const map = useMap();
   useEffect(() => {
@@ -51,6 +52,7 @@ const MapController = ({ center, zoom, bounds }) => {
 const MapView = React.forwardRef((props, ref) => {
   const { opportunities = [], customRoute, onClearRoute } = props;
 
+  // Estados
   const [geojsonMunicipios, setGeojsonMunicipios] = useState(null);
   const [geojsonStates, setGeojsonStates] = useState(null);
   const [mapStyle, setMapStyle] = useState('padrao');
@@ -63,16 +65,57 @@ const MapView = React.forwardRef((props, ref) => {
   const [selectedState, setSelectedState] = useState(null);
   const [legendVisible, setLegendVisible] = useState(false); 
   
-  // Novo Estado: Clima
   const [weatherData, setWeatherData] = useState(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  
+  // 1. Estado para saber se o mouse está em cima da linha
+  const [hoveredFlowId, setHoveredFlowId] = useState(null);
+  const [timeHorizon, setTimeHorizon] = useState(0); // 0 = Hoje, 7 = +7d, 30 = +30d
+  
+  // --- LÓGICA DO SLIDER TEMPORAL ---
+  // Simula a mudança de ROI baseada no tempo (apenas para visualização)
+  const getSimulatedOpportunities = () => {
+    if (timeHorizon === 0) return opportunities; // Hoje = Dados Reais
 
+    return opportunities.map(opp => {
+        // Cria uma variação determinística baseada no ID para simular volatilidade
+        const variation = 1 + ((opp.id % 5) - 2) * (timeHorizon / 100); 
+        return {
+            ...opp,
+            roi: Math.round(opp.roi * variation),
+            riskLevel: variation < 0.9 ? Math.min(3, opp.riskLevel + 1) : opp.riskLevel
+        };
+    });
+  };
+
+  const currentOpportunities = getSimulatedOpportunities();
+
+  
+
+  // 2. Filtra as melhores oportunidades (>50% ROI) para mostrar linhas automáticas
+  // Só mostra se não tiver nenhuma rota customizada ou seleção ativa
+  const topFlows = !customRoute && !selectedOpportunity 
+    ? opportunities.filter(op => op.roi > 50 && op.sellPosition) 
+    : [];
+
+  // 3. Define a cor e estilo da linha (Verde Neon ou Amarelo)
+  const getFlowStyle = (flow, isHovered) => {
+      const isHighRoi = flow.roi > 100;
+      return {
+          color: isHighRoi ? '#39ff14' : '#ffd700', // #39ff14 = Neon Green
+          weight: isHovered ? 4 : 2, // Fica mais grossa no hover
+          opacity: isHovered ? 1 : 0.5, // Fica mais opaca no hover
+          dashArray: isHovered ? null : '5, 10' // Tracejado normal, sólida no hover
+      };
+  };
+  
   const brazilCenter = [-14.235, -51.9253];
 
-  // Carrega dados geográficos
+  // Carrega GeoJSONs
   useEffect(() => { fetch('/municipios.geojson').then(r=>r.json()).then(setGeojsonMunicipios); }, []);
   useEffect(() => { fetch('/estados.geojson').then(r=>r.json()).then(setGeojsonStates); }, []);
 
-  // --- EFEITO: ROTA CUSTOMIZADA (SIMULADOR) ---
+  // Efeito Rota
   useEffect(() => {
     if (customRoute) {
       const bounds = L.latLngBounds([customRoute.origin, customRoute.destination]);
@@ -91,12 +134,10 @@ const MapView = React.forwardRef((props, ref) => {
         handleSelection(props.selectedOpportunity);
     }
   }, [props.selectedOpportunity]);
-  const [weatherLoading, setWeatherLoading] = useState(false);
+
   // Função centralizada de seleção
-const handleSelection = (opp) => {
-      setWeatherData(null); 
-      setWeatherLoading(true); // 1. Inicia loading
-      
+  const handleSelection = (opp) => {
+      setWeatherData(null); // Reseta clima anterior
       setMapCenter(opp.position);
       setMapZoom(6);
       setActiveMarkerId(opp.id);
@@ -106,15 +147,16 @@ const handleSelection = (opp) => {
 
       if (opp.position && opp.position.length === 2) {
           OpportunityService.getWeather(opp.position[0], opp.position[1])
-            .then(data => {
-                setWeatherData(data);
-                setWeatherLoading(false); // 2. Termina loading
-            })
-            .catch(() => setWeatherLoading(false));
-      } else {
-          setWeatherLoading(false);
+            .then(data => setWeatherData(data));
       }
   };
+
+  // Efeito Seleção via Props
+  useEffect(() => {
+    if (props.selectedOpportunity) {
+        handleSelection(props.selectedOpportunity);
+    }
+  }, [props.selectedOpportunity]);
 
   useImperativeHandle(ref, () => ({
     focusOpportunity: (opportunity) => {
@@ -221,9 +263,39 @@ return (
           <option value="satelite">Satélite</option>
         </select>
       </div>
-
+{/* 🚀 SLIDER TEMPORAL (NOVO) */}
+      {!customRoute && (
+        <div className="time-slider-container fade-in" style={{
+            position: 'absolute', bottom: 30, left: '50%', transform: 'translateX(-50%)',
+            width: '90%', maxWidth: '400px', zIndex: 2000,
+            background: 'rgba(15, 23, 42, 0.9)', backdropFilter: 'blur(8px)',
+            borderRadius: '16px', padding: '15px 20px', border: '1px solid #334155',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
+        }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', fontSize: '12px', color: '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                <span style={{ color: timeHorizon === 0 ? '#00d9ff' : 'inherit' }}>Hoje</span>
+                <span style={{ color: timeHorizon === 7 ? '#00d9ff' : 'inherit' }}>+7 Dias</span>
+                <span style={{ color: timeHorizon === 30 ? '#00d9ff' : 'inherit' }}>+30 Dias</span>
+            </div>
+            <input 
+                type="range" min="0" max="30" step="7"
+                value={timeHorizon}
+                onChange={(e) => {
+                    const val = Number(e.target.value);
+                    // "Snap" para valores fixos para melhor demo
+                    if (val < 4) setTimeHorizon(0);
+                    else if (val < 20) setTimeHorizon(7);
+                    else setTimeHorizon(30);
+                }}
+                style={{ width: '100%', cursor: 'pointer', accentColor: '#00d9ff' }}
+            />
+            <div style={{ textAlign: 'center', marginTop: '8px', fontSize: '11px', color: '#00d9ff' }}>
+                {timeHorizon === 0 ? '⚡ Dados em Tempo Real' : `🔮 Projeção Futura: +${timeHorizon} dias`}
+            </div>
+        </div>
+      )}
       <MapContainer
-        center={brazilCenter}
+        center={brazilCenter} // 🔥 Usa a constante definida na Parte 1
         zoom={4}
         style={{ height: '100%', width: '100%' }}
         scrollWheelZoom={true} 
@@ -276,7 +348,7 @@ return (
 
         <TileLayer attribution='&copy; OpenStreetMap' url={mapStyle === 'padrao' ? 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png' : mapStyle === 'dark' ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'} />
 
-        {/* DESTAQUE DO MUNICÍPIO */}
+        {/* 🔥 DESTAQUE DO MUNICÍPIO SELECIONADO (CORREÇÃO) 🔥 */}
         {geojsonMunicipios && selectedOpportunity && (
           <GeoJSON
             key={selectedOpportunity.id || selectedOpportunity.city}
@@ -289,7 +361,7 @@ return (
               })
             }}
             style={() => ({
-              fillColor: theme.colors.secondary,
+              fillColor: theme.colors.secondary, // Amarelo/Laranja do tema
               color: theme.colors.secondary,
               weight: 5,
               fillOpacity: 0.28,
@@ -298,7 +370,38 @@ return (
             })}
           />
         )}
-
+        {/* 🔥 TRADE FLOW: LINHAS AUTOMÁTICAS 🔥 */}
+        {topFlows.map(flow => (
+          <Polyline 
+            key={`flow-${flow.id}`}
+            positions={[flow.position, flow.sellPosition]}
+            pathOptions={getFlowStyle(flow, hoveredFlowId === flow.id)}
+            eventHandlers={{
+                mouseover: () => setHoveredFlowId(flow.id),
+                mouseout: () => setHoveredFlowId(null),
+                click: () => {
+                   // Ao clicar na linha, foca na oportunidade
+                   // Usa a mesma lógica que você já tem no handleSelection
+                   // Se a função handleSelection estiver definida acima, chame-a:
+                   // handleSelection(flow);
+                   
+                   // Se não tiver acesso direto à handleSelection aqui por escopo, 
+                   // copie a lógica de setMapCenter, etc.
+                   ref.current.focusOpportunity(flow);
+                }
+            }}
+          >
+             <Tooltip sticky direction="top" opacity={1}>
+               <div style={{ textAlign: 'center', fontFamily: theme.font, padding: '4px' }}>
+                 <strong style={{ color: theme.colors.textPrimary }}>{flow.product}</strong><br/>
+                 <span style={{ color: flow.roi > 100 ? '#39ff14' : '#ffd700', fontWeight: 'bold' }}>
+                    Lucro Est: R$ {((flow.sellPrice - flow.buyPrice) * 1000).toLocaleString()}
+                 </span>
+               </div>
+             </Tooltip>
+          </Polyline>
+        ))}
+        {/* 🔥 FIM DO TRADE FLOW 🔥 */}
         {/* ROTA CUSTOMIZADA (Simulador) */}
         {customRoute && (
             <>
@@ -347,96 +450,78 @@ return (
           </>
         )}
         
-        {/* MARCADORES PRINCIPAIS */}
-        {!customRoute && opportunities.map((opp) => (
-          <Marker
-            key={opp.id}
-            position={opp.position}
-            icon={createRiskIcon(opp.roi, opp.riskLevel)}
-            eventHandlers={{
-              click: () => {
-                setSelectedOpportunity(opp);
-                setActiveMarkerId(opp.id);
-                setSelectedState(opp.state);
-                setMapCenter(opp.position);
-                setMapZoom(6);
-              },
-              // 🔥 LIMPEZA DE SELEÇÃO AO FECHAR O POPUP
-              popupclose: () => {
-                setSelectedOpportunity(prev => (prev?.id === opp.id ? null : prev));
-                setSelectedState(prev => (prev === opp.state ? null : prev));
-                setActiveMarkerId(prev => (prev === opp.id ? null : prev));
-              }
+        {/* 🔥 MARCADORES PRINCIPAIS (COM CLUSTERING) 🔥 */}
+        {!customRoute && (
+          <MarkerClusterGroup
+            chunkedLoading
+            showCoverageOnHover={false}
+            spiderfyOnMaxZoom={true}
+            polygonOptions={{
+                fillColor: theme.colors.accent,
+                color: theme.colors.accent,
+                weight: 1,
+                opacity: 0.5,
+                fillOpacity: 0.2
             }}
           >
-            <Popup maxWidth={350} minWidth={250} autoPanPadding={[50, 50]}>
-              <div style={{
-                padding: '8px',
-                fontFamily: theme.font,
-                background: `${theme.colors.background}F2`,
-                color: theme.colors.textPrimary,
-                borderRadius: '12px',
-                boxShadow: theme.colors.cardGlow
-              }}>
-                <div style={{ borderBottom: `2px solid ${theme.colors.accent}`, paddingBottom: '10px', marginBottom: '12px' }}>
-                  <h3 style={{ margin: '0 0 5px 0', color: theme.colors.accent, fontSize: '16px', fontWeight: 'bold', letterSpacing: '1.5px' }}>
-                    {opp.product}
-                  </h3>
-                  <p style={{ margin: '0', fontSize: '13px', color: theme.colors.textMuted }}>
-                    📍 {opp.city}, {opp.state}
-                  </p>
-                </div>
+            {currentOpportunities.map((opp) => (
+              <Marker
+                key={opp.id}
+                position={opp.position}
+                icon={createRiskIcon(opp.roi, opp.riskLevel)}
+                eventHandlers={{
+                  click: () => { handleSelection(opp); },
+                  popupclose: () => {
+                    // Só limpa se for o item atual
+                    setSelectedOpportunity(prev => (prev?.id === opp.id ? null : prev));
+                    setSelectedState(prev => (prev === opp.state ? null : prev));
+                    setActiveMarkerId(prev => (prev === opp.id ? null : prev));
+                  }
+                }}
+              >
+                <Popup maxWidth={350} minWidth={250} autoPanPadding={[50, 50]}>
+                  <div style={{padding:'8px',fontFamily:theme.font,background:`${theme.colors.background}F2`,color:theme.colors.textPrimary,borderRadius:'12px',boxShadow:theme.colors.cardGlow}}>
+                    <div style={{borderBottom:`2px solid ${theme.colors.accent}`,paddingBottom:'10px',marginBottom:'12px'}}>
+                      <h3 style={{margin:'0 0 5px 0',color:theme.colors.accent,fontSize:'16px',fontWeight:'bold',letterSpacing:'1.5px'}}>{opp.product}</h3>
+                      <p style={{margin:'0',fontSize:'13px',color:theme.colors.textMuted}}>📍 {opp.city}, {opp.state}</p>
+                    </div>
 
-                <div style={{ background: opp.roi >= 100 ? '#dcfce7' : opp.roi >= 50 ? '#fef3c7' : '#fee2e2', padding: '8px 12px', borderRadius: '6px', marginBottom: '12px', textAlign: 'center' }}>
-                  <span style={{ fontSize: '20px', fontWeight: 'bold', color: opp.roi >= 100 ? '#15803d' : opp.roi >= 50 ? '#b45309' : '#dc2626' }}>
-                    🎯 {opp.roi}% ROI
-                  </span>
-                </div>
+                    <div style={{background:opp.roi>=100?'#dcfce7':opp.roi>=50?'#fef3c7':'#fee2e2',padding:'8px 12px',borderRadius:'6px',marginBottom:'12px',textAlign:'center'}}>
+                      <span style={{fontSize:'20px',fontWeight:'bold',color:opp.roi>=100?'#15803d':opp.roi>=50?'#b45309':'#dc2626'}}>
+                        🎯 {opp.roi}% ROI
+                      </span>
+                    </div>
 
-                <div style={{ marginBottom: '12px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', padding: '6px', background: `${theme.colors.background}99`, borderRadius: '4px' }}>
-                    <span style={{ fontSize: '12px', fontWeight: '600', color: theme.colors.textPrimary }}>💰 Compra:</span>
-                    <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#22c55e' }}>{formatPrice(opp.buyPrice)}/kg</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', padding: '6px', background: `${theme.colors.background}99`, borderRadius: '4px' }}>
-                    <span style={{ fontSize: '12px', fontWeight: '600', color: theme.colors.textPrimary }}>💵 Venda:</span>
-                    <span style={{ fontSize: '12px', fontWeight: 'bold', color: theme.colors.accent }}>{formatPrice(opp.sellPrice)}/kg</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', padding: '6px', background: `${theme.colors.background}99`, borderRadius: '4px' }}>
-                    <span style={{ fontSize: '12px', fontWeight: '600', color: theme.colors.textPrimary }}>🚛 Destino:</span>
-                    <span style={{ fontSize: '12px', color: theme.colors.textMuted }}>{opp.sellLocation}</span>
-                  </div>
-                </div>
+                    <div style={{marginBottom:'12px'}}>
+                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:'8px',padding:'6px',background:`${theme.colors.background}99`,borderRadius:'4px'}}><span style={{fontSize:'12px',fontWeight:'600',color:theme.colors.textPrimary}}>💰 Compra:</span><span style={{fontSize:'12px',fontWeight:'bold',color:'#22c55e'}}>{formatPrice(opp.buyPrice)}/kg</span></div>
+                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:'8px',padding:'6px',background:`${theme.colors.background}99`,borderRadius:'4px'}}><span style={{fontSize:'12px',fontWeight:'600',color:theme.colors.textPrimary}}>💵 Venda:</span><span style={{fontSize:'12px',fontWeight:'bold',color:theme.colors.accent}}>{formatPrice(opp.sellPrice)}/kg</span></div>
+                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:'8px',padding:'6px',background:`${theme.colors.background}99`,borderRadius:'4px'}}><span style={{fontSize:'12px',fontWeight:'600',color:theme.colors.textPrimary}}>🚛 Destino:</span><span style={{fontSize:'12px',color:theme.colors.textMuted}}>{opp.sellLocation}</span></div>
+                    </div>
 
                 <div style={{ padding: '8px', background: opp.riskLevel === 1 ? '#22c55e20' : opp.riskLevel === 2 ? `${theme.colors.secondary}20` : '#fee2e2', borderLeft: `4px solid ${opp.riskLevel === 1 ? '#22c55e' : opp.riskLevel === 2 ? theme.colors.secondary : '#dc2626'}`, borderRadius: '4px', marginBottom: '10px' }}>
                   <span style={{ fontSize: '12px', fontWeight: '600', color: theme.colors.textPrimary }}>⚠️ Risco: {opp.risk}</span>
                 </div>
 
                 {/* 🚀 CLIMA EM TEMPO REAL */}
-                <div style={{ padding: '8px', background: '#eff6ff', borderRadius: '4px', marginBottom: '10px', minHeight: '35px', display: 'flex', alignItems: 'center' }}>
+                <div style={{ padding: '8px', background: '#eff6ff', borderRadius: '4px', marginBottom: '10px' }}>
                   <span style={{ fontSize: '12px', color: '#1e40af' }}>
-                    {weatherLoading ? (
-                  <span>⏳ Conectando satélite...</span>
-                  ) : (selectedOpportunity && selectedOpportunity.id === opp.id && weatherData) ? (
-                  <span>{getWeatherDesc(weatherData.code).icon} <b>{weatherData.temp}°C</b> • {getWeatherDesc(weatherData.code).text}</span>
-                  ) : (
-                  <span>🌤️ {opp.climate || 'Sem dados locais'}</span> 
-                  )}
-                </span>
-              </div>
-
-                <div style={{ fontSize: '11px', color: theme.colors.textMuted, lineHeight: '1.4', marginTop: '10px', padding: '8px', background: `${theme.colors.background}99`, borderRadius: '4px' }}>
-                  {opp.description}
+                    {/* Se já temos weatherData para ESTE item, mostra. Se não, mostra o mock ou 'Carregando...' */}
+                    {selectedOpportunity && selectedOpportunity.id === opp.id && weatherData 
+                        ? `${getWeatherDesc(weatherData.code).icon} ${weatherData.temp}°C • ${getWeatherDesc(weatherData.code).text}`
+                        : `🌤️ ${opp.climate || 'Análise Climática'}` 
+                    }
+                  </span>
                 </div>
 
-                <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: `1px solid ${theme.colors.textMuted}`, display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: theme.colors.textMuted }}>
-                  <span>📂 {opp.category}</span>
-                  <span>📅 {opp.season}</span>
-                </div>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+                    <div style={{fontSize:'11px',color:theme.colors.textMuted,lineHeight:'1.4',marginTop:'10px',padding:'8px',background:`${theme.colors.background}99`,borderRadius:'4px'}}>{opp.description}</div>
+                    <div style={{marginTop:'12px',paddingTop:'10px',borderTop:`1px solid ${theme.colors.textMuted}`,display:'flex',justifyContent:'space-between',fontSize:'11px',color:theme.colors.textMuted}}><span>📂 {opp.category}</span><span>📅 {opp.season}</span></div>
+                  </div>
+                </Popup>
+              </Marker>
+            ))}
+          </MarkerClusterGroup>
+        )}
+
       </MapContainer>
     </div>
   );

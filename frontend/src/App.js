@@ -5,29 +5,34 @@ import Dashboard from './components/Dashboard/Dashboard';
 import { OpportunityService } from './services/opportunityService';
 import RoiCalculator from './components/Calculator/RoiCalculator';
 import Login from './components/Auth/Login';
+import WeatherDashboard from './components/Weather/WeatherDashboard';
 
 function App() {
-  // 🔐 ESTADO DE AUTENTICAÇÃO
-  const [user, setUser] = useState(null); // null = não logado
+  // --- 1. ESTADOS GLOBAIS ---
+  
+  // Autenticação
+  const [user, setUser] = useState(null);
 
-  // Estados de Dados e Carregamento
+  // Dados da API
   const [opportunities, setOpportunities] = useState([]);
   const [isLoading, setIsLoading] = useState(false); 
 
-  // Estados de Navegação e Funcionalidades
+  // Navegação e Funcionalidades
   const [customRoute, setCustomRoute] = useState(null); // Rota vinda da Calculadora
   const [scenarioToLoad, setScenarioToLoad] = useState(null); // Cenário salvo vindo do Dashboard
   
-  // 💵 Extrai a cotação atual (pega da primeira oportunidade ou usa fallback)
+  // Cotação do Dólar (Extraído da primeira oportunidade ou 0)
   const currentDollar = opportunities.length > 0 ? opportunities[0].dollarRate : 0;
   
-  // Estados de UI
+  // Interface (UI)
   const [showSidebar, setShowSidebar] = useState(window.innerWidth > 768);
   const [activeTab, setActiveTab] = useState('map');
   const mapRef = useRef(null);
   const [selectedOpportunity, setSelectedOpportunity] = useState(null);
 
-  // 1. Carrega dados APENAS quando o usuário loga
+  // --- 2. EFEITOS (SIDE EFFECTS) ---
+
+  // Carrega dados quando o usuário loga
   useEffect(() => {
     if (user) {
       const fetchData = async () => {
@@ -45,7 +50,7 @@ function App() {
     }
   }, [user]);
 
-  // 2. Monitora redimensionamento da tela
+  // Monitora redimensionamento da tela
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth > 768) {
@@ -56,17 +61,17 @@ function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // --- HANDLERS DE AÇÃO ---
+  // --- 3. HANDLERS (FUNÇÕES DE AÇÃO) ---
 
   const handleSelectOpportunity = (opportunity) => {
-    setCustomRoute(null); // Limpa rota se selecionar item da lista
+    setCustomRoute(null); // Limpa rota customizada
     if (mapRef.current) {
       mapRef.current.focusOpportunity(opportunity);
     }
     setSelectedOpportunity(opportunity);
   };
 
-  // Chamado pela Calculadora para mostrar a rota no mapa
+  // Chamado pela Calculadora para mostrar a rota
   const handleVisualizeRoute = (routeData) => {
     console.log("Visualizando rota calculada:", routeData);
     setCustomRoute(routeData);
@@ -79,11 +84,11 @@ function App() {
     setCustomRoute(null);
   };
 
-  // Chamado pelo Dashboard para editar um cenário salvo
+  // Chamado pelo Dashboard para carregar cenário
   const handleLoadScenario = (scenario) => {
     console.log("Carregando cenário:", scenario);
-    setScenarioToLoad(scenario); // Envia dados para a calculadora
-    setActiveTab('calculator');  // Muda a aba
+    setScenarioToLoad(scenario);
+    setActiveTab('calculator');
     if (window.innerWidth <= 768) setShowSidebar(false);
   };
 
@@ -91,93 +96,50 @@ function App() {
     setShowSidebar(prev => !prev);
   };
 
-  // 🔐 LÓGICA DE LOGIN/LOGOUT
+  // Login
   const handleLogin = (userData) => {
     setUser(userData);
   };
 
+  // Logout
   const handleLogout = () => {
     setUser(null);
     setCustomRoute(null);
     setScenarioToLoad(null);
     setActiveTab('map');
+    localStorage.removeItem('token'); // Limpa o token
   };
 
-  // --- RENDERIZAÇÃO CONDICIONAL ---
+  // --- 4. RENDERIZAÇÃO CONDICIONAL (LOGIN/LOADING) ---
 
-  // 1. Se não estiver logado, mostra Login
   if (!user) {
     return <Login onLogin={handleLogin} />;
   }
 
-  // 2. Se estiver carregando dados iniciais
   if (isLoading) {
     return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: '100vh', 
-        backgroundColor: '#0a0e27', 
-        color: '#00d9ff',
-        fontFamily: 'sans-serif'
-      }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#0a0e27', color: '#00d9ff', fontFamily: 'sans-serif' }}>
         <h3>🚀 Carregando Inteligência Agrícola...</h3>
       </div>
     );
   }
-
-  // 3. Aplicação Principal
+// 3. Aplicação Principal
   return (
     <div className="app">
-      {/* Header com Layout Ajustado (Título Centralizado) */}
-      <header className="app-header" style={{ 
-        position: 'relative', 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'center', 
-        padding: '0 2rem',
-        height: 'auto',
-        minHeight: '70px',
-        flexShrink: 0 // Garante que o header não encolha no flex layout
-      }}>
-        {/* Título Centralizado */}
+      {/* Header Fixo */}
+      <header className="app-header" style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 2rem', height: 'auto', minHeight: '70px', flexShrink: 0 }}>
         <div style={{ textAlign: 'center', zIndex: 1 }}>
             <h1 style={{ fontSize: 'clamp(18px, 4vw, 24px)', margin: 0 }}>🚀 AgroArbitrage AI</h1>
             <p style={{ fontSize: '12px', opacity: 0.8, margin: 0 }}>Protótipo v0.1</p>
         </div>
         
         {/* 👤 ÁREA DO USUÁRIO (Fixa na direita) */}
-        <div style={{ 
-            position: 'absolute', 
-            right: '2rem', 
-            top: '50%', 
-            transform: 'translateY(-50%)',
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '15px',
-            zIndex: 2
-        }}>
+        <div style={{ position: 'absolute', right: '2rem', top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center', gap: '15px', zIndex: 2 }}>
             <div style={{ textAlign: 'right', display: window.innerWidth > 768 ? 'block' : 'none' }}>
                 <span style={{ display: 'block', fontSize: '14px', fontWeight: 'bold' }}>Olá, {user.name}</span>
                 <span style={{ fontSize: '11px', color: '#94a3b8' }}>Analista Sênior</span>
             </div>
-            <button 
-                onClick={handleLogout}
-                style={{
-                    background: 'rgba(255,255,255,0.1)', 
-                    border: '1px solid rgba(255,255,255,0.2)', 
-                    color: 'white', 
-                    padding: '8px 12px', 
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '12px',
-                    fontWeight: '600',
-                    transition: 'all 0.2s'
-                }}
-                onMouseOver={(e) => e.target.style.background = 'rgba(255,255,255,0.2)'}
-                onMouseOut={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
-            >
+            <button onClick={handleLogout} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', transition: 'all 0.2s' }} onMouseOver={(e) => e.target.style.background = 'rgba(255,255,255,0.2)'} onMouseOut={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}>
                 Sair
             </button>
         </div>
@@ -186,78 +148,38 @@ function App() {
       <div className="main-content">
         {/* Overlay Mobile */}
         {showSidebar && activeTab === 'map' && window.innerWidth <= 768 && (
-          <div 
-            className="mobile-overlay" 
-            onClick={toggleSidebar}
-            style={{ zIndex: 9998 }} 
-          />
+          <div className="mobile-overlay" onClick={toggleSidebar} style={{ zIndex: 9998 }} />
         )}
 
-        {/* Sidebar (Lista de Oportunidades) */}
+        {/* Sidebar */}
         {showSidebar && activeTab === 'map' && (
           <div className={`sidebar-container ${showSidebar ? 'show-mobile' : ''}`}>
             <div className="sidebar-header">
-              <div>
-                <h2>🌿 Oportunidades</h2>
-                <p>{opportunities.length} encontradas</p>
-              </div>
-              <button
-                onClick={toggleSidebar}
-                className="sidebar-toggle-btn"
-                title="Ocultar lista"
-              >
-                ✕
-              </button>
+              <div><h2>🌿 Oportunidades</h2><p>{opportunities.length} encontradas</p></div>
+              <button onClick={toggleSidebar} className="sidebar-toggle-btn">✕</button>
             </div>
-
             <div className="sidebar-content">
-              <Sidebar
-                onSelectOpportunity={handleSelectOpportunity}
-                hideHeader={true}
-                opportunities={opportunities}
-              />
+              <Sidebar onSelectOpportunity={handleSelectOpportunity} hideHeader={true} opportunities={opportunities} />
             </div>
           </div>
         )}
 
-        {/* Área de Conteúdo (Abas) */}
         <div className="content-wrapper">
-          <div className="tabs-nav">
-            <button
-              onClick={() => setActiveTab('map')}
-              className={`tab-btn ${activeTab === 'map' ? 'active' : ''}`}
-            >
-              🗺️ MAPA
-            </button>
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
-            >
-              📊 DASHBOARD
-            </button>
-            <button
-              onClick={() => setActiveTab('calculator')}
-              className={`tab-btn ${activeTab === 'calculator' ? 'active' : ''}`}
-            >
-              🧮 SIMULADOR
-            </button>
+          {/* --- NAVEGAÇÃO DESKTOP (ABAS NO TOPO) --- */}
+          <div className="tabs-nav desktop-only">
+            <button onClick={() => setActiveTab('map')} className={`tab-btn ${activeTab === 'map' ? 'active' : ''}`}>🗺️ MAPA</button>
+            <button onClick={() => setActiveTab('dashboard')} className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}>📊 DASHBOARD</button>
+            <button onClick={() => setActiveTab('calculator')} className={`tab-btn ${activeTab === 'calculator' ? 'active' : ''}`}>🧮 SIMULADOR</button>
+            <button onClick={() => setActiveTab('Weather')} className={`tab-btn ${activeTab === 'Weather' ? 'active' : ''}`}>⛈️ CLIMA</button>
           </div>
 
           <div className="tab-content">
-            {/* Botão flutuante mobile */}
+            {/* Botão Lista Mobile */}
             {activeTab === 'map' && !showSidebar && (
-              <button
-                onClick={toggleSidebar}
-                className="mobile-show-sidebar-btn"
-              >
-                <span className="icon">📋</span>
-                <span className="text">Lista</span>
-              </button>
+              <button onClick={toggleSidebar} className="mobile-show-sidebar-btn"><span className="icon">📋</span><span className="text">Lista</span></button>
             )}
 
-            {/* --- CONTEÚDO DAS ABAS --- */}
-
-            {/* 1. MAPA */}
+            {/* --- CONTEÚDO --- */}
             {activeTab === 'map' && (
               <div className="map-container">
                 <MapView 
@@ -270,30 +192,50 @@ function App() {
               </div>
             )}
 
-            {/* 2. DASHBOARD */}
             {activeTab === 'dashboard' && (
               <Dashboard
                 setSelectedOpportunity={setSelectedOpportunity}
                 setActiveTab={setActiveTab}
                 opportunities={opportunities}
                 onLoadScenario={handleLoadScenario}
-                // 🚀 NOVA PROP
-                currentDollar={currentDollar} 
+                currentDollar={currentDollar}
               />
             )}
 
-            {/* 3. CALCULADORA */}
             {activeTab === 'calculator' && (
               <RoiCalculator 
                  onVisualizeRoute={handleVisualizeRoute} 
                  initialData={scenarioToLoad}
-                 // 🚀 NOVA PROP
                  currentDollar={currentDollar}
               />
             )}
+            {activeTab === 'Weather' && (
+              <WeatherDashboard opportunities={opportunities} />
+        )}
           </div>
         </div>
       </div>
+
+      {/* --- 🚀 NAVEGAÇÃO MOBILE (RODAPÉ FIXO) --- */}
+      <div className="mobile-bottom-nav">
+        <button onClick={() => setActiveTab('map')} className={`nav-item ${activeTab === 'map' ? 'active' : ''}`}>
+          <span className="icon">🗺️</span>
+          <span className="label">Mapa</span>
+        </button>
+        <button onClick={() => setActiveTab('dashboard')} className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}>
+          <span className="icon">📊</span>
+          <span className="label">Dash</span>
+        </button>
+        <button onClick={() => setActiveTab('calculator')} className={`nav-item ${activeTab === 'calculator' ? 'active' : ''}`}>
+          <span className="icon">🧮</span>
+          <span className="label">Simular</span>
+        </button>
+        <button onClick={() => setActiveTab('Weather')} className={`nav-item ${activeTab === 'Weather' ? 'active' : ''}`}>
+          <span className="icon">⛈️</span>
+          <span className="label">Clima</span>
+        </button>
+      </div>
+
     </div>
   );
 }

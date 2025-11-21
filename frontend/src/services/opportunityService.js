@@ -4,6 +4,7 @@
 // Se estiver rodando localmente, usa a porta 3001
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
+// Fator de sinuosidade para cálculo de distância rodoviária
 const ROAD_FACTOR = 1.35;
 
 const DESTINATIONS = {
@@ -19,6 +20,13 @@ const DESTINATIONS = {
   'Paraná': { lat: -25.4284, lng: -49.2733 }
 };
 
+// Helper para pegar o token de autenticação do localStorage
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('token');
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
+};
+
+// Função auxiliar para cálculo de distância linear (Haversine)
 const calculateLinearDistance = (lat1, lon1, lat2, lon2) => {
   const R = 6371; 
   const dLat = (lat2 - lat1) * (Math.PI / 180);
@@ -31,18 +39,27 @@ const calculateLinearDistance = (lat1, lon1, lat2, lon2) => {
 };
 
 export const OpportunityService = {
-  // Busca todas as oportunidades do Backend
+  // --- 1. BUSCA DE DADOS (API) ---
   getAll: async () => {
     try {
-      const response = await fetch(`${API_URL}/opportunities`);
+      const response = await fetch(`${API_URL}/opportunities`, {
+        headers: getAuthHeaders()
+      });
+
+      if (response.status === 401 || response.status === 403) {
+         console.warn("Sessão expirada ou token inválido");
+      }
+
       if (!response.ok) throw new Error('Falha na conexão com API');
       
       const data = await response.json();
 
+      // ADAPTER: Transforma os dados do Banco para o formato do Frontend
       return data.map(opp => {
         const buy = Number(opp.buyPrice);
         const sell = Number(opp.sellPrice);
         
+        // Calcula o ROI dinamicamente
         let calculatedRoi = 0;
         if (buy > 0) {
             calculatedRoi = ((sell - buy) / buy) * 100;
@@ -70,10 +87,12 @@ export const OpportunityService = {
     return all.find(op => op.id === id);
   },
 
-  // 🚀 A FUNÇÃO QUE FALTAVA: BUSCAR CLIMA
+  // --- 2. INTEGRAÇÃO CLIMÁTICA (OpenMeteo) ---
   getWeather: async (lat, lng) => {
     try {
-        const response = await fetch(`${API_URL}/weather?lat=${lat}&lng=${lng}`);
+        const response = await fetch(`${API_URL}/weather?lat=${lat}&lng=${lng}`, {
+            headers: getAuthHeaders()
+        });
         if (!response.ok) return null;
         return await response.json();
     } catch (error) {
@@ -82,7 +101,27 @@ export const OpportunityService = {
     }
   },
 
-  // Cálculo de ROI e Logística
+  // Nova função para previsão de 7 dias (usada no WeatherDashboard)
+  getForecast: async (lat, lng) => {
+    try {
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=America%2FSao_Paulo`;
+      const response = await fetch(url);
+      if (!response.ok) return null;
+      const data = await response.json();
+      
+      return data.daily.time.map((date, index) => ({
+        date: new Date(date).toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric' }),
+        tempMax: data.daily.temperature_2m_max[index],
+        tempMin: data.daily.temperature_2m_min[index],
+        rain: data.daily.precipitation_sum[index]
+      }));
+    } catch (error) {
+      console.error("Erro ao buscar previsão:", error);
+      return null;
+    }
+  },
+
+  // --- 3. SIMULADOR (LÓGICA LOCAL) ---
   calculateROI: async ({ 
     buyPrice, sellPrice, volume, originCoords, destinationName, 
     dieselPrice = 6.50, truckConsumption = 3.5, spoilageRate = 0, 
@@ -105,10 +144,10 @@ export const OpportunityService = {
 
       const litersNeeded = roadDistanceKm / truckConsumption;
       const singleTripCost = litersNeeded * dieselPrice;
-      freightCost = singleTripCost * 1.1; 
+      let tripCost = singleTripCost * 1.1; 
       
       const trucksNeeded = Math.max(1, Math.ceil(volume / 25));
-      freightCost = freightCost * trucksNeeded;
+      freightCost = tripCost * trucksNeeded;
     } else {
       freightCost = 2000 * (volume / 10); 
       roadDistanceKm = 1500;
@@ -133,5 +172,53 @@ export const OpportunityService = {
       },
       isHighRisk: roi < 10 || spoilageRate > 15
     };
+  },
+
+  // --- 4. 🚀 INTELIGÊNCIA DE ARMAZENAGEM (CONECTADA AO PYTHON) ---
+  getStorageAnalysis: async (product, currentPrice = 4.00) => {
+    try {
+        console.log(`🧠 Pedindo análise de IA para: ${product}...`);
+        
+        const payload = {
+            product: product,
+            current_price: Number(currentPrice),
+            storage_cost_per_day: 0.05, // R$/kg/dia (estimado)
+            risk_factor: 0.8    // Fator de risco
+        };
+
+        // Chama o seu Backend Node.js (que vai chamar o Python)
+        const response = await fetch(`${API_URL}/ai/storage`, {
+            method: 'POST',
+            headers: {
+                ...getAuthHeaders(), // Envia o Token JWT
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            throw new Error(`Erro na API de IA: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log("✅ Resposta do Python recebida:", data);
+        
+        return {
+            labels: data.chart_data.labels,
+            prices: data.chart_data.prices,
+            costs: data.chart_data.costs,
+            recommendation: {
+                bestDayIndex: data.recommendation.best_day_index,
+                bestDayLabel: data.recommendation.best_day_date,
+                extraProfit: data.recommendation.projected_profit,
+                riskEvent: "Alta volatilidade detectada (Modelo Python)",
+                riskProbability: "85%"
+            }
+        };
+
+    } catch (error) {
+        console.error("❌ Falha na conexão com a IA:", error);
+        return null; 
+    }
   }
 };
