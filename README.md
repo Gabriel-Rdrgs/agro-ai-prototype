@@ -1,115 +1,131 @@
-# 🚀 AgroArbitrage AI (Protótipo v0.1)
+Markdown
+
+# 🚀 AgroArbitrage AI (MVP v1.0)
 
 > **Plataforma de Inteligência Estratégica para Arbitragem Agrícola.**
-> Transformando dados climáticos e de mercado em oportunidades de lucro líquido.
+> Transformando dados climáticos, financeiros e logísticos em lucro líquido através de IA.
 
-![React](https://img.shields.io/badge/React-18-blue) ![Leaflet](https://img.shields.io/badge/Maps-Leaflet-green) ![Chart.js](https://img.shields.io/badge/Data-Chart.js-orange) ![License](https://img.shields.io/badge/Status-MVP_Ready-brightgreen)
-
----
-
-## 📋 Sobre o Projeto
-
-O **AgroArbitrage AI** é uma ferramenta de suporte à decisão (DSS) projetada para identificar janelas de oportunidade de arbitragem no mercado agrícola brasileiro.
-
-O sistema cruza dados de **preço de compra (origem)**, **preço de venda (destino)** e **variáveis logísticas** para calcular o ROI real de operações, mitigando riscos climáticos e de quebra de safra.
-
-### 🎯 Objetivo do Protótipo
-Validar a tese de que a visualização geoespacial combinada com simulação financeira reduz o tempo de decisão de dias para minutos.
+![React](https://img.shields.io/badge/React-18-blue) ![Node.js](https://img.shields.io/badge/Backend-Node.js-green) ![Python](https://img.shields.io/badge/AI-FastAPI-yellow) ![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-blue) ![Status](https://img.shields.io/badge/Status-Production_Ready-brightgreen)
 
 ---
 
-## ✨ Funcionalidades Principais
+## 📋 Visão Geral
 
-### 1. 🗺️ Inteligência Geoespacial (Mapa Interativo)
-* **Visualização de Clusters:** Marcadores inteligentes que mostram o produto e o ROI instantâneo.
-* **Rotas Logísticas Visuais:** Desenho automático do trajeto entre Origem e Destino com cálculo de distância rodoviária.
-* **Indicadores Visuais:** Cores semânticas para Risco (🟢 Baixo, 🟡 Médio, 🔴 Alto).
-* **Zoom Inteligente:** Ajuste automático de foco ao visualizar uma rota específica.
+O **AgroArbitrage AI** é um Sistema de Suporte à Decisão (DSS) Fullstack que monitora oportunidades de arbitragem no mercado agrícola brasileiro.
 
-### 2. 🧮 Simulador de Logística Avançada
-Calculadora proprietária que vai além da conta de padaria:
-* **Custo de Frete Dinâmico:** Baseado na distância rodoviária (Fator de Sinuosidade 1.35) e preço do diesel.
-* **Gestão de Perdas:** Input para taxa de quebra (%) e dias de armazenamento.
-* **Persistência:** Capacidade de **Salvar Cenários** para comparação posterior (LocalStorage).
+Diferente de planilhas estáticas, o sistema opera em tempo real, cruzando cotações internacionais (Dólar), previsões meteorológicas (Satélite) e logística rodoviária para calcular o ROI exato de cada operação.
 
-### 3. 📊 Dashboard Executivo
-* **KPIs em Tempo Real:** Volume total disponível, ROI médio do portfólio e alertas de risco.
-* **Tendência de Preços:** Gráficos históricos para identificar sazonalidade.
-* **Gestão de Cenários:** Acesso rápido às simulações salvas anteriormente.
+### 🏆 Diferenciais do MVP
+* **Arquitetura de Microsserviços:** Separação clara entre Aplicação (Node.js) e Inteligência (Python).
+* **Dados Vivos:** Integração com APIs de Clima (OpenMeteo) e Finanças (AwesomeAPI).
+* **Segurança Enterprise:** Autenticação via JWT e senhas criptografadas (Bcrypt).
 
-### 4. 📄 Exportação de Relatórios (PDF)
-* **Relatórios Executivos:** Geração instantânea de documentos para negociação.
-* **Relatório de Dashboard:** Visão geral do mercado para investidores.
-* **Relatório de Simulação:** Detalhamento de custos, mapa da operação e projeção de lucro líquido.
+---
 
-### 5. 🔐 Segurança & Acesso
-* Sistema de Login simulado.
-* Controle de sessão e personalização do ambiente (Header com perfil).
+## ✨ Funcionalidades Entregues
+
+### 1. 🗺️ Mapa de Fluxo Comercial (Trade Flow)
+* **Visualização Inteligente:** O sistema desenha automaticamente as rotas mais lucrativas (ROI > 50%) conectando origem e destino.
+* **Clima em Tempo Real:** Ao clicar em uma região, o sistema consulta satélites e informa a temperatura e chuva no local exato.
+* **Clustering:** Agrupamento automático de oportunidades para visualização limpa em alta escala.
+
+### 2. 🧠 Cérebro de IA (Python Microservice)
+* **Análise de Armazenagem:** Algoritmo rodando em Python que analisa a curva de preços futura vs. custos de estocagem ("Boca de Jacaré").
+* **Previsão de Risco:** O sistema recomenda a melhor data de venda baseada em eventos climáticos futuros.
+
+### 3. 🧮 Simulador Logístico & Financeiro
+* **Custo Real:** Cálculo de frete baseado em distância rodoviária (Fator de Sinuosidade 1.35) e preço do diesel.
+* **Multimoeda:** Conversão automática de valores para Dólar (PTAX) em tempo real.
+* **Persistência:** Salve cenários de simulação para comparar estratégias posteriormente.
+
+### 4. 📊 Dashboard & Relatórios
+* **KPIs Dinâmicos:** Volume total, ROI médio e Alertas de Risco atualizados ao vivo.
+* **Exportação PDF:** Geração de relatórios executivos completos com um clique (para envio via WhatsApp/E-mail).
 
 ---
 
 ## 🛠️ Arquitetura Técnica
 
-Este projeto segue uma arquitetura **Frontend-First** robusta, preparada para escalabilidade:
+O projeto segue uma arquitetura moderna e distribuída:
 
 ```mermaid
 graph TD
-    A[UI Components] --> B[Service Layer]
-    B --> C{Data Source}
-    C -->|Protótipo| D[Mock Data / LocalStorage]
-    C -->|Produção| E[API Python/Node]
-```
-
-* **Service Layer Pattern:** Toda a lógica de negócios (cálculo de ROI, busca de dados, persistência, PDF) está isolada em `src/services`. Os componentes visuais (`MapView`, `Dashboard`) apenas renderizam dados. Isso permite plugar um Backend real no futuro sem refazer o Frontend.
-* **Layout App-Like:** Utilização de CSS Flexbox avançado para garantir uma experiência de aplicativo nativo (sem conflitos de scroll entre mapa e página).
-* **Componentização:** Estrutura modular (`components/Map`, `components/Calculator`, `components/Auth`) facilitando manutenção e testes.
-
-### Stack Tecnológico
-* **Core:** React.js (Create React App)
-* **Mapas:** React-Leaflet + OpenStreetMap
-* **Gráficos:** Chart.js + React-Chartjs-2
-* **Relatórios:** jsPDF + AutoTable
-* **Estilização:** CSS Modules / Global Styles (Dark Theme)
-
----
-
-## 🚀 Como Rodar
-
-### Pré-requisitos
-* Node.js instalado (v16 ou superior)
-
-### Passo a Passo
-
-1.  **Clone o repositório**
-    ```bash
-    git clone [https://github.com/seu-usuario/agro-ai-prototype.git](https://github.com/seu-usuario/agro-ai-prototype.git)
-    cd agro-ai-prototype/frontend
-    ```
-
-2.  **Instale as dependências**
-    ```bash
-    npm install
+    User[Cliente] --> Frontend[React (Vercel)]
+    Frontend --> NodeAPI[Backend Node.js (Render)]
     
+    subgraph "Núcleo de Negócio"
+    NodeAPI --> Postgres[(PostgreSQL - Supabase)]
+    NodeAPI --> Auth[JWT Auth Service]
+    end
+    
+    subgraph "Inteligência & Dados"
+    NodeAPI --> PythonAPI[AI Service - FastAPI (Vercel)]
+    PythonAPI --> Pandas[Processamento de Dados]
+    end
+    
+    subgraph "Mundo Externo"
+    NodeAPI --> DollarAPI[AwesomeAPI (Câmbio)]
+    NodeAPI --> WeatherAPI[OpenMeteo (Clima)]
+    end
+Stack Tecnológico
+Frontend: React.js, Leaflet, Chart.js, CSS Modules.
 
-3.  **Inicie a aplicação**
-    ```bash
-    npm start
+Backend (Core): Node.js, Express, Prisma ORM.
 
-    O sistema abrirá em `http://localhost:3000`.
+Backend (AI): Python 3.12, FastAPI, Uvicorn.
 
-### 🔑 Credenciais de Acesso (Demo)
-Para acessar o protótipo, utilize as credenciais de sócio:
-* **E-mail:** `paulo@agro.com`
-* **Senha:** `123456`
+Banco de Dados: PostgreSQL (Hospedado no Supabase/Neon).
 
----
+Infraestrutura: Vercel (Front + AI) e Render (Node API).
 
-## 📅 Roadmap (Próximos Passos)
+🚀 Como Rodar Localmente
+O projeto é composto por 3 partes que devem rodar simultaneamente.
 
-* [ ] **Fase 2 (Backend):** Integração com API Python para modelos de IA.
-* [ ] **Dados Vivos:** Conexão com APIs da CONAB e INPE (Clima).
-* [ ] **Alertas Push:** Notificação via WhatsApp para oportunidades urgentes.
+Pré-requisitos
+Node.js (v18+)
 
----
+Python (v3.10+)
 
-Desenvolvido com 💻 e ☕ por **Gabriel Rodrigues**.
+PostgreSQL (Connection String)
+
+1. Configurar Backend (Node.js)
+Bash
+
+cd backend
+npm install
+# Crie um arquivo .env com: DATABASE_URL="sua_url_postgres" e JWT_SECRET="segredo"
+npx prisma migrate dev --name init
+npx prisma db seed # Popula o banco com dados iniciais
+npm run dev
+# Rodando em: http://localhost:3001
+2. Configurar AI Service (Python)
+Bash
+
+cd ai-service
+python -m venv venv
+# Ative o venv (Windows: .\venv\Scripts\activate | Mac: source venv/bin/activate)
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
+# Rodando em: http://localhost:8000
+3. Configurar Frontend (React)
+Bash
+
+cd frontend
+npm install
+npm start
+# Rodando em: http://localhost:3000
+🔑 Acesso ao Sistema (Demo)
+Para acessar o ambiente de produção ou local, utilize as credenciais de sócio:
+
+E-mail: paulo@agro.com
+
+Senha: 123456
+
+📅 Próximos Passos (Roadmap Fase 2)
+[ ] Machine Learning: Treinar modelos com histórico de 5 anos da CONAB.
+
+[ ] PostGIS: Implementar buscas por raio geográfico (ex: "Fazendas a 50km").
+
+[ ] Notificações: Alertas via WhatsApp/SMS para oportunidades urgentes.
+
+Desenvolvido por Gabriel Rodrigues.
