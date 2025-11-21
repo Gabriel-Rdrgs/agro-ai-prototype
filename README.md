@@ -1,5 +1,3 @@
-Markdown
-
 # 🚀 AgroArbitrage AI (MVP v1.0)
 
 > **Plataforma de Inteligência Estratégica para Arbitragem Agrícola.**
@@ -16,31 +14,36 @@ O **AgroArbitrage AI** é um Sistema de Suporte à Decisão (DSS) Fullstack que 
 Diferente de planilhas estáticas, o sistema opera em tempo real, cruzando cotações internacionais (Dólar), previsões meteorológicas (Satélite) e logística rodoviária para calcular o ROI exato de cada operação.
 
 ### 🏆 Diferenciais do MVP
-* **Arquitetura de Microsserviços:** Separação clara entre Aplicação (Node.js) e Inteligência (Python).
-* **Dados Vivos:** Integração com APIs de Clima (OpenMeteo) e Finanças (AwesomeAPI).
-* **Segurança Enterprise:** Autenticação via JWT e senhas criptografadas (Bcrypt).
+
+- **Arquitetura de Microsserviços:** Separação clara entre Aplicação (Node.js) e Inteligência (Python).
+- **Dados Vivos:** Integração com APIs de Clima (OpenMeteo) e Finanças (AwesomeAPI).
+- **Segurança Enterprise:** Autenticação via JWT e senhas criptografadas (Bcrypt).
 
 ---
 
 ## ✨ Funcionalidades Entregues
 
 ### 1. 🗺️ Mapa de Fluxo Comercial (Trade Flow)
-* **Visualização Inteligente:** O sistema desenha automaticamente as rotas mais lucrativas (ROI > 50%) conectando origem e destino.
-* **Clima em Tempo Real:** Ao clicar em uma região, o sistema consulta satélites e informa a temperatura e chuva no local exato.
-* **Clustering:** Agrupamento automático de oportunidades para visualização limpa em alta escala.
+
+- **Visualização Inteligente:** O sistema desenha automaticamente as rotas mais lucrativas (ROI > 50%) conectando origem e destino.
+- **Clima em Tempo Real:** Ao clicar em uma região, o sistema consulta satélites e informa a temperatura e chuva no local exato.
+- **Clustering:** Agrupamento automático de oportunidades para visualização limpa em alta escala.
 
 ### 2. 🧠 Cérebro de IA (Python Microservice)
-* **Análise de Armazenagem:** Algoritmo rodando em Python que analisa a curva de preços futura vs. custos de estocagem ("Boca de Jacaré").
-* **Previsão de Risco:** O sistema recomenda a melhor data de venda baseada em eventos climáticos futuros.
+
+- **Análise de Armazenagem:** Algoritmo rodando em Python que analisa a curva de preços futura vs. custos de estocagem ("Boca de Jacaré").
+- **Previsão de Risco:** O sistema recomenda a melhor data de venda baseada em eventos climáticos futuros.
 
 ### 3. 🧮 Simulador Logístico & Financeiro
-* **Custo Real:** Cálculo de frete baseado em distância rodoviária (Fator de Sinuosidade 1.35) e preço do diesel.
-* **Multimoeda:** Conversão automática de valores para Dólar (PTAX) em tempo real.
-* **Persistência:** Salve cenários de simulação para comparar estratégias posteriormente.
+
+- **Custo Real:** Cálculo de frete baseado em distância rodoviária (Fator de Sinuosidade 1.35) e preço do diesel.
+- **Multimoeda:** Conversão automática de valores para Dólar (PTAX) em tempo real.
+- **Persistência:** Salve cenários de simulação para comparar estratégias posteriormente.
 
 ### 4. 📊 Dashboard & Relatórios
-* **KPIs Dinâmicos:** Volume total, ROI médio e Alertas de Risco atualizados ao vivo.
-* **Exportação PDF:** Geração de relatórios executivos completos com um clique (para envio via WhatsApp/E-mail).
+
+- **KPIs Dinâmicos:** Volume total, ROI médio e Alertas de Risco atualizados ao vivo.
+- **Exportação PDF:** Geração de relatórios executivos completos com um clique (para envio via WhatsApp/E-mail).
 
 ---
 
@@ -50,22 +53,22 @@ O projeto segue uma arquitetura moderna e distribuída:
 
 ```mermaid
 graph TD
-    User[Cliente] --> Frontend[React (Vercel)]
-    Frontend --> NodeAPI[Backend Node.js (Render)]
-    
+    User["Cliente"] --> Frontend["React (Vercel)"]
+    Frontend --> NodeAPI["Backend Node.js (Render)"]
+
     subgraph "Núcleo de Negócio"
-    NodeAPI --> Postgres[(PostgreSQL - Supabase)]
-    NodeAPI --> Auth[JWT Auth Service]
+    NodeAPI --> Postgres[("PostgreSQL - Supabase")]
+    NodeAPI --> Auth["JWT Auth Service"]
     end
-    
+
     subgraph "Inteligência & Dados"
-    NodeAPI --> PythonAPI[AI Service - FastAPI (Vercel)]
-    PythonAPI --> Pandas[Processamento de Dados]
+    NodeAPI --> PythonAPI["AI Service - FastAPI (Vercel)"]
+    PythonAPI --> Pandas["Processamento de Dados"]
     end
-    
+
     subgraph "Mundo Externo"
-    NodeAPI --> DollarAPI[AwesomeAPI (Câmbio)]
-    NodeAPI --> WeatherAPI[OpenMeteo (Clima)]
+    NodeAPI --> DollarAPI["AwesomeAPI (Câmbio)"]
+    NodeAPI --> WeatherAPI["OpenMeteo (Clima)"]
     end
 Stack Tecnológico
 Frontend: React.js, Leaflet, Chart.js, CSS Modules.
@@ -129,3 +132,4 @@ Senha: 123456
 [ ] Notificações: Alertas via WhatsApp/SMS para oportunidades urgentes.
 
 Desenvolvido por Gabriel Rodrigues.
+```
