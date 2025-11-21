@@ -70,6 +70,7 @@ graph TD
     NodeAPI --> DollarAPI["AwesomeAPI (Câmbio)"]
     NodeAPI --> WeatherAPI["OpenMeteo (Clima)"]
     end
+    
 Stack Tecnológico
 Frontend: React.js, Leaflet, Chart.js, CSS Modules.
 
