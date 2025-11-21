@@ -80,22 +80,23 @@ graph TD
 
 ### Passo a Passo
 
-1.  **Clone o repositório**
-    ```bash
-    git clone [https://github.com/seu-usuario/agro-ai-prototype.git](https://github.com/seu-usuario/agro-ai-prototype.git)
-    cd agro-ai-prototype/frontend
-    ```
+1. **Clone o repositório**
+   ```bash
+   git clone https://github.com/Gabriel-Rdrgs/agro-ai-prototype.git
+   cd agro-ai-prototype/frontend
+   ```
 
-2.  **Instale as dependências**
-    ```bash
-    npm install
-    
+2. **Instale as dependências**
+   ```bash
+   npm install
+   ```
 
-3.  **Inicie a aplicação**
-    ```bash
-    npm start
+3. **Inicie a aplicação**
+   ```bash
+   npm start
+   ```
 
-    O sistema abrirá em `http://localhost:3000`.
+   O sistema abrirá em `http://localhost:3000`.
 
 ### 🔑 Credenciais de Acesso (Demo)
 Para acessar o protótipo, utilize as credenciais de sócio:
