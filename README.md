@@ -1,5 +1,3 @@
-Markdown
-
 # 🚀 AgroArbitrage AI (MVP v1.0)
 
 > **Plataforma de Inteligência Estratégica para Arbitragem Agrícola.**
