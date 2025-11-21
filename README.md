@@ -49,8 +49,6 @@ Diferente de planilhas estáticas, o sistema opera em tempo real, cruzando cota�
 
 ## 🛠️ Arquitetura Técnica
 
-O projeto segue uma arquitetura moderna e distribuída:
-
 ```mermaid
 graph TD
     User["Cliente"] --> Frontend["React (Vercel)"]
@@ -71,65 +69,40 @@ graph TD
     NodeAPI --> WeatherAPI["OpenMeteo (Clima)"]
     end
 Stack Tecnológico
-Frontend: React.js, Leaflet, Chart.js, CSS Modules.
 
-Backend (Core): Node.js, Express, Prisma ORM.
+Frontend: React.js, Leaflet, Chart.js, CSS Modules
+Backend (Core): Node.js, Express, Prisma ORM
+Backend (AI): Python 3.12, FastAPI, Uvicorn
+Banco de Dados: PostgreSQL (Supabase/Neon)
+Infraestrutura: Vercel (Front + AI), Render (Node API)
 
-Backend (AI): Python 3.12, FastAPI, Uvicorn.
-
-Banco de Dados: PostgreSQL (Hospedado no Supabase/Neon).
-
-Infraestrutura: Vercel (Front + AI) e Render (Node API).
 
 🚀 Como Rodar Localmente
-O projeto é composto por 3 partes que devem rodar simultaneamente.
+Pré-requisitos: Node.js v18+, Python 3.10+, PostgreSQL
 
-Pré-requisitos
-Node.js (v18+)
-
-Python (v3.10+)
-
-PostgreSQL (Connection String)
-
-1. Configurar Backend (Node.js)
-Bash
-
-cd backend
+Backend Node.jsBashcd backend
 npm install
-# Crie um arquivo .env com: DATABASE_URL="sua_url_postgres" e JWT_SECRET="segredo"
+# Crie .env com DATABASE_URL e JWT_SECRET
 npx prisma migrate dev --name init
-npx prisma db seed # Popula o banco com dados iniciais
-npm run dev
-# Rodando em: http://localhost:3001
-2. Configurar AI Service (Python)
-Bash
-
-cd ai-service
+npx prisma db seed
+npm run dev  # http://localhost:3001
+AI Service (Python)Bashcd ai-service
 python -m venv venv
-# Ative o venv (Windows: .\venv\Scripts\activate | Mac: source venv/bin/activate)
+source venv/bin/activate  # ou .\venv\Scripts\activate no Windows
 pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
-# Rodando em: http://localhost:8000
-3. Configurar Frontend (React)
-Bash
-
-cd frontend
+Frontend (React)Bashcd frontend
 npm install
-npm start
-# Rodando em: http://localhost:3000
-🔑 Acesso ao Sistema (Demo)
-Para acessar o ambiente de produção ou local, utilize as credenciais de sócio:
+npm start  # http://localhost:3000
 
+🔑 Acesso Demo
 E-mail: paulo@agro.com
-
 Senha: 123456
+📅 Roadmap Fase 2
 
-📅 Próximos Passos (Roadmap Fase 2)
-[ ] Machine Learning: Treinar modelos com histórico de 5 anos da CONAB.
-
-[ ] PostGIS: Implementar buscas por raio geográfico (ex: "Fazendas a 50km").
-
-[ ] Notificações: Alertas via WhatsApp/SMS para oportunidades urgentes.
+ Machine Learning (CONAB 5 anos)
+ PostGIS (busca por raio)
+ Alertas WhatsApp/SMS
 
 Desenvolvido por Gabriel Rodrigues.
 ```
