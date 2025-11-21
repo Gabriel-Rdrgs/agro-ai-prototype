@@ -70,7 +70,7 @@ export function createRiskIcon(roi, riskLevel) {
 
 // Legenda de cores (para usar no futuro na UI)
 export const legendColors = {
-  high: { color: '#22c55e', label: 'ROI Alto (>100%)' },
-  medium: { color: '#f59e0b', label: 'ROI Médio (50-100%)' },
-  low: { color: '#ef4444', label: 'ROI Baixo (<50%)' }
+  high: { color: '#3cff00ff', label: 'ROI Alto (>100%)' },
+  medium: { color: '#fbff00ff', label: 'ROI Médio (50-100%)' },
+  low: { color: '#ff0000ff', label: 'ROI Baixo (<50%)' }
 };

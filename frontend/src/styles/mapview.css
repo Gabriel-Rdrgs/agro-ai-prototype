@@ -56,7 +56,7 @@
 }
 
 .legend-dot.high   { background: #22c55e; }
-.legend-dot.medium { background: #f59e0b; }
+.legend-dot.medium { background: #7C3AED; }
 .legend-dot.low    { background: #ef4444; }
 
 .legend-risk {
@@ -79,5 +79,46 @@
   background: #00d9ff !important;
   color: #000 !important;
 }
+/* Estilos dos Clusters do Leaflet */
+.leaflet-marker-icon.marker-cluster {
+  background-clip: padding-box;
+  border-radius: 20px;
+}
 
+.marker-cluster div {
+  width: 30px;
+  height: 30px;
+  margin-left: 5px;
+  margin-top: 5px;
+  text-align: center;
+  border-radius: 50%;
+  font: 12px "Helvetica Neue", Arial, Helvetica, sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+}
+
+/* Cores baseadas no tamanho do cluster */
+.marker-cluster-small {
+  background-color: rgba(181, 226, 140, 0.6);
+}
+.marker-cluster-small div {
+  background-color: rgba(110, 204, 57, 0.8);
+}
+
+.marker-cluster-medium {
+  background-color: rgba(241, 211, 87, 0.6);
+}
+.marker-cluster-medium div {
+  background-color: rgba(240, 194, 12, 0.8);
+}
+
+.marker-cluster-large {
+  background-color: rgba(253, 156, 115, 0.6);
+}
+.marker-cluster-large div {
+  background-color: rgba(241, 128, 23, 0.8);
+}
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }

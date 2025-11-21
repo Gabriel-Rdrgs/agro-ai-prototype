@@ -460,3 +460,77 @@ select option {
   background: var(--bg-dark);
   color: var(--text-primary);
 }
+/* --- NAVEGAÇÃO HÍBRIDA (Desktop vs Mobile) --- */
+
+/* Padrão: Esconde a barra mobile */
+.mobile-bottom-nav {
+  display: none;
+}
+
+/* Mobile Breakpoint (< 768px) */
+@media (max-width: 768px) {
+  /* 1. Esconde as abas de cima */
+  .tabs-nav.desktop-only {
+    display: none !important;
+  }
+
+  /* 2. Mostra a barra de baixo */
+  .mobile-bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 65px;
+    background: #15192c; /* Cor do card */
+    border-top: 1px solid #00d9ff;
+    z-index: 9999;
+    justify-content: space-around;
+    align-items: center;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
+    padding-bottom: env(safe-area-inset-bottom); /* Para iPhone X+ */
+  }
+
+  .nav-item {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    font-size: 11px;
+    width: 100%;
+    height: 100%;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .nav-item .icon {
+    font-size: 20px;
+    filter: grayscale(100%);
+    transition: all 0.2s;
+  }
+
+  .nav-item.active {
+    color: #00d9ff;
+    background: rgba(0, 217, 255, 0.05);
+    border-top: 3px solid #00d9ff;
+  }
+
+  .nav-item.active .icon {
+    filter: none;
+    transform: translateY(-2px);
+  }
+
+  /* Ajuste para o conteúdo não ficar escondido atrás da barra */
+  .tab-content {
+    padding-bottom: 70px !important; /* Espaço para a barra */
+  }
+  
+  /* Ajuste específico para Dash/Calc terem scroll correto */
+  .dashboard-container, .calculator-container {
+    padding-bottom: 100px !important; 
+  }
+}
