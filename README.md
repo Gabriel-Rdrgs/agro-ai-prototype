@@ -53,24 +53,25 @@ O projeto segue uma arquitetura moderna e distribuída:
 
 ```mermaid
 graph TD
-    User["Cliente"] --> Frontend["React (Vercel)"]
-    Frontend --> NodeAPI["Backend Node.js (Render)"]
+User["Cliente"] --> Frontend["React (Vercel)"]
+Frontend --> NodeAPI["Backend Node.js (Render)"]
 
-    subgraph "Núcleo de Negócio"
-    NodeAPI --> Postgres[("PostgreSQL - Supabase")]
-    NodeAPI --> Auth["JWT Auth Service"]
-    end
+text
+subgraph Negócio
+  NodeAPI --> Postgres["PostgreSQL (Supabase)"]
+  NodeAPI --> Auth["JWT Auth"]
+end
 
-    subgraph "Inteligência & Dados"
-    NodeAPI --> PythonAPI["AI Service - FastAPI (Vercel)"]
-    PythonAPI --> Pandas["Processamento de Dados"]
-    end
+subgraph Inteligencia
+  NodeAPI --> PythonAPI["FastAPI (Vercel)"]
+  PythonAPI --> Pandas["Dados"]
+end
 
-    subgraph "Mundo Externo"
-    NodeAPI --> DollarAPI["AwesomeAPI (Câmbio)"]
-    NodeAPI --> WeatherAPI["OpenMeteo (Clima)"]
-    end
-    
+subgraph Externo
+  NodeAPI --> DollarAPI["AwesomeAPI"]
+  NodeAPI --> WeatherAPI["OpenMeteo"]
+end
+
 Stack Tecnológico
 Frontend: React.js, Leaflet, Chart.js, CSS Modules.
 
