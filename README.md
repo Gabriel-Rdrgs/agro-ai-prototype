@@ -1,137 +1,273 @@
 # 🚀 AgroArbitrage AI (MVP v1.0)
 
-> **Plataforma de Inteligência Estratégica para Arbitragem Agrícola.**
-> Transformando dados climáticos, financeiros e logísticos em lucro líquido através de IA.
+**Plataforma de Inteligência Estratégica para Arbitragem Agrícola**
 
-![React](https://img.shields.io/badge/React-18-blue) ![Node.js](https://img.shields.io/badge/Backend-Node.js-green) ![Python](https://img.shields.io/badge/AI-FastAPI-yellow) ![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-blue) ![Status](https://img.shields.io/badge/Status-Production_Ready-brightgreen)
+Transformando dados climáticos, financeiros e logísticos em lucro líquido através de IA.
+
+[![React](https://img.shields.io/badge/React-18-blue)](https://reactjs.org/)
+[![Backend](https://img.shields.io/badge/Backend-Node.js-green)](https://nodejs.org/)
+[![Python](https://img.shields.io/badge/Python-3.12-yellow)](https://www.python.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Latest-blue)](https://www.postgresql.org/)
+[![Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen)](#)
 
 ---
 
 ## 📋 Visão Geral
 
-O **AgroArbitrage AI** é um Sistema de Suporte à Decisão (DSS) Fullstack que monitora oportunidades de arbitragem no mercado agrícola brasileiro.
+O **AgroArbitrage AI** é um Sistema de Suporte à Decisão (DSS) Full-stack que monitora oportunidades de arbitragem no mercado agrícola brasileiro.
 
-Diferente de planilhas estáticas, o sistema opera em tempo real, cruzando cotações internacionais (Dólar), previsões meteorológicas (Satélite) e logística rodoviária para calcular o ROI exato de cada operação.
+Diferente de planilhas estáticas, o sistema opera em **tempo real**, cruzando:
+- 💱 Cotações internacionais (Dólar)
+- 🛰️ Previsões meteorológicas (Satélite)
+- 🚛 Logística rodoviária
 
-### 🏆 Diferenciais do MVP
-
-- **Arquitetura de Microsserviços:** Separação clara entre Aplicação (Node.js) e Inteligência (Python).
-- **Dados Vivos:** Integração com APIs de Clima (OpenMeteo) e Finanças (AwesomeAPI).
-- **Segurança Enterprise:** Autenticação via JWT e senhas criptografadas (Bcrypt).
-
----
-
-## ✨ Funcionalidades Entregues
-
-### 1. 🗺️ Mapa de Fluxo Comercial (Trade Flow)
-
-- **Visualização Inteligente:** O sistema desenha automaticamente as rotas mais lucrativas (ROI > 50%) conectando origem e destino.
-- **Clima em Tempo Real:** Ao clicar em uma região, o sistema consulta satélites e informa a temperatura e chuva no local exato.
-- **Clustering:** Agrupamento automático de oportunidades para visualização limpa em alta escala.
-
-### 2. 🧠 Cérebro de IA (Python Microservice)
-
-- **Análise de Armazenagem:** Algoritmo rodando em Python que analisa a curva de preços futura vs. custos de estocagem ("Boca de Jacaré").
-- **Previsão de Risco:** O sistema recomenda a melhor data de venda baseada em eventos climáticos futuros.
-
-### 3. 🧮 Simulador Logístico & Financeiro
-
-- **Custo Real:** Cálculo de frete baseado em distância rodoviária (Fator de Sinuosidade 1.35) e preço do diesel.
-- **Multimoeda:** Conversão automática de valores para Dólar (PTAX) em tempo real.
-- **Persistência:** Salve cenários de simulação para comparar estratégias posteriormente.
-
-### 4. 📊 Dashboard & Relatórios
-
-- **KPIs Dinâmicos:** Volume total, ROI médio e Alertas de Risco atualizados ao vivo.
-- **Exportação PDF:** Geração de relatórios executivos completos com um clique (para envio via WhatsApp/E-mail).
+Para calcular o **ROI exato** de cada operação.
 
 ---
 
-## 🛠️ Arquitetura Técnica
+## 🎯 Diferenciais do MVP
 
-O projeto segue uma arquitetura moderna e distribuída:
+### ✨ Visualização Inteligente
+O sistema desenha automaticamente as rotas mais lucrativas (ROI 50%) conectando origem e destino.
+
+### 🌡️ Clima em Tempo Real
+Ao clicar em uma região, o sistema consulta satélites e informa a temperatura e chuva no local exato.
+
+### 📊 Clustering Automático
+Agrupamento automático de oportunidades para visualização limpa em alta escala.
+
+---
+
+## 🏗️ Arquitetura Técnica
+
+### Arquitetura de Microsserviços
+- ✅ Separação clara entre Aplicação Node.js e Inteligência Python
+- ✅ Dados vivos com integração de APIs
+- ✅ Segurança Enterprise (JWT + Bcrypt)
 
 ```mermaid
 graph TD
-User["Cliente"] --> Frontend["React (Vercel)"]
-Frontend --> NodeAPI["Backend Node.js (Render)"]
+    User["👤 Cliente"] -->|Frontend| React["⚛️ React + Leaflet"]
+    React -->|API| NodeAPI["🟢 Node.js Backend"]
+    NodeAPI -->|Queries| DB[("🐘 PostgreSQL")]
+    NodeAPI -->|Requests| PythonAPI["🐍 FastAPI"]
+    NodeAPI -->|Fetch| Dollar["💵 AwesomeAPI"]
+    NodeAPI -->|Fetch| Weather["🌤️ OpenMeteo"]
+    PythonAPI -->|Process| Pandas["📊 Pandas"]
+```
 
-text
-subgraph Negócio
-  NodeAPI --> Postgres["PostgreSQL (Supabase)"]
-  NodeAPI --> Auth["JWT Auth"]
-end
+---
 
-subgraph Inteligencia
-  NodeAPI --> PythonAPI["FastAPI (Vercel)"]
-  PythonAPI --> Pandas["Dados"]
-end
+## 📦 Stack Tecnológico
 
-subgraph Externo
-  NodeAPI --> DollarAPI["AwesomeAPI"]
-  NodeAPI --> WeatherAPI["OpenMeteo"]
-end
+| Camada | Tecnologia | Detalhes |
+|--------|-----------|----------|
+| **Frontend** | React.js, Leaflet, Chart.js | Responsivo, Visualizações em tempo real |
+| **Backend** | Node.js, Express, Prisma ORM | APIs RESTful escaláveis |
+| **IA/ML** | Python 3.12, FastAPI | Processamento de dados e algoritmos |
+| **Banco de Dados** | PostgreSQL (Supabase/Neon) | Dados estruturados e persistentes |
+| **Infraestrutura** | Vercel, Render | Deploy automático, escalabilidade |
 
-Stack Tecnológico
-Frontend: React.js, Leaflet, Chart.js, CSS Modules.
+---
 
-Backend (Core): Node.js, Express, Prisma ORM.
+## 🎁 Funcionalidades Entregues
 
-Backend (AI): Python 3.12, FastAPI, Uvicorn.
+### 1️⃣ Mapa de Fluxo Comercial (Trade Flow)
+**Análise de Armazenagem**
+- Algoritmo rodando em Python que analisa a curva de preços futura vs. custos de estocagem
+- Localidade: Boca de Jacaré
 
-Banco de Dados: PostgreSQL (Hospedado no Supabase/Neon).
+**Previsão de Risco**
+- O sistema recomenda a melhor data de venda baseada em eventos climáticos futuros
 
-Infraestrutura: Vercel (Front + AI) e Render (Node API).
+### 2️⃣ Cérebro de IA (Python Microservice)
+**Custo Real de Logística**
+- Cálculo de frete baseado em:
+  - Distância rodoviária
+  - Fator de Sinuosidade: 1.35
+  - Preço do diesel em tempo real
 
-🚀 Como Rodar Localmente
-O projeto é composto por 3 partes que devem rodar simultaneamente.
+**Multimoeda**
+- Conversão automática de valores para Dólar (PTAX) em tempo real
 
-Pré-requisitos
-Node.js (v18+)
+**Persistência**
+- Salve cenários de simulação para comparar estratégias posteriormente
 
-Python (v3.10+)
+### 3️⃣ Simulador Logístico-Financeiro
+**Simulações Avançadas**
+- Teste múltiplos cenários com um clique
+- Análise de sensibilidade para riscos
+- Exportação de resultados em tempo real
 
-PostgreSQL (Connection String)
+### 4️⃣ Dashboard & Relatórios
+**KPIs Dinâmicos**
+- Volume total em movimentação
+- ROI médio das operações
+- Alertas de Risco atualizados ao vivo
 
-1. Configurar Backend (Node.js)
-Bash
+**Exportação PDF**
+- Geração de relatórios executivos completos
+- Pronto para envio via WhatsApp/Email
 
+---
+
+## 🚀 Como Rodar Localmente
+
+O projeto é composto por **3 partes** que devem rodar **simultaneamente**.
+
+### 📋 Pré-requisitos
+```bash
+✓ Node.js v18+
+✓ Python v3.10+
+✓ PostgreSQL (ou usar Supabase)
+✓ Git
+```
+
+### 1️⃣ Backend Node.js
+
+```bash
 cd backend
 npm install
-# Crie um arquivo .env com: DATABASE_URL="sua_url_postgres" e JWT_SECRET="segredo"
-npx prisma migrate dev --name init
-npx prisma db seed # Popula o banco com dados iniciais
-npm run dev
-# Rodando em: http://localhost:3001
-2. Configurar AI Service (Python)
-Bash
+```
 
+Crie um arquivo `.env`:
+```env
+DATABASE_URL=sua_url_postgres_aqui
+JWT_SECRET=seu_segredo_jwt_aqui
+```
+
+Rodar migrations e seed:
+```bash
+npx prisma migrate dev --name init
+npx prisma db seed  # Popula dados iniciais
+```
+
+Iniciar servidor:
+```bash
+npm run dev
+# Rodando em http://localhost:3001
+```
+
+### 2️⃣ AI Service (Python)
+
+```bash
 cd ai-service
 python -m venv venv
-# Ative o venv (Windows: .\venv\Scripts\activate | Mac: source venv/bin/activate)
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
-# Rodando em: http://localhost:8000
-3. Configurar Frontend (React)
-Bash
+```
 
+Ativar virtual environment:
+```bash
+# Windows
+.\venv\Scripts\activate
+
+# Mac/Linux
+source venv/bin/activate
+```
+
+Instalar dependências:
+```bash
+pip install -r requirements.txt
+```
+
+Rodar servidor:
+```bash
+uvicorn main:app --reload --port 8000
+# Rodando em http://localhost:8000
+```
+
+### 3️⃣ Frontend React
+
+```bash
 cd frontend
 npm install
 npm start
-# Rodando em: http://localhost:3000
-🔑 Acesso ao Sistema (Demo)
-Para acessar o ambiente de produção ou local, utilize as credenciais de sócio:
-
-E-mail: paulo@agro.com
-
-Senha: 123456
-
-📅 Próximos Passos (Roadmap Fase 2)
-[ ] Machine Learning: Treinar modelos com histórico de 5 anos da CONAB.
-
-[ ] PostGIS: Implementar buscas por raio geográfico (ex: "Fazendas a 50km").
-
-[ ] Notificações: Alertas via WhatsApp/SMS para oportunidades urgentes.
-
-Desenvolvido por Gabriel Rodrigues.
+# Rodando em http://localhost:3000
 ```
+
+---
+
+## 🔐 Credenciais de Acesso (Demo)
+
+Para acessar o ambiente de produção ou local:
+
+```
+Email: paulo@agro.com
+Senha: 123456
+```
+
+---
+
+## 🗺️ Roadmap - Próximos Passos (Fase 2)
+
+- [ ] **Machine Learning Avançado**
+  - Treinar modelos com histórico de 5 anos da CONAB
+  - Previsões com 90%+ de acurácia
+
+- [ ] **PostGIS Integration**
+  - Implementar buscas por raio geográfico
+  - Exemplo: Fazendas a 50km de um ponto
+  - Otimização de rotas com A*
+
+- [ ] **Sistema de Notificações**
+  - Alertas via WhatsApp/SMS para oportunidades urgentes
+  - Notificações push em tempo real
+  - Webhooks customizáveis
+
+- [ ] **Mobile App**
+  - Versão React Native para iOS/Android
+  - Acesso offline com sincronização
+
+---
+
+## 📚 Documentação
+
+Para documentação completa:
+- 📖 [Docs](./docs) - Guias e tutoriais
+- 🔌 [API Reference](./docs/API.md) - Endpoints disponíveis
+- 🐍 [AI Service Docs](./docs/AI_SERVICE.md) - Modelos e algoritmos
+
+---
+
+## 🤝 Contribuindo
+
+Este é um projeto em desenvolvimento. Sugestões e melhorias são bem-vindas!
+
+```bash
+# 1. Fork este repositório
+# 2. Crie uma branch para sua feature
+git checkout -b feature/MinhaFeature
+
+# 3. Faça commit das mudanças
+git commit -m "feat: Adicionei MinhaFeature"
+
+# 4. Push para a branch
+git push origin feature/MinhaFeature
+
+# 5. Abra um Pull Request
+```
+
+---
+
+## 📄 Licença
+
+Este projeto está sob licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
+
+---
+
+## 👨‍💻 Desenvolvedor
+
+Desenvolvido por **Gabriel Rodrigues**
+
+- 🔗 GitHub: [@Gabriel-Rdrgs](https://github.com/Gabriel-Rdrgs)
+- 💼 LinkedIn: [Gabriel Rodrigues](https://linkedin.com/in/gabriel-rodrigues)
+- 🌐 Portfolio: [gabriel-dev.com](https://gabriel-dev.com)
+
+---
+
+## 📞 Suporte
+
+Tem dúvidas? Abra uma [Issue](../../issues) ou entre em contato!
+
+---
+
+**⭐ Se este projeto foi útil, deixe uma star!**
