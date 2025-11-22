@@ -174,50 +174,35 @@ export const OpportunityService = {
     };
   },
 
-  // --- 4. 🚀 INTELIGÊNCIA DE ARMAZENAGEM (CONECTADA AO PYTHON) ---
+ // --- 4. INTELIGÊNCIA DE ARMAZENAGEM (IA) ---
   getStorageAnalysis: async (product, currentPrice = 4.00) => {
     try {
-        console.log(`🧠 Pedindo análise de IA para: ${product}...`);
-        
         const payload = {
             product: product,
             current_price: Number(currentPrice),
-            storage_cost_per_day: 0.05, // R$/kg/dia (estimado)
-            risk_factor: 0.8    // Fator de risco
+            storage_cost_per_day: 0.05,
+            risk_factor: 0.8
         };
 
-        // Chama o seu Backend Node.js (que vai chamar o Python)
         const response = await fetch(`${API_URL}/ai/storage`, {
             method: 'POST',
             headers: {
-                ...getAuthHeaders(), // Envia o Token JWT
+                ...getAuthHeaders(),
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(payload)
         });
 
-        if (!response.ok) {
-            throw new Error(`Erro na API de IA: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`Erro IA: ${response.status}`);
         
         const data = await response.json();
-        console.log("✅ Resposta do Python recebida:", data);
         
-        return {
-            labels: data.chart_data.labels,
-            prices: data.chart_data.prices,
-            costs: data.chart_data.costs,
-            recommendation: {
-                bestDayIndex: data.recommendation.best_day_index,
-                bestDayLabel: data.recommendation.best_day_date,
-                extraProfit: data.recommendation.projected_profit,
-                riskEvent: "Alta volatilidade detectada (Modelo Python)",
-                riskProbability: "85%"
-            }
-        };
+        // ✅ CORREÇÃO: Retorna os dados do Python DIRETAMENTE, sem filtrar/traduzir
+        // Isso garante que 'confidence_score', 'action', etc. cheguem na tela
+        return data; 
 
     } catch (error) {
-        console.error("❌ Falha na conexão com a IA:", error);
+        console.error("❌ Falha na IA:", error);
         return null; 
     }
   }

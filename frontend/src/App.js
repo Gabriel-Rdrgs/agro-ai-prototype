@@ -130,7 +130,7 @@ function App() {
       <header className="app-header" style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 2rem', height: 'auto', minHeight: '70px', flexShrink: 0 }}>
         <div style={{ textAlign: 'center', zIndex: 1 }}>
             <h1 style={{ fontSize: 'clamp(18px, 4vw, 24px)', margin: 0 }}>🚀 AgroArbitrage AI</h1>
-            <p style={{ fontSize: '12px', opacity: 0.8, margin: 0 }}>Protótipo v0.1</p>
+            <p style={{ fontSize: '12px', opacity: 0.8, margin: 0 }}>MVP v1.0</p>
         </div>
         
         {/* 👤 ÁREA DO USUÁRIO (Fixa na direita) */}

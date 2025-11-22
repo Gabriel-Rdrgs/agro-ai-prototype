@@ -5,7 +5,7 @@ from sqlalchemy import create_engine, text
 
 # --- CONFIGURAÇÃO ---
 # Conexão direta (sem pgbouncer) para o Python não reclamar
-DATABASE_URL="postgresql://postgres.jiyqrxgyopytqvctdvir:jRbNxCnSFg93eVPE@aws-0-us-west-2.pooler.supabase.com:6543/postgres"
+DATABASE_URL="postgresql://postgres.jiyqrxgyopytqvctdvir:ZC9BPp3AhUxtth1R@aws-0-us-west-2.pooler.supabase.com:6543/postgres"
 engine = create_engine(DATABASE_URL)
 
 def get_advanced_agrometeo(lat, lng):

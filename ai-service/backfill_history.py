@@ -5,23 +5,24 @@ from sqlalchemy import create_engine, text
 import random
 
 # --- CONFIGURAÇÃO ---
-# Use sua string de conexão REAL (sem pgbouncer)
-DATABASE_URL="postgresql://postgres.jiyqrxgyopytqvctdvir:jRbNxCnSFg93eVPE@aws-0-us-west-2.pooler.supabase.com:6543/postgres"
+# Use sua senha correta aqui
+DATABASE_URL="postgresql://postgres.jiyqrxgyopytqvctdvir:ZC9BPp3AhUxtth1R@aws-0-us-west-2.pooler.supabase.com:6543/postgres"
 engine = create_engine(DATABASE_URL)
 
 def generate_history():
-    print("🕰️ LIGANDO A MÁQUINA DO TEMPO (BACKFILL)...")
+    print("🕰️ LIGANDO A MÁQUINA DO TEMPO (PANDAS TURBO)...")
     
     with engine.connect() as connection:
-        # 1. Busca as cidades (SQLAlchemy inicia transação aqui - Autobegin)
+        # 1. Busca as cidades
         print("📡 Lendo cidades do banco...")
         cities = connection.execute(text("SELECT id, city, state, \"buyPrice\" FROM \"Opportunity\" WHERE product = 'Tomate'")).fetchall()
         
         history_buffer = []
         days_back = 180 
         
-        print(f"📅 Gerando {days_back} dias de dados para {len(cities)} cidades...")
+        print(f"📅 Calculando dados para {len(cities)} cidades nos últimos {days_back} dias...")
 
+        # 2. Gera os dados na memória (Python é muito rápido nisso)
         for row in cities:
             city = row.city
             base_current_price = float(row.buyPrice)
@@ -35,36 +36,42 @@ def generate_history():
                 daily_noise = random.normalvariate(0, volatility)
                 
                 raw_price = base_current_price * (1 + season_factor + daily_noise)
-                
-                # --- CORREÇÃO AQUI: float() explícito ---
-                # Converte de numpy.float64 para float nativo do Python
-                historical_price = float(max(2.00, round(raw_price, 2)))
+                historical_price = max(2.00, round(raw_price, 2))
                 
                 history_buffer.append({
                     "opportunityId": opp_id,
                     "price": historical_price,
-                    "createdAt": date.strftime('%Y-%m-%d %H:%M:%S')
+                    "createdAt": date
                 })
 
-        # 2. Salvar (Usamos a transação já aberta)
-        print(f"💾 Salvando {len(history_buffer)} registros no histórico...")
+    # 3. O Pulo do Gato: Inserção em Lote via Pandas
+    if not history_buffer:
+        print("❌ Nenhuma cidade encontrada para gerar histórico.")
+        return
+
+    print(f"🚀 Enviando {len(history_buffer)} registros para o Supabase...")
+    
+    # Cria um DataFrame (Tabela na memória)
+    df = pd.DataFrame(history_buffer)
+    
+    # Garante que os números são floats nativos do Python (tchau bug do numpy!)
+    df['price'] = df['price'].astype(float)
+    
+    try:
+        # O método 'multi' cria um único INSERT com várias linhas: VALUES (...), (...), (...)
+        # chunksize=1000 garante que não estoure o limite do banco
+        df.to_sql(
+            'PriceHistory', 
+            engine, 
+            if_exists='append', # Adiciona aos dados existentes
+            index=False,        # Não envia o índice do DataFrame (0, 1, 2...)
+            method='multi',     # O segredo da velocidade
+            chunksize=1000      # Pacotes de 1000 em 1000
+        )
+        print("✅ SUCESSO! Histórico gravado em segundos.")
         
-        try:
-            insert_query = text("""
-                INSERT INTO "PriceHistory" ("opportunityId", "price", "createdAt")
-                VALUES (:opportunityId, :price, :createdAt)
-            """)
-            
-            for record in history_buffer:
-                connection.execute(insert_query, record)
-            
-            # Agora sim, damos o commit final
-            connection.commit()
-            print("✅ SUCESSO! A história foi reescrita.")
-            
-        except Exception as e:
-            connection.rollback()
-            print(f"❌ Erro ao salvar: {e}")
+    except Exception as e:
+        print(f"❌ Erro na inserção: {e}")
 
 if __name__ == "__main__":
     generate_history()

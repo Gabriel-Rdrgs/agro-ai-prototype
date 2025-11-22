@@ -5,24 +5,31 @@ import '../../styles/dashboard.css';
 import StorageAdvisor from './StorageAdvisor';
 
 const WeatherDashboard = ({ opportunities = [] }) => {
-  const [selectedOppId, setSelectedOppId] = useState(opportunities[0]?.id || null);
+  const [selectedOppId, setSelectedOppId] = useState(null);
   const [forecast, setForecast] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // Oportunidade selecionada
+  // UX: Seleciona automaticamente a primeira cidade quando os dados carregam
+  useEffect(() => {
+    if (opportunities.length > 0 && !selectedOppId) {
+      setSelectedOppId(opportunities[0].id);
+    }
+  }, [opportunities, selectedOppId]);
+
+  // Encontra o objeto completo da oportunidade selecionada
   const selectedOpp = opportunities.find(o => o.id === parseInt(selectedOppId));
 
+  // Busca previsão do tempo quando muda a seleção
   useEffect(() => {
     if (selectedOpp) {
       setLoading(true);
-      // Busca previsão para a origem do produto
-      OpportunityService.getForecast(selectedOpp.position[0], selectedOpp.position[1])
+      OpportunityService.getForecast(selectedOpp.lat, selectedOpp.lng) // Usa lat/lng reais do banco
         .then(data => {
           setForecast(data);
           setLoading(false);
         });
     }
-  }, [selectedOppId]);
+  }, [selectedOpp]);
 
   // Configuração do Gráfico
   const chartData = forecast ? {
@@ -52,7 +59,7 @@ const WeatherDashboard = ({ opportunities = [] }) => {
     interaction: { mode: 'index', intersect: false },
     plugins: {
       legend: { labels: { color: '#fff' } },
-      title: { display: true, text: 'Previsão de 7 Dias (Origem)', color: '#fff' }
+      title: { display: true, text: `Previsão: ${selectedOpp?.city || 'Selecione'}`, color: '#fff' }
     },
     scales: {
       x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
@@ -76,11 +83,11 @@ const WeatherDashboard = ({ opportunities = [] }) => {
         <p style={{ color: '#94a3b8', fontSize: '14px' }}>Monitore os riscos meteorológicos nas regiões de produção.</p>
       </div>
 
-      {/* SELETOR */}
+      {/* SELETOR (Aqui você escolhe a oportunidade!) */}
       <div style={{ marginBottom: '20px' }}>
         <label style={{ color: '#00d9ff', fontWeight: 'bold', marginRight: '10px' }}>Monitorar Região:</label>
         <select 
-          value={selectedOppId} 
+          value={selectedOppId || ''} 
           onChange={(e) => setSelectedOppId(e.target.value)}
           style={{ padding: '8px', borderRadius: '8px', background: '#15192c', color: 'white', border: '1px solid #334155' }}
         >
@@ -90,7 +97,7 @@ const WeatherDashboard = ({ opportunities = [] }) => {
         </select>
       </div>
 
-      {/* CONTEÚDO */}
+      {/* GRÁFICOS DE CLIMA */}
       {loading ? (
         <div style={{ color: '#00d9ff', textAlign: 'center', padding: '40px' }}>📡 Baixando dados de satélite...</div>
       ) : forecast ? (
@@ -121,12 +128,14 @@ const WeatherDashboard = ({ opportunities = [] }) => {
           </div>
         </div>
       ) : (
-        <div style={{ color: '#64748b' }}>Selecione uma oportunidade para ver a previsão.</div>
+        <div style={{ color: '#64748b', padding: '20px' }}>Selecione uma região acima para ver a previsão.</div>
       )}
-    {/* Seção de Inteligência de Armazenagem */}
-  <StorageAdvisor product={selectedOpp?.product} />
 
-</div> // Fecha dashboard-container
+      {/* 🧠 IA DE ARMAZENAGEM (Agora Conectada Corretamente!) */}
+      {/* O erro estava aqui: Antes passava 'product', agora passa 'opportunity' inteiro */}
+      <StorageAdvisor opportunity={selectedOpp} />
+
+    </div>
   );
 };
 

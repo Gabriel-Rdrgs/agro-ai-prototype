@@ -5,7 +5,7 @@ import time
 
 # --- CONFIGURAÇÃO (A mesma que funcionou para você) ---
 # Se estiver usando variáveis de ambiente, melhor. Se não, pode usar a string direta (cuidado com segurança em produção!)
-DATABASE_URL="postgresql://postgres.jiyqrxgyopytqvctdvir:jRbNxCnSFg93eVPE@aws-0-us-west-2.pooler.supabase.com:6543/postgres"
+DATABASE_URL="postgresql://postgres.jiyqrxgyopytqvctdvir:ZC9BPp3AhUxtth1R@aws-0-us-west-2.pooler.supabase.com:6543/postgres"
 
 # Ajuste para SQLAlchemy
 if DATABASE_URL.startswith("postgres://"):
