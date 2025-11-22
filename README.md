@@ -228,26 +228,6 @@ Para documentação completa:
 
 ---
 
-## 🤝 Contribuindo
-
-Este é um projeto em desenvolvimento. Sugestões e melhorias são bem-vindas!
-
-```bash
-# 1. Fork este repositório
-# 2. Crie uma branch para sua feature
-git checkout -b feature/MinhaFeature
-
-# 3. Faça commit das mudanças
-git commit -m "feat: Adicionei MinhaFeature"
-
-# 4. Push para a branch
-git push origin feature/MinhaFeature
-
-# 5. Abra um Pull Request
-```
-
----
-
 ## 📄 Licença
 
 Este projeto está sob licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
@@ -259,7 +239,7 @@ Este projeto está sob licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais
 Desenvolvido por **Gabriel Rodrigues**
 
 - 🔗 GitHub: [@Gabriel-Rdrgs](https://github.com/Gabriel-Rdrgs)
-- 💼 LinkedIn: [Gabriel Rodrigues](https://linkedin.com/in/gabriel-rodrigues)
+- 💼 LinkedIn: [Gabriel Rodrigues](https://www.linkedin.com/in/gabriel-soares-rodrigues-030121231/)
 - 🌐 Portfolio: [gabriel-dev.com](https://gabriel-dev.com)
 
 ---
