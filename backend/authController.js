@@ -1,25 +1,30 @@
 // backend/authController.js
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto'); // Nativo do Node, para gerar tokens aleatórios
 const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 const SECRET_KEY = process.env.JWT_SECRET || 'sua_chave_secreta_super_segura';
 
+// Função auxiliar para gerar o Token de Acesso (Curta Duração)
+function generateAccessToken(user) {
+  return jwt.sign(
+    { id: user.id, email: user.email, role: user.role, name: user.name },
+    SECRET_KEY,
+    { expiresIn: '15m' } // Expira rápido para segurança
+  );
+}
+
 exports.register = async (req, res) => {
   const { name, email, password, role } = req.body;
 
   try {
-    // 1. Verifica se usuário já existe
     const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser) {
-      return res.status(400).json({ error: 'E-mail já cadastrado.' });
-    }
+    if (existingUser) return res.status(400).json({ error: 'E-mail já cadastrado.' });
 
-    // 2. Criptografa a senha
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // 3. Cria o usuário no banco
     const user = await prisma.user.create({
       data: {
         name,
@@ -29,10 +34,8 @@ exports.register = async (req, res) => {
       }
     });
 
-    // Remove a senha do objeto de retorno por segurança
     const { password: _, ...userWithoutPassword } = user;
-
-    res.status(201).json({ message: 'Usuário criado com sucesso!', user: userWithoutPassword });
+    res.status(201).json({ message: 'Usuário criado!', user: userWithoutPassword });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Erro ao registrar usuário.' });
@@ -43,32 +46,70 @@ exports.login = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    // 1. Busca usuário pelo email
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) {
+    if (!user || !(await bcrypt.compare(password, user.password))) {
       return res.status(401).json({ error: 'Credenciais inválidas.' });
     }
 
-    // 2. Compara a senha enviada com a senha criptografada no banco
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      return res.status(401).json({ error: 'Credenciais inválidas.' });
-    }
+    // 1. Gera o Token de Acesso (O Crachá Provisório)
+    const accessToken = generateAccessToken(user);
 
-    // 3. Gera o Token JWT (O "Crachá")
-    const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role, name: user.name },
-      SECRET_KEY,
-      { expiresIn: '8h' } // Token expira em 8 horas (jornada de trabalho)
-    );
+    // 2. Gera o Refresh Token (O Documento para renovar)
+    const refreshToken = crypto.randomBytes(40).toString('hex');
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7); // Válido por 7 dias
+
+    // 3. Salva o Refresh Token no banco
+    await prisma.refreshToken.create({
+      data: {
+        token: refreshToken,
+        userId: user.id,
+        expiresAt: expiresAt
+      }
+    });
 
     res.json({
-      message: 'Login realizado com sucesso!',
-      token,
+      message: 'Login realizado!',
+      accessToken,
+      refreshToken, // O Frontend deve guardar isso com carinho
       user: { id: user.id, name: user.name, email: user.email, role: user.role }
     });
   } catch (error) {
-    console.error(error);
+    console.error("Erro no Login:", error);
     res.status(500).json({ error: 'Erro ao realizar login.' });
+  }
+};
+
+exports.refreshToken = async (req, res) => {
+  const { refreshToken } = req.body;
+
+  if (!refreshToken) return res.status(401).json({ error: 'Refresh Token não fornecido.' });
+
+  try {
+    // 1. Procura esse token no banco
+    const storedToken = await prisma.refreshToken.findUnique({
+      where: { token: refreshToken },
+      include: { user: true } // Já traz os dados do dono do token
+    });
+
+    // 2. Validações de segurança
+    if (!storedToken) {
+      return res.status(403).json({ error: 'Token inválido (não encontrado).' });
+    }
+
+    if (storedToken.expiresAt < new Date()) {
+      // Se venceu, apaga do banco para limpar
+      await prisma.refreshToken.delete({ where: { id: storedToken.id } });
+      return res.status(403).json({ error: 'Sessão expirada. Faça login novamente.' });
+    }
+
+    // 3. Tudo certo? Gera um novo Crachá (Access Token)
+    const newAccessToken = generateAccessToken(storedToken.user);
+
+    res.json({ accessToken: newAccessToken });
+
+  } catch (error) {
+    console.error("Erro no Refresh:", error);
+    res.status(500).json({ error: 'Erro ao renovar token.' });
   }
 };

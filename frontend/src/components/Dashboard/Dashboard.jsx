@@ -32,10 +32,39 @@ ChartJS.register(
 const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [], onLoadScenario, currentDollar }) => {
   // --- ESTADOS ---
   const [selectedCrop, setSelectedCrop] = useState("");
+  const [selectedCity, setSelectedCity] = useState("");
   const [newOpAlert, setNewOpAlert] = useState(false);
   const [alertVisible, setAlertVisible] = useState(false);
   const [savedScenarios, setSavedScenarios] = useState([]);
+  const [trendData, setTrendData] = useState(null);
+  // Busca histórico real no backend
+ // Busca histórico real no backend (Com Filtros de Produto e Cidade!)
+  useEffect(() => {
+    const fetchTrend = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        
+        // Monta a URL com parâmetros dinâmicos
+        const params = new URLSearchParams();
+        
+        // Só adiciona na URL se o usuário tiver selecionado algo
+        if (selectedCrop) params.append('product', selectedCrop);
+        if (selectedCity) params.append('city', selectedCity);
 
+        // Faz a chamada para a API com os filtros
+        const response = await fetch(`http://localhost:3001/api/analytics/trend?${params.toString()}`, {
+           headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        const data = await response.json();
+        setTrendData(data);
+      } catch (e) {
+        console.error("Erro ao carregar gráfico:", e);
+      }
+    };
+    
+    fetchTrend();
+  }, [selectedCrop, selectedCity]); // <--- Recarrega sempre que esses dois mudarem
   const barRef = useRef();
 
   // --- EFEITOS ---
@@ -167,21 +196,26 @@ const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [], o
   };
 
   // Dados Mockados para Tendência
+  // 1. Calcula o preço médio ATUAL (Real do Banco)
+  const currentAvgPrice = cropFilteredOpps.length > 0
+    ? cropFilteredOpps.reduce((sum, op) => sum + op.buyPrice, 0) / cropFilteredOpps.length
+    : 4.50; // Fallback
+
+  // 2. Gera uma tendência simulada terminando no preço atual
+  // (Numa V2, isso viria de uma tabela 'HistoricalPrices')
+  // Se a API já retornou dados, usa eles. Se não, usa um placeholder.
   const priceTrendData = {
-    labels: ["Jun", "Jul", "Ago", "Set", "Out", "Nov"],
+    labels: trendData ? trendData.labels : ["Carregando..."],
     datasets: [
       {
-        label: "Preço Médio (R$)",
-        data: [4.2, 4.8, 5.1, 4.5, 5.3, 5.8],
+        label: "Preço Médio Nacional (Histórico Real)",
+        data: trendData ? trendData.data : [],
         borderColor: "#00d9ff",
         backgroundColor: "rgba(0,217,255,0.1)",
         borderWidth: 3,
         fill: true,
         tension: 0.4,
-        pointBackgroundColor: "#00d9ff",
-        pointBorderColor: "#0a0e27",
-        pointBorderWidth: 2,
-        pointRadius: 6,
+        pointBackgroundColor: "#00d9ff"
       },
     ],
   };
@@ -204,7 +238,7 @@ const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [], o
         bodyColor: "#fff",
         borderColor: "#00d9ff",
         borderWidth: 1,
-        callbacks: { label: ctx => `R$ ${ctx.raw.toFixed(2)}` },
+        callbacks: { label: ctx => `R$ ${Number(ctx.raw).toFixed(2)}` },
       },
     },
     scales: {
@@ -255,11 +289,34 @@ const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [], o
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-              {/* Filtro */}
-              <div className="dashboard-crop-filter" style={{marginBottom: 0}}>
-                <select value={selectedCrop} onChange={e => setSelectedCrop(e.target.value)}>
+              {/* Filtro de Produto */}
+              <div className="dashboard-crop-filter" style={{marginBottom: 0, display: 'flex', gap: '10px'}}>
+                <select 
+                    value={selectedCrop} 
+                    onChange={e => {
+                        setSelectedCrop(e.target.value);
+                        setSelectedCity(""); // Reseta cidade ao trocar produto
+                    }}
+                >
                   <option value="">Todas culturas</option>
                   {uniqueCrops.map(crop => (<option key={crop} value={crop}>{crop}</option>))}
+                </select>
+
+                {/* NOVO: Filtro de Cidade (Só aparece se tiver produto ou cidades disponíveis) */}
+                <select 
+                    value={selectedCity} 
+                    onChange={e => setSelectedCity(e.target.value)}
+                    disabled={!selectedCrop && uniqueCrops.length > 1} // Opcional: trava se não tiver filtro
+                    style={{ borderLeft: '4px solid #10b981' }} // Destaque visual
+                >
+                  <option value="">Todas as praças</option>
+                  {/* Lógica Sênior: Mostra cidades que têm o produto selecionado */}
+                  {[...new Set(opportunities
+                      .filter(o => !selectedCrop || o.product === selectedCrop)
+                      .map(o => o.city)
+                  )].sort().map(city => (
+                      <option key={city} value={city}>{city}</option>
+                  ))}
                 </select>
               </div>
 

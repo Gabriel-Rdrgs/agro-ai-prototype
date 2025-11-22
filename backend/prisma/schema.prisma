@@ -5,46 +5,75 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
-// Tabela de Oportunidades
+// --- MODELOS DE NEGÓCIO ---
+
 model Opportunity {
-  id          Int      @id @default(autoincrement())
-  product     String   // Ex: Tomate
-  category    String   // Ex: Hortaliça
+  id           Int      @id @default(autoincrement())
+  product      String   // Ex: Tomate
+  category     String   // Ex: Hortifruti
   
   // Localização Origem
-  city        String
-  state       String
-  lat         Float
-  lng         Float
+  city         String
+  state        String
+  lat          Float
+  lng          Float
 
   // Dados Financeiros
-  buyPrice    Float    // Preço Compra
-  sellPrice   Float    // Preço Venda
+  buyPrice     Float    // Preço Compra
+  sellPrice    Float    // Preço Venda
   
   // Dados Destino
-  sellLocation String  // Nome do destino (Ex: Mato Grosso)
-  destLat      Float?  // Latitude Destino (Opcional por enquanto)
-  destLng      Float?  // Longitude Destino
+  sellLocation String   // Ex: CEAGESP - SP
+  destLat      Float?
+  destLng      Float?
 
   // Detalhes
-  volume      String   // Ex: "50 toneladas"
-  riskLevel   Int      // 1=Baixo, 2=Médio, 3=Alto
-  climate     String   // Ex: "Chuva moderada"
-  description String?
-  season      String?  // Ex: "Novembro"
+  volume       String   // Ex: "500 cx"
+  riskLevel    Int      // 1=Baixo, 2=Médio, 3=Alto
+  climate      String   // Ex: "Chuva: 50mm"
+  description  String?
+  season       String?  // Ex: "Safra de Inverno"
 
-  createdAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  // Relação com Histórico (A Memória do Robô)
+  history      PriceHistory[]
 }
-// Tabela de Usuários (NOVO)
+
+model PriceHistory {
+  id            Int         @id @default(autoincrement())
+  
+  // Relação com a Oportunidade
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id])
+  opportunityId Int
+  
+  price         Float       // O preço registrado naquele dia
+  createdAt     DateTime    @default(now()) // Data do registro
+}
+
+// --- MODELOS DE AUTENTICAÇÃO ---
+
 model User {
+  id            Int            @id @default(autoincrement())
+  name          String
+  email         String         @unique
+  password      String
+  role          String         @default("analyst")
+  createdAt     DateTime       @default(now())
+  
+  refreshTokens RefreshToken[] 
+}
+
+model RefreshToken {
   id        Int      @id @default(autoincrement())
-  name      String
-  email     String   @unique
-  password  String   // Será salva criptografada (hash)
-  role      String   @default("analyst") // admin, analyst, viewer
+  token     String   @unique
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  expiresAt DateTime
   createdAt DateTime @default(now())
 }

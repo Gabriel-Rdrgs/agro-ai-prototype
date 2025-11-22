@@ -4,7 +4,7 @@ const cors = require('cors');
 const axios = require('axios');
 const { PrismaClient } = require('@prisma/client');
 const authController = require('./authController');
-const authMiddleware = require('./authMiddleware'); // Importante: Proteção
+const { verifyToken, checkRole } = require('./authMiddleware'); // Importante: Proteção
 
 const app = express();
 const prisma = new PrismaClient();
@@ -34,13 +34,13 @@ async function getWeather(lat, lng) {
 }
 
 // --- ROTAS DE AUTH ---
-app.post('/api/auth/register', authController.register);
+app.post('/api/auth/register', verifyToken, checkRole(['admin']), authController.register); // Protegido (Só Admin cria)
 app.post('/api/auth/login', authController.login);
-
+app.post('/api/auth/refresh', authController.refreshToken);
 // --- ROTAS DE NEGÓCIO ---
 
 // 1. Oportunidades
-app.get('/api/opportunities', authMiddleware, async (req, res) => {
+app.get('/api/opportunities', verifyToken, async (req, res) => {
   try {
     const opportunities = await prisma.opportunity.findMany();
     const dollarRate = await getDollarRate();
@@ -58,7 +58,7 @@ app.get('/api/opportunities', authMiddleware, async (req, res) => {
 });
 
 // 2. Clima
-app.get('/api/weather', authMiddleware, async (req, res) => {
+app.get('/api/weather', verifyToken, async (req, res) => {
   const { lat, lng } = req.query;
   if (!lat || !lng) return res.status(400).json({ error: 'Lat/Lng obrigatórios' });
 
@@ -78,7 +78,7 @@ app.get('/api/weather', authMiddleware, async (req, res) => {
 // 3. 🚀 ROTA DE IA (Proxy para o Python)
 // backend/server.js
 
-app.post('/api/ai/storage', authMiddleware, async (req, res) => {
+app.post('/api/ai/storage', verifyToken, checkRole(['admin', 'premium']), async (req, res) => {
   try {
     const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://localhost:8000';
     
@@ -95,6 +95,47 @@ app.post('/api/ai/storage', authMiddleware, async (req, res) => {
 });
 
 const PORT = 3001;
+// 4. ROTA DE HISTÓRICO (Com Filtros Dinâmicos)
+app.get('/api/analytics/trend', verifyToken, async (req, res) => {
+  try {
+    const { product, city } = req.query; // Lê os filtros da URL (?product=X&city=Y)
+
+    // Monta o filtro dinâmico para o Prisma
+    const whereCondition = {};
+    if (product) whereCondition.product = product;
+    if (city) whereCondition.city = city;
+
+    // Busca histórico filtrado pela oportunidade relacionada
+    const history = await prisma.priceHistory.findMany({
+      where: {
+        opportunity: whereCondition // Filtra dentro da relação "opportunity"
+      },
+      orderBy: { createdAt: 'asc' },
+      // take: 100 // (Opcional: removi o limite para garantir que o gráfico pegue o período todo se filtrar)
+    });
+
+    // Agrupa por data (Média do dia para os filtros selecionados)
+    const trendMap = {};
+    
+    history.forEach(record => {
+      const dateKey = new Date(record.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+      
+      if (!trendMap[dateKey]) {
+        trendMap[dateKey] = { sum: 0, count: 0 };
+      }
+      trendMap[dateKey].sum += record.price;
+      trendMap[dateKey].count += 1;
+    });
+
+    const labels = Object.keys(trendMap);
+    const data = labels.map(date => (trendMap[date].sum / trendMap[date].count).toFixed(2));
+
+    res.json({ labels, data });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao buscar tendência' });
+  }
+});
 app.listen(PORT, () => {
   console.log(`🔥 Servidor Node rodando em http://localhost:${PORT}`);
 });

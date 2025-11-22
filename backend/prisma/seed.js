@@ -1,198 +1,115 @@
 // backend/prisma/seed.js
 const { PrismaClient } = require('@prisma/client');
+const bcrypt = require('bcryptjs');
+
 const prisma = new PrismaClient();
 
-const opportunities = [
-  // REGIÃO NORDESTE
-  {
-    product: 'Tomate',
-    category: 'Hortaliça',
-    city: 'Petrolina', state: 'PE',
-    lat: -9.3891, lng: -40.5006,
-    buyPrice: 2.50, sellPrice: 7.00,
-    sellLocation: 'Mato Grosso',
-    destLat: -15.6014, destLng: -56.0979,
-    volume: '50 toneladas',
-    riskLevel: 1,
-    climate: 'Estável - Irrigação garantida',
-    season: 'Novembro',
-    description: 'Tomate de mesa cultivado no Vale do São Francisco. Previsão de granizo em MT aumenta demanda.'
-  },
-  {
-    product: 'Cebola',
-    category: 'Hortaliça',
-    city: 'Irecê', state: 'BA',
-    lat: -11.3039, lng: -41.8564,
-    buyPrice: 1.80, sellPrice: 4.20,
-    sellLocation: 'São Paulo',
-    destLat: -23.5505, destLng: -46.6333,
-    volume: '80 toneladas',
-    riskLevel: 1,
-    climate: 'Seca favorável',
-    season: 'Outubro-Novembro',
-    description: 'Safra recorde em Irecê. Baixa produção em SP por excesso de chuva cria oportunidade.'
-  },
-  {
-    product: 'Melão',
-    category: 'Fruta',
-    city: 'Mossoró', state: 'CE',
-    lat: -5.1878, lng: -37.3444,
-    buyPrice: 3.20, sellPrice: 8.50,
-    sellLocation: 'Rio de Janeiro',
-    destLat: -22.9068, destLng: -43.1729,
-    volume: '30 toneladas',
-    riskLevel: 2,
-    climate: 'Calor intenso',
-    season: 'Novembro',
-    description: 'Melão amarelo para exportação. Mercado interno aquecido por festas de fim de ano.'
-  },
-  // CENTRO-OESTE
-  {
-    product: 'Soja',
-    category: 'Grão',
-    city: 'Sorriso', state: 'MT',
-    lat: -12.5436, lng: -55.7142,
-    buyPrice: 120.00, sellPrice: 145.00,
-    sellLocation: 'Porto de Santos',
-    destLat: -23.9608, destLng: -46.3331,
-    volume: '5000 toneladas',
-    riskLevel: 1,
-    climate: 'Safra confirmada',
-    season: 'Fevereiro-Março',
-    description: 'Soja para exportação. Dólar alto favorece negócio.'
-  },
-  {
-    product: 'Milho',
-    category: 'Grão',
-    city: 'Rio Verde', state: 'GO',
-    lat: -17.7997, lng: -50.9264,
-    buyPrice: 45.00, sellPrice: 68.00,
-    sellLocation: 'Santa Catarina',
-    destLat: -27.5954, destLng: -48.5480,
-    volume: '200 toneladas',
-    riskLevel: 2,
-    climate: 'Chuvas acima da média',
-    season: 'Novembro',
-    description: 'Milho safrinha. Alta demanda de granjas em SC.'
-  },
-  // SUDESTE
-  {
-    product: 'Café Arábica',
-    category: 'Grão',
-    city: 'Patrocínio', state: 'MG',
-    lat: -18.9413, lng: -46.9931,
-    buyPrice: 850.00, sellPrice: 1200.00,
-    sellLocation: 'Exportação (Europa)',
-    destLat: -23.9608, destLng: -46.3331,
-    volume: '100 sacas',
-    riskLevel: 1,
-    climate: 'Clima ideal',
-    season: 'Maio-Agosto',
-    description: 'Café especial pontuação 85+. Mercado europeu aquecido.'
-  },
-  {
-    product: 'Laranja Pera',
-    category: 'Fruta',
-    city: 'Bebedouro', state: 'SP',
-    lat: -20.9494, lng: -48.4794,
-    buyPrice: 25.00, sellPrice: 42.00,
-    sellLocation: 'Indústria de Suco',
-    destLat: -21.7946, destLng: -48.1766,
-    volume: '150 toneladas',
-    riskLevel: 3,
-    climate: 'Risco de greening',
-    season: 'Setembro-Dezembro',
-    description: 'Laranja para suco. Safra reduzida por doença aumenta preços.'
-  },
-  // SUL
-  {
-    product: 'Maçã Fuji',
-    category: 'Fruta',
-    city: 'Fraiburgo', state: 'SC',
-    lat: -27.0261, lng: -50.9208,
-    buyPrice: 4.50, sellPrice: 9.00,
-    sellLocation: 'Nordeste',
-    destLat: -8.0476, destLng: -34.8770,
-    volume: '40 toneladas',
-    riskLevel: 2,
-    climate: 'Frio adequado',
-    season: 'Março-Abril',
-    description: 'Maçã premium. Nordeste paga mais por qualidade superior.'
-  },
-  {
-    product: 'Uva Niágara',
-    category: 'Fruta',
-    city: 'Bento Gonçalves', state: 'RS',
-    lat: -29.1717, lng: -51.5194,
-    buyPrice: 6.00, sellPrice: 12.50,
-    sellLocation: 'Rio de Janeiro',
-    destLat: -22.9068, destLng: -43.1729,
-    volume: '25 toneladas',
-    riskLevel: 2,
-    climate: 'Chuvas no fim',
-    season: 'Janeiro-Fevereiro',
-    description: 'Uva de mesa. Festas de verão aumentam demanda.'
-  },
-  // NORTE
-  {
-    product: 'Açaí',
-    category: 'Fruta',
-    city: 'Belém', state: 'PA',
-    lat: -1.4558, lng: -48.4902,
-    buyPrice: 18.00, sellPrice: 35.00,
-    sellLocation: 'Sul e Sudeste',
-    destLat: -23.5505, destLng: -46.6333,
-    volume: '10 toneladas',
-    riskLevel: 3,
-    climate: 'Entressafra',
-    season: 'Dezembro-Janeiro',
-    description: 'Açaí premium congelado. Entressafra eleva preços.'
-  },
-  // EXTRAS
-  {
-    product: 'Banana Prata',
-    category: 'Fruta',
-    city: 'Registro', state: 'SP',
-    lat: -24.4875, lng: -47.8433,
-    buyPrice: 2.20, sellPrice: 5.00,
-    sellLocation: 'Paraná',
-    destLat: -25.4284, destLng: -49.2733,
-    volume: '60 toneladas',
-    riskLevel: 1,
-    climate: 'Clima estável',
-    season: 'Ano todo',
-    description: 'Banana de primeira. Mercado paranaense paga premium.'
-  },
-  {
-    product: 'Feijão Carioca',
-    category: 'Grão',
-    city: 'Londrina', state: 'PR',
-    lat: -23.3045, lng: -51.1696,
-    buyPrice: 180.00, sellPrice: 260.00,
-    sellLocation: 'Rio de Janeiro',
-    destLat: -22.9068, destLng: -43.1729,
-    volume: '100 sacas',
-    riskLevel: 1,
-    climate: 'Safra garantida',
-    season: 'Abril-Maio',
-    description: 'Feijão tipo 1. Entressafra em outras regiões cria oportunidade.'
-  }
-];
+// --- INTELIGÊNCIA DE MERCADO (MATRIZ REGIONAL) ---
+// Define um preço base médio (R$/kg) por Estado, simulando a realidade local
+const REGIONAL_PRICING = {
+  'GO': 3.80, // Baixo custo, alto volume (Cristalina, Rio Verde)
+  'SP': 4.50, // Referência de mercado (Itapeva, Mogi)
+  'MG': 4.20, // Competitivo (Jaíba, Araguari)
+  'BA': 5.10, // Tomate premium irrigado / Frete longo (Mucugê)
+  'PE': 4.90, // Polo agreste, nicho regional (Bezerros)
+  'SC': 4.30, // Safra de verão específica (Caçador)
+  'PR': 4.10, // Alta produtividade (Reserva)
+  'ES': 4.60, // Montanha, qualidade (Venda Nova)
+  'RJ': 4.70  // Próximo ao Rio, custo alto
+};
+
+// Função para gerar variação natural do mercado (+- 10%)
+function getRegionalPrice(state) {
+  const base = REGIONAL_PRICING[state] || 4.00; // Padrão 4.00 se não achar o estado
+  const variation = (Math.random() * 0.80) - 0.40; // Varia entre -0.40 e +0.40 centavos
+  return parseFloat((base + variation).toFixed(2));
+}
 
 async function main() {
-  console.log('🌱 Iniciando seed do banco de dados...');
-  
-  // Limpa o banco antes de inserir (para não duplicar se rodar 2x)
-  await prisma.opportunity.deleteMany({});
+  console.log('🍅 Iniciando Seed com PRECIFICAÇÃO REGIONAL INTELIGENTE...');
 
-  for (const opp of opportunities) {
-    const created = await prisma.opportunity.create({
-      data: opp
+  // 1. Limpa o banco
+  await prisma.refreshToken.deleteMany();
+  await prisma.opportunity.deleteMany();
+  await prisma.user.deleteMany();
+  console.log('🧹 Banco limpo.');
+
+  // 2. Admin
+  const hashedPassword = await bcrypt.hash('123456', 10);
+  const admin = await prisma.user.create({
+    data: {
+      name: 'Admin Agro',
+      email: 'admin@agro.com',
+      password: hashedPassword,
+      role: 'admin'
+    }
+  });
+  console.log(`👤 Usuário criado: ${admin.email}`);
+
+  // 3. Lista dos 20 Maiores Produtores
+  const topProducers = [
+    // CENTRO-OESTE (Goiás domina no volume/indústria -> Preços menores)
+    { city: 'Cristalina', state: 'GO', lat: -16.76, lng: -47.61, desc: 'Irrigação de pivô central.', season: 'Safra de Inverno' },
+    { city: 'Goianápolis', state: 'GO', lat: -16.51, lng: -49.02, desc: 'Capital do tomate em GO.', season: 'Safra Atual' },
+    { city: 'Rio Verde', state: 'GO', lat: -17.79, lng: -50.92, desc: 'Alta tecnologia aplicada.', season: 'Safra Atual' },
+    { city: 'Morrinhos', state: 'GO', lat: -17.73, lng: -49.09, desc: 'Foco em tomate industrial.', season: 'Safra Industrial' },
+
+    // SUDESTE (SP é referência, MG competitivo)
+    { city: 'Itapeva', state: 'SP', lat: -23.98, lng: -48.87, desc: 'Maior produtor de SP.', season: 'Safra de Verão' },
+    { city: 'Mogi Guaçu', state: 'SP', lat: -22.37, lng: -46.94, desc: 'Logística estratégica.', season: 'Safra Atual' },
+    { city: 'Ribeirão Branco', state: 'SP', lat: -24.22, lng: -48.76, desc: 'Tomate de mesa premium.', season: 'Safra de Verão' },
+    { city: 'Sumaré', state: 'SP', lat: -22.82, lng: -47.26, desc: 'Abastecimento RMC.', season: 'Safra Atual' },
+    { city: 'Jaíba', state: 'MG', lat: -15.34, lng: -43.67, desc: 'Projeto Jaíba (Irrigado).', season: 'Safra Anual' },
+    { city: 'Araguari', state: 'MG', lat: -18.64, lng: -48.18, desc: 'Processamento e sucos.', season: 'Safra Industrial' },
+    { city: 'Carmópolis de Minas', state: 'MG', lat: -20.53, lng: -44.63, desc: 'Tradicional mineiro.', season: 'Safra Atual' },
+    { city: 'Venda Nova do Imigrante', state: 'ES', lat: -20.33, lng: -41.13, desc: 'Polo serrano capixaba.', season: 'Safra de Montanha' },
+    { city: 'São José de Ubá', state: 'RJ', lat: -21.35, lng: -41.94, desc: 'Principal polo do RJ.', season: 'Safra Atual' },
+
+    // NORDESTE (Custo logístico e irrigação -> Preços base maiores)
+    { city: 'Mucugê', state: 'BA', lat: -13.00, lng: -41.37, desc: 'Chapada Diamantina (Altitude).', season: 'Safra de Inverno' },
+    { city: 'Ibicoara', state: 'BA', lat: -13.41, lng: -41.28, desc: 'Alta produtividade/ha.', season: 'Safra de Inverno' },
+    { city: 'Ituaçu', state: 'BA', lat: -13.81, lng: -41.29, desc: 'Expansão recente.', season: 'Safra Atual' },
+    { city: 'Bezerros', state: 'PE', lat: -8.23, lng: -35.79, desc: 'Maior do agreste PE.', season: 'Safra Local' },
+    { city: 'Camocim de São Félix', state: 'PE', lat: -8.35, lng: -35.76, desc: 'Polo tomateiro PE.', season: 'Safra Local' },
+
+    // SUL
+    { city: 'Caçador', state: 'SC', lat: -26.77, lng: -51.01, desc: 'Safra de verão tardia.', season: 'Safra de Verão' },
+    { city: 'Reserva', state: 'PR', lat: -24.65, lng: -50.85, desc: 'Maior produtor do PR.', season: 'Safra Atual' },
+  ];
+
+  for (const place of topProducers) {
+    // 🧠 APLICAÇÃO DA LÓGICA: Preço calculado por região
+    const buyPrice = getRegionalPrice(place.state);
+    
+    // Margem de lucro também varia levemente (Frete SP exige margem maior de longe)
+    const freightFactor = (place.state === 'BA' || place.state === 'PE' || place.state === 'GO') ? 1.45 : 1.30;
+    const sellPrice = parseFloat((buyPrice * freightFactor).toFixed(2));
+
+    await prisma.opportunity.create({
+      data: {
+        product: 'Tomate',
+        category: 'Hortifruti',
+        city: place.city,
+        state: place.state,
+        lat: place.lat,
+        lng: place.lng,
+        
+        // Financeiro
+        buyPrice: buyPrice,
+        sellPrice: sellPrice,
+        sellLocation: 'CEAGESP - SP', 
+        volume: `${Math.floor(200 + Math.random() * 400)} cx`,
+        
+        // Status
+        riskLevel: 1,
+        climate: 'Aguardando Satélite',
+        description: place.desc,
+        season: place.season
+      }
     });
-    console.log(`✅ Criado: ${created.product} em ${created.city}`);
   }
-  
-  console.log('🏁 Seed finalizado com sucesso!');
+
+  console.log(`✅ ${topProducers.length} polos inseridos com preços ajustados à realidade local!`);
 }
 
 main()

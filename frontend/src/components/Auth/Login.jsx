@@ -27,14 +27,16 @@ const Login = ({ onLogin }) => {
 
       const data = await response.json();
 
-      if (response.ok) {
-        // Sucesso!
-        // Salvamos o token para uso futuro (opcional para este protótipo, mas boa prática)
-        localStorage.setItem('token', data.token);
-        
-        // Avisa o App.js que logou
-        onLogin(data.user); 
-      } else {
+    if (response.ok) {
+  // Sucesso!
+  // Ajuste: O backend agora retorna 'accessToken', não mais apenas 'token'
+  localStorage.setItem('token', data.accessToken); 
+  
+  // (Opcional) Se quiser salvar o refresh token para usar depois:
+  localStorage.setItem('refreshToken', data.refreshToken);
+
+  onLogin(data.user); 
+} else {
         // Erro (Senha errada ou usuário não encontrado)
         setError(data.error || 'Falha na autenticação');
       }

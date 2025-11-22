@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { OpportunityService } from '../../services/opportunityService';
-import { opportunities } from '../../data/mockOpportunities';
 import { StorageService } from '../../services/storageService';
 import { PdfService } from '../../services/pdfService';
 import '../../styles/calculator.css';
 
-const RoiCalculator = ({ onVisualizeRoute, initialData, currentDollar }) => {
+const RoiCalculator = ({ onVisualizeRoute, initialData, currentDollar, opportunities = [] }) => {
   // --- ESTADOS ---
   const [showAdvanced, setShowAdvanced] = useState(false);
   
   // Estado do formulário com valores padrão
   const [formData, setFormData] = useState({
     product: 'Tomate',
+    originId: '',
     buyPrice: 2.50,
     sellPrice: 7.00,
     volume: 10, // toneladas
@@ -22,7 +22,30 @@ const RoiCalculator = ({ onVisualizeRoute, initialData, currentDollar }) => {
     storageDays: 0,
     storageCostPerDay: 15
   });
+// --- LÓGICA NOVA: Auto-preenchimento ---
+  // Filtra as cidades que produzem o produto selecionado
+  const availableOrigins = opportunities.filter(op => op.product === formData.product);
 
+  // Quando o usuário escolhe uma origem, atualizamos o preço e guardamos a localização
+  useEffect(() => {
+    if (formData.originId) {
+      const selectedOpp = opportunities.find(op => op.id === parseInt(formData.originId));
+      if (selectedOpp) {
+        setFormData(prev => ({
+          ...prev,
+          buyPrice: selectedOpp.buyPrice, // Pega o preço real do banco
+          // Sugere venda com margem padrão se o usuário ainda não definiu
+          sellPrice: prev.sellPrice === 7.00 ? parseFloat((selectedOpp.buyPrice * 1.4).toFixed(2)) : prev.sellPrice
+        }));
+        
+        // Atualiza a origem para o cálculo de rota
+        setCalculatedOrigin({
+            coords: [selectedOpp.lat, selectedOpp.lng],
+            name: `${selectedOpp.city} - ${selectedOpp.state}`
+        });
+      }
+    }
+  }, [formData.originId, opportunities]);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   
@@ -82,18 +105,19 @@ const RoiCalculator = ({ onVisualizeRoute, initialData, currentDollar }) => {
     setLoading(true);
     
     try {
-      // 1. Identifica a Origem baseada no Produto (Mock)
-      const productOrigin = opportunities.find(op => op.product === formData.product);
-      // Fallback para coordenadas centrais se não achar
-      const originCoords = productOrigin ? productOrigin.position : [-15.7975, -47.8919];
-      const originName = productOrigin ? `${productOrigin.city} - ${productOrigin.state}` : 'Origem Padrão';
+      // 1. Usa a origem selecionada ou um fallback seguro
+      let originCoords = calculatedOrigin ? calculatedOrigin.coords : [-15.79, -47.89];
       
-      setCalculatedOrigin({ coords: originCoords, name: originName });
+      // Se o usuário não selecionou origem, tenta achar a primeira do produto na lista real
+      if (!calculatedOrigin) {
+         const fallbackOrigin = opportunities.find(op => op.product === formData.product);
+         if (fallbackOrigin) originCoords = [fallbackOrigin.lat, fallbackOrigin.lng];
+      }
 
-      // 2. Chama a Inteligência de Cálculo
+      // 2. Chama a Inteligência de Cálculo (Resto igual...)
       const data = await OpportunityService.calculateROI({
-        ...formData,
-        originCoords: originCoords,
+          ...formData,
+          originCoords: originCoords,
         buyPrice: parseFloat(formData.buyPrice) || 0,
         sellPrice: parseFloat(formData.sellPrice) || 0,
         volume: parseFloat(formData.volume) || 0,
@@ -199,7 +223,22 @@ const RoiCalculator = ({ onVisualizeRoute, initialData, currentDollar }) => {
                 <option value="Café">Café</option>
               </select>
             </div>
-
+            <div className="form-group">
+              <label>Origem (Cidade Real)</label>
+              <select 
+                  name="originId" 
+                  value={formData.originId} 
+                  onChange={handleInputChange}
+                  style={{ borderLeft: '4px solid #10b981' }} // Destaque visual
+              >
+                <option value="">Selecione a Origem...</option>
+                {availableOrigins.map(op => (
+                    <option key={op.id} value={op.id}>
+                        {op.city} ({op.state}) - R$ {op.buyPrice}
+                    </option>
+                ))}
+              </select>
+            </div>
             <div className="form-row">
               <div className="form-group">
                 <label>

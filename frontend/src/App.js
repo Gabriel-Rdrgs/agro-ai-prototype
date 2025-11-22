@@ -207,6 +207,7 @@ function App() {
                  onVisualizeRoute={handleVisualizeRoute} 
                  initialData={scenarioToLoad}
                  currentDollar={currentDollar}
+                 opportunities={opportunities}
               />
             )}
             {activeTab === 'Weather' && (
