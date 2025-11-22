@@ -28,11 +28,16 @@ function getRegionalPrice(state) {
 async function main() {
   console.log('🍅 Iniciando Seed com PRECIFICAÇÃO REGIONAL INTELIGENTE...');
 
-  // 1. Limpa o banco
+  // 1. Limpa o banco (A ORDEM IMPORTA: Apagar filhos antes dos pais)
+  console.log('🧹 Limpando histórico antigo...');
+  await prisma.priceHistory.deleteMany(); // <--- ADICIONE ISTO PRIMEIRO!
+  
+  console.log('🧹 Limpando tabelas principais...');
   await prisma.refreshToken.deleteMany();
   await prisma.opportunity.deleteMany();
   await prisma.user.deleteMany();
-  console.log('🧹 Banco limpo.');
+  
+  console.log('✨ Banco limpo e preparado.');
 
   // 2. Admin
   const hashedPassword = await bcrypt.hash('123456', 10);
