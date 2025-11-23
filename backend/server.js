@@ -1,21 +1,48 @@
-// backend/server.js
+// ============================================
+// 🔐 CARREGAR VARIÁVEIS DE AMBIENTE (PRIMEIRA COISA!)
+// ============================================
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const { PrismaClient } = require('@prisma/client');
 const authController = require('./authController');
-const { verifyToken, checkRole } = require('./authMiddleware'); // Importante: Proteção
+const { verifyToken, checkRole } = require('./authMiddleware');
 
 const app = express();
 const prisma = new PrismaClient();
 
-app.use(cors());
+// ============================================
+// ⚙️ VARIÁVEIS DE AMBIENTE (DEFINIR UMA VEZ)
+// ============================================
+const PORT = process.env.PORT || 3001;
+const JWT_SECRET = process.env.JWT_SECRET;
+const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://localhost:8000';
+const AWESOME_API_URL = process.env.AWESOME_API_URL || 'https://economia.awesomeapi.com.br';
+
+// Validação
+if (!JWT_SECRET) {
+  console.error('❌ ERRO: JWT_SECRET não configurado no .env');
+  process.exit(1);
+}
+
+// ============================================
+// 🛠️ MIDDLEWARE
+// ============================================
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  credentials: true
+}));
 app.use(express.json());
 
-// --- FUNÇÕES AUXILIARES ---
+// ============================================
+// 📊 FUNÇÕES AUXILIARES
+// ============================================
+
 async function getDollarRate() {
   try {
-    const response = await axios.get('https://economia.awesomeapi.com.br/last/USD-BRL');
+    const response = await axios.get(`${AWESOME_API_URL}/last/USD-BRL`);
     return parseFloat(response.data.USDBRL.bid);
   } catch (error) {
     console.error("Erro dólar:", error.message);
@@ -25,7 +52,7 @@ async function getDollarRate() {
 
 async function getWeather(lat, lng) {
   try {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true&timezone=America%2FSao_Paulo`;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true&timezone=America/Sao_Paulo`;
     const response = await axios.get(url);
     return response.data.current_weather;
   } catch (error) {
@@ -33,24 +60,28 @@ async function getWeather(lat, lng) {
   }
 }
 
-// --- ROTAS DE AUTH ---
-app.post('/api/auth/register', verifyToken, checkRole(['admin']), authController.register); // Protegido (Só Admin cria)
+// ============================================
+// 🔑 ROTAS DE AUTH
+// ============================================
+
+app.post('/api/auth/register', verifyToken, checkRole(['admin']), authController.register);
 app.post('/api/auth/login', authController.login);
 app.post('/api/auth/refresh', authController.refreshToken);
-// --- ROTAS DE NEGÓCIO ---
+
+// ============================================
+// 📊 ROTAS DE NEGÓCIO
+// ============================================
 
 // 1. Oportunidades
 app.get('/api/opportunities', verifyToken, async (req, res) => {
   try {
     const opportunities = await prisma.opportunity.findMany();
     const dollarRate = await getDollarRate();
-
     const enrichedOpportunities = opportunities.map(opp => ({
       ...opp,
       priceUsd: parseFloat((opp.sellPrice / dollarRate).toFixed(2)),
-      dollarRate: dollarRate, 
+      dollarRate: dollarRate,
     }));
-
     res.json(enrichedOpportunities);
   } catch (error) {
     res.status(500).json({ error: 'Erro ao buscar oportunidades' });
@@ -61,9 +92,7 @@ app.get('/api/opportunities', verifyToken, async (req, res) => {
 app.get('/api/weather', verifyToken, async (req, res) => {
   const { lat, lng } = req.query;
   if (!lat || !lng) return res.status(400).json({ error: 'Lat/Lng obrigatórios' });
-
   const weatherData = await getWeather(lat, lng);
-  
   if (weatherData) {
     res.json({
       temp: weatherData.temperature,
@@ -76,66 +105,52 @@ app.get('/api/weather', verifyToken, async (req, res) => {
 });
 
 // 3. 🚀 ROTA DE IA (Proxy para o Python)
-// backend/server.js
-
 app.post('/api/ai/storage', verifyToken, checkRole(['admin', 'premium']), async (req, res) => {
   try {
-    const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://localhost:8000';
-    
-    // 🕵️‍♂️ ESPIÃO: O que exatamente estamos mandando?
     console.log("📦 BODY RECEBIDO DO FRONTEND:", JSON.stringify(req.body, null, 2));
-
+    // ❌ NÃO REDEFINA PYTHON_API_URL aqui! Já está definida lá em cima
     const response = await axios.post(`${PYTHON_API_URL}/predict/storage`, req.body);
-    
     res.json(response.data);
-
   } catch (error) {
-    // ... erro ...
+    res.status(500).json({ error: 'Erro ao processar IA' });
   }
 });
 
-const PORT = 3001;
 // 4. ROTA DE HISTÓRICO (Com Filtros Dinâmicos)
 app.get('/api/analytics/trend', verifyToken, async (req, res) => {
   try {
-    const { product, city } = req.query; // Lê os filtros da URL (?product=X&city=Y)
-
-    // Monta o filtro dinâmico para o Prisma
+    const { product, city } = req.query;
     const whereCondition = {};
     if (product) whereCondition.product = product;
     if (city) whereCondition.city = city;
-
-    // Busca histórico filtrado pela oportunidade relacionada
     const history = await prisma.priceHistory.findMany({
       where: {
-        opportunity: whereCondition // Filtra dentro da relação "opportunity"
+        opportunity: whereCondition
       },
       orderBy: { createdAt: 'asc' },
-      // take: 100 // (Opcional: removi o limite para garantir que o gráfico pegue o período todo se filtrar)
     });
-
-    // Agrupa por data (Média do dia para os filtros selecionados)
     const trendMap = {};
-    
     history.forEach(record => {
       const dateKey = new Date(record.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-      
       if (!trendMap[dateKey]) {
         trendMap[dateKey] = { sum: 0, count: 0 };
       }
       trendMap[dateKey].sum += record.price;
       trendMap[dateKey].count += 1;
     });
-
     const labels = Object.keys(trendMap);
     const data = labels.map(date => (trendMap[date].sum / trendMap[date].count).toFixed(2));
-
     res.json({ labels, data });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Erro ao buscar tendência' });
   }
 });
+
+// ============================================
+// 🚀 INICIAR SERVIDOR
+// ============================================
+
 app.listen(PORT, () => {
   console.log(`🔥 Servidor Node rodando em http://localhost:${PORT}`);
 });
