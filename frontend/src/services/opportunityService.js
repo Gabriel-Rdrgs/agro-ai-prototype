@@ -101,19 +101,39 @@ export const OpportunityService = {
     }
   },
 
-  // Nova função para previsão de 7 dias (usada no WeatherDashboard)
+// --- 2. INTEGRAÇÃO CLIMÁTICA ---
   getForecast: async (lat, lng) => {
     try {
-      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=America%2FSao_Paulo`;
+      // REMOVIDO: 'soil_moisture_0_to_1cm_mean' (Causava erro 400)
+      const params = [
+        'temperature_2m_max',
+        'temperature_2m_min',
+        'precipitation_sum',
+        'windspeed_10m_max',
+        'shortwave_radiation_sum'
+      ].join(',');
+
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&daily=${params}&timezone=America%2FSao_Paulo&forecast_days=16`;
+      
       const response = await fetch(url);
-      if (!response.ok) return null;
+      
+      // Debug: Se der erro de novo, vamos saber o porquê
+      if (!response.ok) {
+          console.error("Erro API OpenMeteo:", response.status, await response.text());
+          return null;
+      }
+      
       const data = await response.json();
       
       return data.daily.time.map((date, index) => ({
-        date: new Date(date).toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric' }),
+        date: new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+        fullDate: date,
         tempMax: data.daily.temperature_2m_max[index],
         tempMin: data.daily.temperature_2m_min[index],
-        rain: data.daily.precipitation_sum[index]
+        rain: data.daily.precipitation_sum[index],
+        wind: data.daily.windspeed_10m_max[index],
+        soil: 0, // Placeholder: Definimos como 0 para não quebrar o gráfico
+        sun: data.daily.shortwave_radiation_sum[index]
       }));
     } catch (error) {
       console.error("Erro ao buscar previsão:", error);
@@ -174,14 +194,20 @@ export const OpportunityService = {
     };
   },
 
- // --- 4. INTELIGÊNCIA DE ARMAZENAGEM (IA) ---
-  getStorageAnalysis: async (product, currentPrice = 4.00) => {
+ // --- 4. IA MULTIVARIÁVEL ---
+  getStorageAnalysis: async (product, currentPrice = 4.00, riskLevel = 1, dailyRain = [], dailyTemp = [], dailySun = []) => {
     try {
+        const riskMap = { 1: 0.1, 2: 0.5, 3: 0.9 };
+        const riskFactor = riskMap[riskLevel] || 0.1;
+
         const payload = {
             product: product,
             current_price: Number(currentPrice),
             storage_cost_per_day: 0.05,
-            risk_factor: 0.8
+            risk_factor: riskFactor,
+            daily_rain: dailyRain,
+            daily_temp: dailyTemp, // Novo
+            daily_sun: dailySun    // Novo
         };
 
         const response = await fetch(`${API_URL}/ai/storage`, {
@@ -195,11 +221,7 @@ export const OpportunityService = {
 
         if (!response.ok) throw new Error(`Erro IA: ${response.status}`);
         
-        const data = await response.json();
-        
-        // ✅ CORREÇÃO: Retorna os dados do Python DIRETAMENTE, sem filtrar/traduzir
-        // Isso garante que 'confidence_score', 'action', etc. cheguem na tela
-        return data; 
+        return await response.json();
 
     } catch (error) {
         console.error("❌ Falha na IA:", error);

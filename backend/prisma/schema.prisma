@@ -41,8 +41,13 @@ model Opportunity {
 
   createdAt    DateTime @default(now())
 
-  // Relação com Histórico (A Memória do Robô)
   history      PriceHistory[]
+
+  // Guarda o ponto exato (Latitude/Longitude) num formato que o banco consegue medir distância
+  geom    Unsupported("geometry(Point, 4326)")? 
+
+  // Cria um índice especial para buscas rápidas (GIST)
+  @@index([geom], name: "opportunity_geom_idx", type: Gist)
 }
 
 model PriceHistory {

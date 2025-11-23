@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bar } from 'react-chartjs-2';
+import { Line } from 'react-chartjs-2'; // Mudei para Line para misturar dados melhor
 import { OpportunityService } from '../../services/opportunityService';
 import '../../styles/dashboard.css';
 import StorageAdvisor from './StorageAdvisor';
@@ -9,21 +9,27 @@ const WeatherDashboard = ({ opportunities = [] }) => {
   const [forecast, setForecast] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // UX: Seleciona automaticamente a primeira cidade quando os dados carregam
+  // --- ESTADOS DE FILTRO (A Novidade!) ---
+  const [metrics, setMetrics] = useState({
+    temp: true,
+    rain: true,
+    soil: false, // Umidade do solo
+    sun: false   // Radiação
+  });
+
+  // UX: Auto-seleção
   useEffect(() => {
     if (opportunities.length > 0 && !selectedOppId) {
       setSelectedOppId(opportunities[0].id);
     }
   }, [opportunities, selectedOppId]);
 
-  // Encontra o objeto completo da oportunidade selecionada
   const selectedOpp = opportunities.find(o => o.id === parseInt(selectedOppId));
 
-  // Busca previsão do tempo quando muda a seleção
   useEffect(() => {
     if (selectedOpp) {
       setLoading(true);
-      OpportunityService.getForecast(selectedOpp.lat, selectedOpp.lng) // Usa lat/lng reais do banco
+      OpportunityService.getForecast(selectedOpp.lat, selectedOpp.lng)
         .then(data => {
           setForecast(data);
           setLoading(false);
@@ -31,26 +37,41 @@ const WeatherDashboard = ({ opportunities = [] }) => {
     }
   }, [selectedOpp]);
 
-  // Configuração do Gráfico
+  // --- CONFIGURAÇÃO DINÂMICA DO GRÁFICO ---
+  const getDatasets = () => {
+    if (!forecast) return [];
+    const sets = [];
+
+    if (metrics.temp) {
+      sets.push({
+        type: 'line', label: 'Temp Máx (°C)', data: forecast.map(d => d.tempMax),
+        borderColor: '#ef4444', borderWidth: 2, yAxisID: 'y', tension: 0.4, pointRadius: 0
+      });
+    }
+    if (metrics.rain) {
+      sets.push({
+        type: 'bar', label: 'Chuva (mm)', data: forecast.map(d => d.rain),
+        backgroundColor: 'rgba(0, 217, 255, 0.6)', yAxisID: 'y1'
+      });
+    }
+    /*if (metrics.soil) {
+      sets.push({
+        type: 'line', label: 'Umidade Solo (%)', data: forecast.map(d => d.soil * 100),
+        borderColor: '#8d4f2b', borderDash: [5,5], borderWidth: 2, yAxisID: 'y', pointRadius: 0
+      });
+    }*/
+    if (metrics.sun) {
+      sets.push({
+        type: 'line', label: 'Radiação Solar (MJ)', data: forecast.map(d => d.sun),
+        borderColor: '#facc15', borderWidth: 2, yAxisID: 'y1', tension: 0.4, pointRadius: 0
+      });
+    }
+    return sets;
+  };
+
   const chartData = forecast ? {
     labels: forecast.map(d => d.date),
-    datasets: [
-      {
-        type: 'line',
-        label: 'Temp Máx (°C)',
-        data: forecast.map(d => d.tempMax),
-        borderColor: '#ef4444',
-        borderWidth: 2,
-        yAxisID: 'y',
-      },
-      {
-        type: 'bar',
-        label: 'Chuva (mm)',
-        data: forecast.map(d => d.rain),
-        backgroundColor: 'rgba(0, 217, 255, 0.6)',
-        yAxisID: 'y1',
-      }
-    ]
+    datasets: getDatasets()
   } : null;
 
   const chartOptions = {
@@ -58,83 +79,90 @@ const WeatherDashboard = ({ opportunities = [] }) => {
     maintainAspectRatio: false,
     interaction: { mode: 'index', intersect: false },
     plugins: {
-      legend: { labels: { color: '#fff' } },
-      title: { display: true, text: `Previsão: ${selectedOpp?.city || 'Selecione'}`, color: '#fff' }
+      legend: { labels: { color: '#cbd5e1', font: { size: 11 } } },
+      title: { display: false }
     },
     scales: {
-      x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
+      x: { ticks: { color: '#64748b' }, grid: { color: 'rgba(255,255,255,0.05)' } },
       y: { 
         type: 'linear', display: true, position: 'left', 
-        ticks: { color: '#ef4444' }, title: { display: true, text: 'Temperatura' } 
+        ticks: { color: '#cbd5e1' }, grid: { color: 'rgba(255,255,255,0.05)' },
+        title: { display: true, text: 'Temperatura / Solo', color: '#64748b', font: {size: 10} }
       },
       y1: { 
         type: 'linear', display: true, position: 'right', 
         grid: { drawOnChartArea: false }, 
-        ticks: { color: '#00d9ff' }, title: { display: true, text: 'Chuva (mm)' } 
+        ticks: { color: '#00d9ff' },
+        title: { display: true, text: 'Chuva / Sol', color: '#00d9ff', font: {size: 10} }
       },
     }
   };
 
+  const toggleMetric = (key) => setMetrics(prev => ({ ...prev, [key]: !prev[key] }));
+
   return (
     <div className="dashboard-container">
-      {/* HEADER */}
-      <div style={{ marginBottom: '20px', borderBottom: '1px solid #334155', paddingBottom: '15px' }}>
-        <h2 style={{ color: '#fff', margin: '0 0 10px 0' }}>⛈️ Inteligência Climática</h2>
-        <p style={{ color: '#94a3b8', fontSize: '14px' }}>Monitore os riscos meteorológicos nas regiões de produção.</p>
+      {/* HEADER & SELETORES */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #334155', paddingBottom: '15px' }}>
+        <div>
+            <h2 style={{ color: '#fff', margin: '0 0 5px 0' }}>⛈️ Monitoramento Climático</h2>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <select 
+                value={selectedOppId || ''} 
+                onChange={(e) => setSelectedOppId(e.target.value)}
+                style={{ padding: '6px', borderRadius: '6px', background: '#15192c', color: '#00d9ff', border: '1px solid #334155', fontWeight: 'bold' }}
+                >
+                {opportunities.map(op => (
+                    <option key={op.id} value={op.id}>{op.product} | {op.city} - {op.state}</option>
+                ))}
+                </select>
+                <span style={{ fontSize: '12px', color: '#64748b' }}>• Previsão 16 Dias (GFS)</span>
+            </div>
+        </div>
+
+        {/* BOTÕES DE FILTRO (CHECKBOXES ESTILIZADOS) */}
+        <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+            <button onClick={() => toggleMetric('temp')} style={{ opacity: metrics.temp ? 1 : 0.4, background: '#ef4444', border: 'none', color: 'white', padding: '4px 10px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}>🌡️ Temp</button>
+            <button onClick={() => toggleMetric('rain')} style={{ opacity: metrics.rain ? 1 : 0.4, background: '#00d9ff', border: 'none', color: '#000', padding: '4px 10px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}>☔ Chuva</button>
+            <button onClick={() => toggleMetric('soil')} style={{ opacity: metrics.soil ? 1 : 0.4, background: '#8d4f2b', border: 'none', color: 'white', padding: '4px 10px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}>🌱 Solo</button>
+            <button onClick={() => toggleMetric('sun')} style={{ opacity: metrics.sun ? 1 : 0.4, background: '#facc15', border: 'none', color: '#000', padding: '4px 10px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}>☀️ Sol</button>
+        </div>
       </div>
 
-      {/* SELETOR (Aqui você escolhe a oportunidade!) */}
-      <div style={{ marginBottom: '20px' }}>
-        <label style={{ color: '#00d9ff', fontWeight: 'bold', marginRight: '10px' }}>Monitorar Região:</label>
-        <select 
-          value={selectedOppId || ''} 
-          onChange={(e) => setSelectedOppId(e.target.value)}
-          style={{ padding: '8px', borderRadius: '8px', background: '#15192c', color: 'white', border: '1px solid #334155' }}
-        >
-          {opportunities.map(op => (
-            <option key={op.id} value={op.id}>{op.product} ({op.city} - {op.state})</option>
-          ))}
-        </select>
-      </div>
-
-      {/* GRÁFICOS DE CLIMA */}
+      {/* GRÁFICO PRINCIPAL */}
       {loading ? (
         <div style={{ color: '#00d9ff', textAlign: 'center', padding: '40px' }}>📡 Baixando dados de satélite...</div>
       ) : forecast ? (
-        <div className="dashboard-charts">
-          <div className="chart-container" style={{ height: '350px' }}>
-             <Bar data={chartData} options={chartOptions} />
+        <div className="dashboard-charts" style={{ marginTop: 0 }}>
+          <div className="chart-container" style={{ height: '350px', flex: '2 1 500px' }}>
+             <Line data={chartData} options={chartOptions} />
           </div>
           
-          {/* CARD DE RISCO */}
-          <div className="chart-container" style={{ height: 'auto', minHeight: 'auto' }}>
-             <h3 style={{ color: '#fff', fontSize: '16px', marginBottom: '10px' }}>⚠️ Análise de Risco (7 Dias)</h3>
-             {forecast.reduce((acc, day) => acc + day.rain, 0) > 50 ? (
-                <div style={{ padding: '15px', background: 'rgba(239,68,68,0.2)', borderLeft: '4px solid #ef4444', borderRadius: '4px' }}>
-                   <strong style={{ color: '#ef4444' }}>ALERTA DE CHUVA EXCESSIVA</strong>
-                   <p style={{ margin: '5px 0 0 0', fontSize: '13px', color: '#cbd5e1' }}>
-                     Acumulado previsto de <strong>{forecast.reduce((acc, day) => acc + day.rain, 0).toFixed(1)}mm</strong>. 
-                     Risco alto para colheita e transporte. Considere adiar.
-                   </p>
+          {/* CARDS LATERAIS DE RESUMO */}
+          <div style={{ flex: '1 1 200px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+             {/* Card Chuva */}
+             <div style={{ background: '#15192c', padding: '15px', borderRadius: '12px', borderLeft: '4px solid #00d9ff' }}>
+                <small style={{ color: '#94a3b8', textTransform: 'uppercase' }}>Chuva Acumulada (16d)</small>
+                <div style={{ fontSize: '24px', color: '#fff', fontWeight: 'bold' }}>
+                    {forecast.reduce((acc, d) => acc + d.rain, 0).toFixed(1)} mm
                 </div>
-             ) : (
-                <div style={{ padding: '15px', background: 'rgba(16,185,129,0.2)', borderLeft: '4px solid #10b981', borderRadius: '4px' }}>
-                   <strong style={{ color: '#10b981' }}>CONDIÇÕES FAVORÁVEIS</strong>
-                   <p style={{ margin: '5px 0 0 0', fontSize: '13px', color: '#cbd5e1' }}>
-                     Previsão de tempo estável. Acumulado de chuva baixo. Ideal para operações logísticas.
-                   </p>
+             </div>
+             {/* Card Solo */}
+             <div style={{ background: '#15192c', padding: '15px', borderRadius: '12px', borderLeft: '4px solid #8d4f2b' }}>
+                <small style={{ color: '#94a3b8', textTransform: 'uppercase' }}>Umidade Solo (Média)</small>
+                <div style={{ fontSize: '24px', color: '#fff', fontWeight: 'bold' }}>
+                    {(forecast.reduce((acc, d) => acc + d.soil, 0) / forecast.length * 100).toFixed(0)}%
                 </div>
-             )}
+                <small style={{ color: '#8d4f2b' }}>{forecast[0].soil > 0.4 ? 'Solo Encharcado' : 'Solo Firme'}</small>
+             </div>
           </div>
         </div>
       ) : (
-        <div style={{ color: '#64748b', padding: '20px' }}>Selecione uma região acima para ver a previsão.</div>
+        <div style={{ color: '#64748b' }}>Selecione uma oportunidade.</div>
       )}
 
-      {/* 🧠 IA DE ARMAZENAGEM (Agora Conectada Corretamente!) */}
-      {/* O erro estava aqui: Antes passava 'product', agora passa 'opportunity' inteiro */}
-      <StorageAdvisor opportunity={selectedOpp} />
-
+      {/* IA DE ARMAZENAGEM */}
+      <StorageAdvisor opportunity={selectedOpp} forecast={forecast} />
     </div>
   );
 };

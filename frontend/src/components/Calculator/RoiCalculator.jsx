@@ -233,9 +233,7 @@ const RoiCalculator = ({ onVisualizeRoute, initialData, currentDollar, opportuni
               >
                 <option value="">Selecione a Origem...</option>
                 {availableOrigins.map(op => (
-                    <option key={op.id} value={op.id}>
-                        {op.city} ({op.state}) - R$ {op.buyPrice}
-                    </option>
+                   <option key={op.id} value={op.id}>{op.product} | {op.city} - {op.state}</option>
                 ))}
               </select>
             </div>

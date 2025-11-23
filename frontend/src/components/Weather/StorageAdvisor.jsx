@@ -25,7 +25,7 @@ ChartJS.register(
   Filler
 );
 
-const StorageAdvisor = ({ opportunity }) => {
+const StorageAdvisor = ({ opportunity, forecast }) => { // Recebe forecast
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -33,14 +33,23 @@ const StorageAdvisor = ({ opportunity }) => {
     if (opportunity) {
       fetchAnalysis();
     }
-  }, [opportunity]);
+  }, [opportunity, forecast]); // Recalcula se a previsão mudar
 
-  const fetchAnalysis = async () => {
+const fetchAnalysis = async () => {
     setLoading(true);
     try {
+      // Extrai arrays completos do forecast
+      const dailyRain = forecast ? forecast.map(d => d.rain) : [];
+      const dailyTemp = forecast ? forecast.map(d => d.tempMax) : [];
+      const dailySun = forecast ? forecast.map(d => d.sun) : [];
+
       const data = await OpportunityService.getStorageAnalysis(
         opportunity.product,
-        opportunity.buyPrice
+        opportunity.buyPrice,
+        opportunity.riskLevel,
+        dailyRain, // Chuva
+        dailyTemp, // Temperatura
+        dailySun   // Radiação Solar
       );
       setAnalysis(data);
     } catch (error) {
