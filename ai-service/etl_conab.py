@@ -2,11 +2,18 @@ import requests
 import pandas as pd
 from sqlalchemy import create_engine, text
 import time
+import os
+from dotenv import load_dotenv # <--- Import novo
 
-# --- CONFIGURAÇÃO (A mesma que funcionou para você) ---
-# Se estiver usando variáveis de ambiente, melhor. Se não, pode usar a string direta (cuidado com segurança em produção!)
-DATABASE_URL="postgresql://postgres.jiyqrxgyopytqvctdvir:ZC9BPp3AhUxtth1R@aws-0-us-west-2.pooler.supabase.com:6543/postgres"
+# Carrega as variáveis do arquivo .env para a memória
+load_dotenv()
 
+# Pega a variável do ambiente. Se não existir, retorna None
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+# Validação de segurança (opcional, mas recomendada)
+if not DATABASE_URL:
+    raise ValueError("❌ ERRO FATAL: A variável DATABASE_URL não foi encontrada. Verifique seu arquivo .env")
 # Ajuste para SQLAlchemy
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)

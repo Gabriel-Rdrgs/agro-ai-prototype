@@ -6,12 +6,20 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 from sqlalchemy import create_engine, text
 from datetime import datetime, timedelta
+import os                   # <--- NOVO
+from dotenv import load_dotenv # <--- NOVO
+
+# Carrega variáveis de ambiente
+load_dotenv()
 
 app = FastAPI()
 
-# --- CONFIGURAÇÃO ---
-# Use sua senha correta aqui
-DATABASE_URL="postgresql://postgres:EOJq44Y0BfyU9ICx@db.jiyqrxgyopytqvctdvir.supabase.co:5432/postgres"
+# --- CONFIGURAÇÃO SEGURA ---
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL não definida!")
+
+engine = create_engine(DATABASE_URL)
 engine = create_engine(DATABASE_URL)
 
 class SimulationRequest(BaseModel):

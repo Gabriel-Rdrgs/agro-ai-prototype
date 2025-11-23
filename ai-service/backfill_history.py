@@ -4,9 +4,18 @@ from datetime import datetime, timedelta
 from sqlalchemy import create_engine, text
 import random
 
-# --- CONFIGURAÇÃO ---
-# Cole sua senha correta aqui (a mesma que funcionou no main.py)
-DATABASE_URL = "postgresql://postgres:ZC9BPp3AhUxtth1R@db.jiyqrxgyopytqvctdvir.supabase.co:5432/postgres"
+import os
+from dotenv import load_dotenv # <--- Import novo
+
+# Carrega as variáveis do arquivo .env para a memória
+load_dotenv()
+
+# Pega a variável do ambiente. Se não existir, retorna None
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+# Validação de segurança (opcional, mas recomendada)
+if not DATABASE_URL:
+    raise ValueError("❌ ERRO FATAL: A variável DATABASE_URL não foi encontrada. Verifique seu arquivo .env")
 engine = create_engine(DATABASE_URL)
 
 def generate_history():
