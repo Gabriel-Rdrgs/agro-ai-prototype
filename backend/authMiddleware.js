@@ -1,7 +1,14 @@
 // backend/authMiddleware.js
 const jwt = require('jsonwebtoken');
 
-const SECRET_KEY = process.env.JWT_SECRET || 'sua_chave_secreta_super_segura';
+// O CÓDIGO NOVO (SEGURO - TIPO SÉNIOR) ✅
+const SECRET_KEY = process.env.JWT_SECRET;
+
+// Se a chave não existir no .env, o servidor para e avisa no terminal
+if (!SECRET_KEY) {
+  console.error("❌ ERRO CRÍTICO: A variável JWT_SECRET não foi encontrada no .env!");
+  process.exit(1); // Encerra o servidor imediatamente para segurança
+}
 
 // --- FERRAMENTA 1: Verifica se o token é verdadeiro (O Crachá) ---
 // Antes isso era o "module.exports" direto, agora é uma função nomeada.

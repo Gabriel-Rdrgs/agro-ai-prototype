@@ -12,8 +12,9 @@ import {
   Filler
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
+import '../../styles/StorageAdvisor.css'; // Importando o CSS novo
 
-// Registra os componentes do gráfico (caso não tenha sido feito globalmente)
+// Registra componentes do Chart.js
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -25,7 +26,7 @@ ChartJS.register(
   Filler
 );
 
-const StorageAdvisor = ({ opportunity, forecast }) => { // Recebe forecast
+const StorageAdvisor = ({ opportunity, forecast }) => {
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -33,12 +34,11 @@ const StorageAdvisor = ({ opportunity, forecast }) => { // Recebe forecast
     if (opportunity) {
       fetchAnalysis();
     }
-  }, [opportunity, forecast]); // Recalcula se a previsão mudar
+  }, [opportunity, forecast]);
 
-const fetchAnalysis = async () => {
+  const fetchAnalysis = async () => {
     setLoading(true);
     try {
-      // Extrai arrays completos do forecast
       const dailyRain = forecast ? forecast.map(d => d.rain) : [];
       const dailyTemp = forecast ? forecast.map(d => d.tempMax) : [];
       const dailySun = forecast ? forecast.map(d => d.sun) : [];
@@ -47,45 +47,52 @@ const fetchAnalysis = async () => {
         opportunity.product,
         opportunity.buyPrice,
         opportunity.riskLevel,
-        dailyRain, // Chuva
-        dailyTemp, // Temperatura
-        dailySun   // Radiação Solar
+        dailyRain,
+        dailyTemp,
+        dailySun
       );
       setAnalysis(data);
     } catch (error) {
-      console.error("Erro na IA:", error);
+      console.error("Erro ao buscar análise:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  if (!opportunity) return <div className="advisor-card empty">Selecione uma oportunidade no mapa</div>;
+  if (!opportunity) return null;
 
-  // --- CONFIGURAÇÃO DO GRÁFICO ---
+  // --- Helpers de Visual ---
+
+  const getStatusColor = () => {
+    if (!analysis) return '';
+    const action = analysis.recommendation.action.toUpperCase();
+    if (action.includes('ARMAZENAR')) return 'status-green';
+    if (action.includes('VENDER') && !action.includes('PARCIAL')) return 'status-red';
+    return 'status-yellow';
+  };
+
+  // Configuração do Gráfico (Estilo Enterprise)
   const chartData = analysis ? {
     labels: analysis.chart_data.labels,
     datasets: [
       {
-        label: 'Preço de Venda Projetado (R$)',
+        label: 'Preço Projetado (R$)',
         data: analysis.chart_data.prices,
-        borderColor: '#10b981', // Verde
-        backgroundColor: 'rgba(16, 185, 129, 0.1)',
-        borderWidth: 2,
-        tension: 0.4,
-        fill: false,
-        pointRadius: 0, // Linha limpa
-        pointHitRadius: 10,
+        borderColor: '#10B981', // Verde Esmeralda
+        backgroundColor: 'rgba(16, 185, 129, 0.1)', // Fundo suave
+        tension: 0.4, // Curva suave
+        fill: true,
+        pointRadius: 3,
+        pointHoverRadius: 6,
       },
       {
-        label: 'Custo Total (Compra + Armazenagem)',
-        // Aqui somamos o Custo de Armazenagem (python) ao Preço de Compra Original
+        label: 'Custo Acumulado (R$)',
         data: analysis.chart_data.costs.map(c => c + opportunity.buyPrice),
-        borderColor: '#ef4444', // Vermelho
-        borderWidth: 2,
-        borderDash: [5, 5], // Linha tracejada para indicar custo
-        tension: 0.4,
+        borderColor: '#EF4444', // Vermelho
+        borderDash: [5, 5],
+        tension: 0.1,
         pointRadius: 0,
-        pointHitRadius: 10,
+        fill: false
       }
     ]
   } : null;
@@ -93,103 +100,109 @@ const fetchAnalysis = async () => {
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
-    interaction: {
-      mode: 'index',
-      intersect: false,
-    },
     plugins: {
-      legend: {
-        position: 'bottom',
-        labels: { color: '#94a3b8', font: { size: 10 } }
+      legend: { 
+        position: 'top', 
+        align: 'end',
+        labels: { color: '#94a3b8' } // Cor do texto da legenda (cinza claro)
       },
-      tooltip: {
-        backgroundColor: 'rgba(15, 23, 42, 0.9)',
-        titleColor: '#fff',
-        bodyColor: '#cbd5e1',
-        borderColor: '#334155',
-        borderWidth: 1,
-        callbacks: {
-            label: (context) => {
-                return `${context.dataset.label}: R$ ${context.raw.toFixed(2)}`;
-            },
-            footer: (tooltipItems) => {
-                // Calcula o lucro no tooltip
-                const price = tooltipItems[0].parsed.y;
-                const cost = tooltipItems[1].parsed.y;
-                const profit = price - cost;
-                return `Lucro Líquido: R$ ${profit.toFixed(2)}`;
-            }
-        }
+      tooltip: { 
+        mode: 'index', 
+        intersect: false,
+        backgroundColor: '#15192c', // Fundo do tooltip escuro
+        titleColor: '#ffffff',      // Texto branco
+        bodyColor: '#94a3b8',       // Texto cinza
+        borderColor: '#00d9ff',     // Borda Cyan
+        borderWidth: 1
       },
-      // Linha vertical no melhor dia
-      annotation: {
-          // (Requer plugin extra, vamos manter simples por enquanto)
-      }
     },
     scales: {
-      x: {
-        grid: { color: 'rgba(255, 255, 255, 0.05)' },
-        ticks: { color: '#64748b', maxTicksLimit: 6 }
+      y: { 
+        grid: { color: 'rgba(255, 255, 255, 0.05)' }, // Linhas da grade bem sutis
+        ticks: { 
+          color: '#94a3b8', // Cor dos números
+          callback: (value) => `R$ ${value}` 
+        }
       },
-      y: {
-        grid: { color: 'rgba(255, 255, 255, 0.05)' },
-        ticks: { color: '#64748b', callback: (v) => `R$ ${v}` }
+      x: { 
+        grid: { display: false },
+        ticks: { color: '#94a3b8' } // Cor das datas
       }
     }
   };
-
+  
   return (
     <div className="advisor-container">
       <div className="advisor-header">
-        <div>
-            <h3>🧠 IA de Armazenagem</h3>
-            <p style={{fontSize: '11px', color: '#64748b', margin: 0}}>Análise de Margem Líquida (30 Dias)</p>
-        </div>
-        <span className="ai-badge">Python V2.1</span>
+        <h2>🧠 Inteligência de Mercado (IA)</h2>
+        <p>Análise preditiva para <strong>{opportunity.product}</strong> considerando custos e clima.</p>
       </div>
 
-      {loading ? (
-        <div className="advisor-loading">
-          <div className="spinner"></div>
-          <p>Simulando cenários futuros...</p>
-        </div>
-      ) : analysis ? (
-        <div className="advisor-content fade-in">
-          
-          {/* GRÁFICO DE DECISÃO (NOVO) */}
-          <div style={{ height: '200px', marginBottom: '20px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '10px' }}>
+      <div className="advisor-content">
+        {loading ? (
+          <div className="loading-state">
+            <div className="spinner"></div>
+            <span>Consultando redes neurais...</span>
+          </div>
+        ) : !analysis ? (
+          <div className="error-state">
+            ⚠️ Dados insuficientes para gerar projeção.
+          </div>
+        ) : (
+          <>
+            {/* 1. Card de Decisão Principal */}
+            <div className={`decision-card ${getStatusColor()}`}>
+              <div className="decision-label">RECOMENDAÇÃO ESTRATÉGICA</div>
+              <div className="decision-action">{analysis.recommendation.action}</div>
+              <div className="decision-reason">
+                "{analysis.recommendation.risk_event}"
+              </div>
+            </div>
+
+            {/* 2. Grid de Métricas */}
+            <div className="metrics-row">
+              {/* Lucro */}
+              <div className="metric-box">
+                <label>Lucro Projetado</label>
+                <span className={analysis.recommendation.projected_profit > 0 ? 'text-green' : 'text-red'}>
+                  R$ {analysis.recommendation.projected_profit}
+                </span>
+                <small>por unidade</small>
+              </div>
+
+              {/* Data Ideal */}
+              <div className="metric-box">
+                <label>Melhor Momento</label>
+                <span className="text-dark">
+                  {analysis.recommendation.best_day_date}
+                </span>
+                <small>Pico de preço</small>
+              </div>
+
+              {/* Confiança */}
+              <div className="metric-box">
+                <label>Nível de Confiança</label>
+                <div className="confidence-wrapper">
+                  <span className="confidence-value">
+                    {Math.round(analysis.recommendation.confidence_score * 100)}%
+                  </span>
+                  <div className="progress-bar">
+                    <div 
+                      className="progress-fill" 
+                      style={{width: `${analysis.recommendation.confidence_score * 100}%`}}
+                    ></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Gráfico */}
+            <div className="chart-wrapper">
               <Line data={chartData} options={chartOptions} />
-          </div>
-
-          {/* RECOMENDAÇÃO */}
-          <div style={{ display: 'flex', gap: '15px', alignItems: 'stretch' }}>
-              {/* Box Esquerdo: Ação */}
-              <div className={`recommendation-box ${analysis.recommendation.action.includes('VENDER') ? 'sell' : 'hold'}`} style={{ flex: 1, marginBottom: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <span className="action-label">ESTRATÉGIA</span>
-                <h2 style={{fontSize: '1.4rem'}}>{analysis.recommendation.action}</h2>
-                <p className="confidence" style={{fontSize: '0.8rem'}}>Confiança: {Math.round(analysis.recommendation.confidence_score * 100)}%</p>
-              </div>
-
-              {/* Box Direito: Dados */}
-              <div style={{ flex: 1.5, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                  <div className="analysis-item" style={{padding: '8px'}}>
-                    <label>Pico de Lucro</label>
-                    <strong style={{ color: '#10b981' }}>{analysis.recommendation.best_day_date}</strong>
-                    <small>R$ {analysis.recommendation.projected_profit}/kg extra</small>
-                  </div>
-                  <div className="analysis-item" style={{padding: '8px', marginTop: '8px'}}>
-                    <label>Motivo</label>
-                    <small style={{color: '#cbd5e1'}}>{analysis.recommendation.risk_event}</small>
-                  </div>
-              </div>
-          </div>
-
-        </div>
-      ) : (
-        <div className="advisor-error">
-          Dados insuficientes para projeção.
-        </div>
-      )}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 };

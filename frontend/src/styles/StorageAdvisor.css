@@ -1,0 +1,229 @@
+/* frontend/src/styles/StorageAdvisor.css */
+
+/* --- Container Invisível --- */
+.advisor-container {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  margin-top: 24px;
+  max-width: 100%;
+}
+
+/* Cabeçalho */
+.advisor-header {
+  margin-bottom: 24px;
+  padding-left: 4px;
+}
+
+.advisor-header h2 {
+  margin: 0;
+  color: var(--text-primary); /* Branco */
+  font-size: 1.5rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-shadow: 0 0 10px rgba(0, 217, 255, 0.3); /* Brilho Cyan */
+}
+
+.advisor-header p {
+  color: var(--text-muted);
+  margin: 4px 0 0 0;
+  font-size: 0.95rem;
+}
+
+/* --- Conteúdo --- */
+.advisor-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* --- Estados de Loading/Erro (Dark) --- */
+.loading-state, .error-state {
+  background: var(--bg-card); /* Fundo Escuro */
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(255, 255, 255, 0.1);
+  border-top-color: var(--accent-primary); /* Cyan */
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 16px;
+  box-shadow: 0 0 15px var(--accent-primary); /* Neon Glow */
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* --- Card de Decisão (O Reator Arc) --- */
+.decision-card {
+  padding: 32px;
+  border-radius: 12px;
+  text-align: center;
+  background: var(--bg-card);
+  position: relative;
+  overflow: hidden;
+  /* Sombra de profundidade escura */
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); 
+}
+
+/* VENDER (Vermelho Neon) */
+.status-red {
+  border: 1px solid var(--accent-warning);
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.2), inset 0 0 20px rgba(239, 68, 68, 0.1);
+}
+.status-red .decision-action { color: var(--accent-warning); text-shadow: 0 0 15px rgba(239, 68, 68, 0.6); }
+
+/* ARMAZENAR (Verde Neon) */
+.status-green {
+  border: 1px solid var(--accent-success);
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.2), inset 0 0 20px rgba(16, 185, 129, 0.1);
+}
+.status-green .decision-action { color: var(--accent-success); text-shadow: 0 0 15px rgba(16, 185, 129, 0.6); }
+
+/* AGUARDAR (Amarelo/Roxo Neon - usando Secondary para combinar com o tema) */
+.status-yellow {
+  border: 1px solid var(--accent-secondary);
+  box-shadow: 0 0 20px rgba(167, 139, 250, 0.2), inset 0 0 20px rgba(167, 139, 250, 0.1);
+}
+.status-yellow .decision-action { color: var(--accent-secondary); text-shadow: 0 0 15px rgba(167, 139, 250, 0.6); }
+
+
+.decision-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.decision-action {
+  font-size: 2.5rem;
+  font-weight: 900;
+  letter-spacing: -1px;
+  line-height: 1.1;
+  margin-bottom: 8px;
+}
+
+.decision-reason {
+  margin-top: 12px;
+  font-size: 1rem;
+  color: var(--text-primary);
+  opacity: 0.9;
+}
+
+/* --- Grid de Métricas (Widgets HUD) --- */
+.metrics-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+
+.metric-box {
+  background: var(--bg-card);
+  border: 1px solid rgba(0, 217, 255, 0.1); /* Borda Cyan muito sutil */
+  border-radius: 12px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.metric-box:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 15px rgba(0, 217, 255, 0.15);
+}
+
+.metric-box label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+
+.metric-box span {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.metric-box small {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+  opacity: 0.7;
+}
+
+/* Cores específicas dentro dos cards */
+.text-green { color: var(--accent-success) !important; text-shadow: 0 0 10px rgba(16, 185, 129, 0.4); }
+.text-red { color: var(--accent-warning) !important; text-shadow: 0 0 10px rgba(239, 68, 68, 0.4); }
+.text-dark { color: var(--text-primary) !important; }
+
+/* Barra de Confiança */
+.confidence-wrapper {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.confidence-value {
+  color: var(--accent-primary) !important;
+  text-shadow: 0 0 10px rgba(0, 217, 255, 0.4);
+}
+
+.progress-bar {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.05); /* Trilho escuro */
+  border-radius: 4px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-secondary), var(--accent-primary)); /* Roxo -> Cyan */
+  box-shadow: 0 0 10px var(--accent-primary);
+  border-radius: 4px;
+}
+
+/* --- Gráfico (Monitor) --- */
+.chart-wrapper {
+  background: var(--bg-card);
+  border: 1px solid rgba(0, 217, 255, 0.1);
+  border-radius: 12px;
+  padding: 24px;
+  height: 380px;
+  position: relative;
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+  .metrics-row {
+    grid-template-columns: 1fr;
+  }
+  
+  .decision-action {
+    font-size: 2rem;
+  }
+}

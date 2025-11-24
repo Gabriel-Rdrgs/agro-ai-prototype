@@ -3,10 +3,17 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto'); // Nativo do Node, para gerar tokens aleatórios
 const { PrismaClient } = require('@prisma/client');
+const { logAction } = require('./services/auditService');
 
 const prisma = new PrismaClient();
-const SECRET_KEY = process.env.JWT_SECRET || 'sua_chave_secreta_super_segura';
+// O CÓDIGO NOVO (SEGURO - TIPO SÉNIOR) ✅
+const SECRET_KEY = process.env.JWT_SECRET;
 
+// Se a chave não existir no .env, o servidor para e avisa no terminal
+if (!SECRET_KEY) {
+  console.error("❌ ERRO CRÍTICO: A variável JWT_SECRET não foi encontrada no .env!");
+  process.exit(1); // Encerra o servidor imediatamente para segurança
+}
 // Função auxiliar para gerar o Token de Acesso (Curta Duração)
 function generateAccessToken(user) {
   return jwt.sign(
@@ -42,6 +49,8 @@ exports.register = async (req, res) => {
   }
 };
 
+// backend/authController.js
+
 exports.login = async (req, res) => {
   const { email, password } = req.body;
 
@@ -51,13 +60,13 @@ exports.login = async (req, res) => {
       return res.status(401).json({ error: 'Credenciais inválidas.' });
     }
 
-    // 1. Gera o Token de Acesso (O Crachá Provisório)
+    // 1. Gera o Token de Acesso
     const accessToken = generateAccessToken(user);
 
-    // 2. Gera o Refresh Token (O Documento para renovar)
+    // 2. Gera o Refresh Token
     const refreshToken = crypto.randomBytes(40).toString('hex');
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7); // Válido por 7 dias
+    expiresAt.setDate(expiresAt.getDate() + 7);
 
     // 3. Salva o Refresh Token no banco
     await prisma.refreshToken.create({
@@ -68,15 +77,24 @@ exports.login = async (req, res) => {
       }
     });
 
+    // 4. RASTREABILIDADE (O Novo Log) ✅
+    // Importante: Fazemos isso ANTES de responder, ou em paralelo, mas nunca duplicamos a resposta.
+    await logAction(user.id, 'LOGIN', `Login realizado via Web. Role: ${user.role}`);
+
+    // 5. Resposta Final (ÚNICA VEZ) 🏁
     res.json({
       message: 'Login realizado!',
       accessToken,
-      refreshToken, // O Frontend deve guardar isso com carinho
+      refreshToken,
       user: { id: user.id, name: user.name, email: user.email, role: user.role }
     });
+
   } catch (error) {
     console.error("Erro no Login:", error);
-    res.status(500).json({ error: 'Erro ao realizar login.' });
+    // Verificação extra: Se o erro for de "headers sent", não tentamos responder de novo para não poluir o log
+    if (!res.headersSent) {
+        res.status(500).json({ error: 'Erro ao realizar login.' });
+    }
   }
 };
 

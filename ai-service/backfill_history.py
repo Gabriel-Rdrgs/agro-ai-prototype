@@ -1,85 +1,122 @@
-import pandas as pd
+import os
+import random
+import math
+import pandas as pd # <--- O Rei da Performance voltou
 import numpy as np
 from datetime import datetime, timedelta
 from sqlalchemy import create_engine, text
-import random
+from dotenv import load_dotenv
 
-import os
-from dotenv import load_dotenv # <--- Import novo
-
-# Carrega as variáveis do arquivo .env para a memória
 load_dotenv()
 
-# Pega a variável do ambiente. Se não existir, retorna None
+# Configuração do Banco
 DATABASE_URL = os.getenv("DATABASE_URL")
-
-# Validação de segurança (opcional, mas recomendada)
 if not DATABASE_URL:
-    raise ValueError("❌ ERRO FATAL: A variável DATABASE_URL não foi encontrada. Verifique seu arquivo .env")
+    DATABASE_URL = os.getenv("PYTHON_DB_URL") # Fallback
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+if not DATABASE_URL:
+    raise ValueError("❌ Sem DATABASE_URL definida!")
+
 engine = create_engine(DATABASE_URL)
 
-def generate_history():
-    print("🕰️ LIGANDO A MÁQUINA DO TEMPO (MODO TURBO - PANDAS)...")
+def generate_fake_history():
+    print("⏳ Iniciando Máquina do Tempo V2 (Pandas Bulk Mode)...")
     
-    # 1. Busca as cidades (SQLAlchemy)
-    with engine.connect() as connection:
-        print("📡 Lendo cidades do banco...")
-        cities = connection.execute(text("SELECT id, city, state, \"buyPrice\" FROM \"Opportunity\" WHERE product = 'Tomate'")).fetchall()
-        
-        if not cities:
-            print("❌ Nenhuma cidade encontrada!")
-            return
+    # Configurações de Mercado
+    products_config = {
+        'Tomate': {
+            'base': 4.50, 
+            'volatility': 0.15, # 15% de variação normal
+            'shock_prob': 0.05, # 5% de chance de "Evento Climático Extremo"
+            'shock_factor': 1.6 # Preço sobe 60% no choque (Chuva forte)
+        },
+        'Soja': {
+            'base': 130.00, 
+            'volatility': 0.03,
+            'shock_prob': 0.01,
+            'shock_factor': 1.1
+        },
+        'Milho': {
+            'base': 60.00, 
+            'volatility': 0.04,
+            'shock_prob': 0.02,
+            'shock_factor': 1.15
+        },
+        'Alface': {
+            'base': 2.00, 
+            'volatility': 0.10,
+            'shock_prob': 0.08, # Muito sensível
+            'shock_factor': 1.4
+        }
+    }
+    
+    days_back = 180
+    data_buffer = [] # Lista para guardar tudo na memória antes de enviar
 
-        history_buffer = []
-        days_back = 180 
-        
-        print(f"📅 Gerando dados matemáticos para {len(cities)} cidades...")
+    with engine.connect() as conn:
+        # 1. Limpa histórico antigo (Rápido)
+        conn.execute(text('TRUNCATE TABLE "PriceHistory" RESTART IDENTITY CASCADE'))
+        print("🧹 Tabela limpa.")
 
-        for row in cities:
-            base_current_price = float(row.buyPrice)
-            opp_id = row.id
+        # 2. Busca Oportunidades
+        opportunities = pd.read_sql('SELECT id, product FROM "Opportunity"', conn)
+
+    print(f"   -> Gerando dados para {len(opportunities)} produtos...")
+
+    # 3. Geração Matemática (Tudo em RAM)
+    for _, row in opportunities.iterrows():
+        opp_id = row['id']
+        product = row['product']
+        
+        if product not in products_config:
+            continue
             
-            volatility = 0.05 if row.state in ['GO', 'SP'] else 0.08 
+        conf = products_config[product]
+        base_price = conf['base']
+        
+        # Simulação dia a dia
+        current_price = base_price
+        
+        for i in range(days_back):
+            date = datetime.now() - timedelta(days=(days_back - i))
             
-            for i in range(days_back, 0, -1):
-                date = datetime.now() - timedelta(days=i)
-                
-                # Simula Sazonalidade + Ruído
-                season_factor = np.sin(i / 30) * 0.15 
-                daily_noise = random.normalvariate(0, volatility)
-                
-                raw_price = base_current_price * (1 + season_factor + daily_noise)
-                historical_price = float(max(2.00, round(raw_price, 2)))
-                
-                # Adiciona na lista
-                history_buffer.append({
-                    "opportunityId": opp_id,
-                    "price": historical_price,
-                    "createdAt": date
-                })
+            # A. Sazonalidade (Onda)
+            season = math.sin(i * 0.05) * (base_price * conf['volatility'])
+            
+            # B. Ruído Diário (Random Walk)
+            noise = np.random.normal(0, base_price * 0.02)
+            
+            # C. O Fator "Caos" (O que tu pediste sobre o Tomate 🍅)
+            shock = 1.0
+            if random.random() < conf['shock_prob']:
+                shock = conf['shock_factor'] # BOMBA! Preço dispara.
+                print(f"      ⛈️ Choque climático em {product} no dia {date.strftime('%d/%m')}")
+            
+            # Cálculo final
+            price = (base_price + season + noise) * shock
+            
+            # Recuperação elástica (o preço tende a voltar ao normal nos dias seguintes)
+            # Mas aqui simplificamos: o choque dura 1 dia (flash spike) ou a onda segura a média.
+            
+            data_buffer.append({
+                "opportunityId": opp_id,
+                "price": round(max(0.1, price), 2),
+                "createdAt": date
+            })
 
-    # 2. O PULO DO GATO 🐈 (Fora do loop de conexão anterior)
-    print(f"🚀 Preparando envio de {len(history_buffer)} registros...")
-    
-    # Cria o DataFrame
-    df = pd.DataFrame(history_buffer)
-    
-    try:
-        # --- A LINHA MÁGICA ESTÁ AQUI 👇 ---
-        df.to_sql(
-            'PriceHistory', 
-            engine, 
-            if_exists='append', # Adiciona aos dados que já existem
-            index=False,        # Não envia o número da linha
-            method='multi',     # Insere milhares de uma vez
-            chunksize=1000      # Pacotes de 1000
-        )
-        # -----------------------------------
+    # 4. Inserção em Massa (O Pulo do Gato do Pandas 🐈)
+    if data_buffer:
+        df = pd.DataFrame(data_buffer)
+        print(f"🚀 Inserindo {len(df)} registros via Pandas Chunk Insert...")
         
-        print("✅ SUCESSO! Histórico gravado em velocidade máxima.")
+        # method='multi' envia várias linhas num único comando SQL. Muito mais rápido.
+        df.to_sql('PriceHistory', engine, if_exists='append', index=False, method='multi', chunksize=1000)
         
-    except Exception as e:
-        print(f"❌ Erro na inserção Pandas: {e}")
+        print("✅ Histórico gerado com sucesso!")
+    else:
+        print("⚠️ Nenhuma oportunidade encontrada para gerar histórico.")
 
 if __name__ == "__main__":
-    generate_history()
+    generate_fake_history()
