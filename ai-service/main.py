@@ -58,30 +58,34 @@ PRICE_MULTIPLIERS = {
 # 3. Fisiologia Vegetal (Baseado no PDF Estudos Tomate)
 CROP_SPECS = {
     'Tomate': {
-        'base_productivity': 300, # cx/ha (Média)
+        'base_productivity': 300, # cx/ha
         'base_cost_ha': 25000.00, 
         'temp_min_critical': 10.0,
         'temp_max_critical': 34.0,
-        'temp_ideal_min': 20.0,
-        'temp_ideal_max': 24.0,
         'ideal_rain_cycle': 600.0,
-        'daily_thermal_range_ideal': (6.0, 8.0)
+        'daily_thermal_range_ideal': (6.0, 8.0),
+        'volatility_factor': 2.5, # NOVO: Alta volatilidade de mercado
+        'rain_logistics_limit': 15.0 # NOVO: Chuva que para a colheita
     },
     'Soja': {
-        'base_productivity': 60,  # sc/ha
+        'base_productivity': 60,  
         'base_cost_ha': 4500.00,
         'temp_min_critical': 15.0,
         'temp_max_critical': 40.0,
         'ideal_rain_cycle': 800.0,
-        'daily_thermal_range_ideal': (5.0, 15.0)
+        'daily_thermal_range_ideal': (5.0, 15.0),
+        'volatility_factor': 0.8,
+        'rain_logistics_limit': 25.0 
     },
     'Milho': {
-        'base_productivity': 150, # sc/ha
+        'base_productivity': 150, 
         'base_cost_ha': 5000.00,
         'temp_min_critical': 10.0,
         'temp_max_critical': 38.0,
         'ideal_rain_cycle': 700.0,
-        'daily_thermal_range_ideal': (5.0, 15.0)
+        'daily_thermal_range_ideal': (5.0, 15.0),
+        'volatility_factor': 0.9,
+        'rain_logistics_limit': 25.0
     },
     'Default': { 
         'base_productivity': 100, 
@@ -89,11 +93,28 @@ CROP_SPECS = {
         'temp_min_critical': 0, 
         'temp_max_critical': 40, 
         'ideal_rain_cycle': 1000,
-        'daily_thermal_range_ideal': (5.0, 15.0)
+        'daily_thermal_range_ideal': (5.0, 15.0),
+        'volatility_factor': 1.0,
+        'rain_logistics_limit': 20.0
     }
 }
-
-# 4. Climatologia Histórica (Médias de Chuva mm)
+# 4. Calendário de Plantio Regional - NOVO
+PLANTING_CALENDAR = {
+    'Tomate': {
+        'SP': {'ideal': [2,3,4,5,6], 'risk': [12,1,7]}, # Jan (Chuva), Jul (Frio)
+        'MG': {'ideal': [2,3,4,5,8,9], 'risk': [12,1,6,7]},
+        'RS': {'ideal': [8,9,10,11,12,1], 'risk': [5,6,7]}, # Inverno rigoroso
+        'SC': {'ideal': [8,9,10,11,12], 'risk': [5,6,7]},
+        'GO': {'ideal': [3,4,5,6], 'risk': [11,12,1]}, 
+        'BA': {'ideal': [5,6,7,8], 'risk': [1,2,3]}, 
+        'ES': {'ideal': [2,3,4,5], 'risk': [11,12,1]} 
+    },
+    'Soja': {
+        'MT': {'ideal': [9,10,11], 'risk': [6,7,8]},
+        'RS': {'ideal': [10,11,12], 'risk': [5,6]}
+    }
+}
+# 5. Climatologia Histórica (Médias de Chuva mm)
 BRAZIL_CLIMATE_NORMS = {
     'SP': {1: 230, 2: 210, 6: 45, 7: 35, 11: 144, 12: 200},
     'MG': {1: 270, 2: 200, 6: 20, 7: 15, 11: 210, 12: 250},
@@ -259,15 +280,14 @@ def predict_storage_viability(data: SimulationRequest):
     current_month = datetime.now().month
     specs = CROP_SPECS.get(data.product, CROP_SPECS['Default'])
     
-    # --- Engenharia Climática (Gap Fill) ---
+    # --- 1. Engenharia Climática (Gap Fill + Micro Eventos) ---
     forecast_rain = data.daily_rain if data.daily_rain else [0] * 16
     forecast_max = data.daily_temp_max if data.daily_temp_max else [25] * 16
     forecast_min = data.daily_temp_min if data.daily_temp_min else [18] * 16
     
     days_blind = max(0, days - len(forecast_rain))
     monthly_avg = BRAZIL_CLIMATE_NORMS.get(data.state, {}).get(current_month, 150)
-    rain_accumulated_forecast = sum(forecast_rain)
-    missing_rain = max(0, monthly_avg - rain_accumulated_forecast)
+    missing_rain = max(0, monthly_avg - sum(forecast_rain))
     daily_avg_missing = missing_rain / days_blind if days_blind > 0 else 0
 
     final_rain = list(forecast_rain)
@@ -276,67 +296,74 @@ def predict_storage_viability(data: SimulationRequest):
     
     for _ in range(days_blind):
         sim_rain = 0
-        if daily_avg_missing > 0 and np.random.random() > 0.4:
-            sim_rain = np.random.normal(daily_avg_missing * 1.5, daily_avg_missing * 0.5)
+        if np.random.random() > 0.7: sim_rain = np.random.normal(15, 10)
         final_rain.append(max(0, sim_rain))
-        final_max.append(np.mean(forecast_max[-3:]) + np.random.normal(0, 1))
-        final_min.append(np.mean(forecast_min[-3:]) + np.random.normal(0, 1))
-
-    final_rain = final_rain[:days]
+        final_max.append(np.mean(forecast_max[-3:]) + np.random.normal(0, 2))
+        final_min.append(np.mean(forecast_min[-3:]) + np.random.normal(0, 2))
     
-    # --- Modelagem ---
+    final_rain = final_rain[:days]
+
+    # --- 2. Modelagem de Preço (Com Fator de Volatilidade) ---
     model, volatility = get_prediction_model(data.product)
     base_date = datetime.now()
     prices, costs, future_dates = [], [], []
-    risk_accumulator = 0
+    risk_acc = 0
+    vol_boost = specs.get('volatility_factor', 1.0)
 
     for i in range(days):
         future_date = base_date + timedelta(days=i)
         future_dates.append(future_date.strftime('%d/%m'))
-        costs.append(round(i * data.storage_cost_per_day, 2))
         
+        # >>> REVERSÃO: VOLTA AO CUSTO LINEAR SIMPLES <<<
+        # Assumimos que a tecnologia do cliente anula a perda exponencial por enquanto.
+        # Usa o valor linear enviado pelo front ou um padrão baixo.
+        daily_cost = data.storage_cost_per_day if data.storage_cost_per_day > 0 else 0.05
+        costs.append(round(i * daily_cost, 2))
+        
+        # Tendência de Preço (Mantém a inteligência climática!)
         trend = data.current_price
-        if model:
+        if model: 
             trend = float(model.predict([[future_date.toordinal()]])[0])
+        
+        # Sazonalidade Diária (Entressafra)
+        if data.product == 'Tomate' and future_date.month in [4, 5, 6, 7]:
+             trend *= (1 + (0.005 * i))
 
-        day_max = final_max[i] if i < len(final_max) else 25
-        day_min = final_min[i] if i < len(final_min) else 18
-        thermal_range = day_max - day_min
+        # Impactos Micro (Chuva/Frio)
         impact = 0.0
-
-        # Regras Fisiológicas
-        if specs.get('daily_thermal_range_ideal'):
-            if specs['daily_thermal_range_ideal'][0] <= thermal_range <= specs['daily_thermal_range_ideal'][1]:
-                impact -= 0.01 
+        if final_rain[i] > specs.get('rain_logistics_limit', 20):
+            impact += 0.12 * vol_boost 
+            risk_acc += 1
         
-        is_cold_region = data.state in ['RS', 'SC', 'PR', 'SP', 'MG']
-        if day_min < specs['temp_min_critical'] and is_cold_region:
-            impact += 0.05
-            risk_accumulator += 1
-        
-        rain_total = sum(final_rain[:i+1]) + 100
-        if rain_total > specs['ideal_rain_cycle']:
-            impact += 0.15
-            risk_accumulator += 2
+        if final_min[i] < specs.get('temp_min_critical', 10):
+            impact += 0.08 * vol_boost
+            risk_acc += 1
 
-        prices.append(round(trend * (1 + impact), 2))
+        noise = np.random.normal(0, volatility * vol_boost * 0.5)
+        prices.append(round(max(0.5, trend * (1 + impact) + noise), 2))
 
-    net_profit = [p - c - data.current_price for p, c in zip(prices, costs)]
+    # --- 3. Decisão ---
+    net_profit = [p - data.current_price - c for p, c in zip(prices, costs)]
     max_profit = max(net_profit)
     best_idx = net_profit.index(max_profit)
     
-    action = "ARMAZENAR" if max_profit > 0 else "VENDER AGORA"
-    risk_msg = "Tendência favorável." if max_profit > 0 else "Custos ou riscos elevados."
-    
-    if risk_accumulator > 5: risk_msg = "Alto risco climático detectado."
+    if max_profit > 0:
+        action = "ARMAZENAR"
+        risk_msg = f"Pico de preço em {future_dates[best_idx]} compensa custos."
+    elif max_profit > -2.0:
+        action = "AGUARDAR"
+        risk_msg = "Margens apertadas. Monitore o clima."
+    else:
+        action = "VENDER IMEDIATAMENTE"
+        risk_msg = "Custo supera valorização."
 
     return {
         "chart_data": { "labels": future_dates, "prices": prices, "costs": costs },
         "recommendation": {
             "action": action,
-            "best_day_date": future_dates[best_idx] if max_profit > 0 else "Hoje",
+            "best_day_date": future_dates[best_idx] if max_profit > -5 else "Hoje",
             "projected_profit": round(max_profit, 2),
-            "confidence_score": 0.85 if risk_accumulator < 3 else 0.60,
+            "confidence_score": 0.85 if risk_acc < 5 else 0.60,
             "risk_event": risk_msg
         }
     }
@@ -347,33 +374,40 @@ def calculate_production_roi(data: ProductionRequest):
     specs = CROP_SPECS.get(data.product, CROP_SPECS['Default'])
     norms = BRAZIL_CLIMATE_NORMS.get(data.state, {})
     
-    cycle_months = [data.planting_month + i for i in range(4)]
-    cycle_months = [m if m <= 12 else m - 12 for m in cycle_months]
-    avg_rain_cycle = sum([norms.get(m, 150) for m in cycle_months])
+    # 1. Análise MACRO: Calendário de Plantio
+    calendar = PLANTING_CALENDAR.get(data.product, {}).get(data.state)
     
     prod_factor = 1.0
     risk_notes = []
 
-    if avg_rain_cycle > specs['ideal_rain_cycle']:
-        prod_factor -= 0.15
-        risk_notes.append("Chuva excessiva prevista no ciclo.")
-
-    is_cold = data.state in ['RS', 'SC', 'PR']
-    if is_cold and any(m in [6, 7] for m in cycle_months):
-        prod_factor -= 0.20
-        risk_notes.append("Ciclo atravessa inverno rigoroso.")
+    if calendar:
+        if data.planting_month in calendar.get('ideal', []):
+            prod_factor = 1.05 # Bônus de janela ideal
+            risk_notes.append("Plantio na JANELA IDEAL para a região.")
+        elif data.planting_month in calendar.get('risk', []):
+            prod_factor = 0.70 # Penalidade severa (Risco Climático)
+            risk_notes.append(f"ALERTA: Plantio em mês de ALTO RISCO em {data.state}.")
+        else:
+            prod_factor = 0.90 # Transição
+            risk_notes.append("Plantio em janela marginal/transição.")
+    else:
+        # Fallback para lógica de chuva acumulada (600mm) se não tiver calendário
+        cycle_months = [(data.planting_month + i - 1) % 12 + 1 for i in range(4)]
+        avg_rain = sum([norms.get(m, 150) for m in cycle_months])
+        if avg_rain > specs['ideal_rain_cycle']:
+            prod_factor -= 0.15
+            risk_notes.append(f"Risco de chuva excessiva no ciclo ({avg_rain}mm).")
 
     final_prod = data.expected_productivity * prod_factor
     net_profit = (final_prod * data.area_ha * data.expected_sell_price) - (data.area_ha * data.cost_per_ha)
     
     return {
         "adjusted_productivity": round(final_prod, 1),
-        "productivity_loss_pct": round((1 - prod_factor) * 100, 1),
+        "productivity_loss_pct": round((1 - prod_factor/1.05) * 100 if prod_factor < 1.0 else 0, 1),
         "net_profit": round(net_profit, 2),
         "roi": round((net_profit / (data.area_ha * data.cost_per_ha)) * 100, 1),
-        "risk_analysis": risk_notes if risk_notes else ["Clima favorável."]
+        "risk_analysis": risk_notes
     }
-
 # 4. ROTA DE ARBITRAGEM (Nova Lógica Completa)
 @app.post("/calc/arbitrage")
 def calculate_arbitrage(data: ArbitrageRequest):
