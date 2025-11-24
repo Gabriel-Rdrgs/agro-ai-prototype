@@ -3,8 +3,11 @@ from pydantic import BaseModel
 from typing import List, Optional
 import pandas as pd
 import numpy as np
-import requests  # <--- Biblioteca nova para chamar APIs externas
+import requests
+import math
 from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.pipeline import make_pipeline
 from sqlalchemy import create_engine, text
 from datetime import datetime, timedelta
 import os
@@ -15,37 +18,125 @@ load_dotenv()
 
 app = FastAPI()
 
-# --- CONFIGURAÇÃO SEGURA ---
+# --- CONFIGURAÇÃO DE BANCO ---
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
-    # Tenta pegar a URL específica do Python se a principal falhar (para casos de pooling)
     DATABASE_URL = os.getenv("PYTHON_DB_URL") 
 
 if not DATABASE_URL:
-    raise ValueError("❌ ERRO: DATABASE_URL não definida no .env!")
+    raise ValueError("❌ ERRO: DATABASE_URL não definida!")
 
-# Correção para SQLAlchemy (postgres:// -> postgresql://)
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 engine = create_engine(DATABASE_URL)
 
-# --- MODELOS DE DADOS (Pydantic) ---
+# --- CONSTANTES E DADOS (O CONHECIMENTO DA IA) ---
+
+# 1. Geografia e Logística
+STATE_COORDS = {
+    'SP': (-23.55, -46.63), 'MG': (-19.91, -43.93), 'GO': (-16.68, -49.26),
+    'BA': (-12.97, -38.50), 'RS': (-30.03, -51.22), 'PR': (-25.42, -49.27),
+    'SC': (-27.59, -48.54), 'MT': (-15.60, -56.09), 'MS': (-20.44, -54.64),
+    'CE': (-3.71, -38.54), 'PE': (-8.04, -34.87), 'RJ': (-22.90, -43.17),
+    'ES': (-20.31, -40.31)
+}
+
+LOGISTICS_DATA = {
+    'avg_diesel_price': 6.20,       # R$/Litro (Média ANP)
+    'truck_km_per_liter': 3.5,      # Consumo médio Carreta
+    'maintenance_per_km': 1.50,     # R$/Km (Pneus, óleo, desgaste)
+    'driver_cost_per_km': 1.20      # R$/Km (Mão de obra)
+}
+
+# 2. Mercado Regional (Multiplicadores de Preço)
+PRICE_MULTIPLIERS = {
+    'SP': 1.2, 'RJ': 1.25, 'DF': 1.15, # Centros consumidores pagam mais
+    'BA': 0.9, 'GO': 0.95, 'MG': 1.0, 'PE': 1.05, 'RS': 1.0
+}
+
+# 3. Fisiologia Vegetal (Baseado no PDF Estudos Tomate)
+CROP_SPECS = {
+    'Tomate': {
+        'base_productivity': 300, # cx/ha (Média)
+        'base_cost_ha': 25000.00, 
+        'temp_min_critical': 10.0,
+        'temp_max_critical': 34.0,
+        'temp_ideal_min': 20.0,
+        'temp_ideal_max': 24.0,
+        'ideal_rain_cycle': 600.0,
+        'daily_thermal_range_ideal': (6.0, 8.0)
+    },
+    'Soja': {
+        'base_productivity': 60,  # sc/ha
+        'base_cost_ha': 4500.00,
+        'temp_min_critical': 15.0,
+        'temp_max_critical': 40.0,
+        'ideal_rain_cycle': 800.0,
+        'daily_thermal_range_ideal': (5.0, 15.0)
+    },
+    'Milho': {
+        'base_productivity': 150, # sc/ha
+        'base_cost_ha': 5000.00,
+        'temp_min_critical': 10.0,
+        'temp_max_critical': 38.0,
+        'ideal_rain_cycle': 700.0,
+        'daily_thermal_range_ideal': (5.0, 15.0)
+    },
+    'Default': { 
+        'base_productivity': 100, 
+        'base_cost_ha': 5000, 
+        'temp_min_critical': 0, 
+        'temp_max_critical': 40, 
+        'ideal_rain_cycle': 1000,
+        'daily_thermal_range_ideal': (5.0, 15.0)
+    }
+}
+
+# 4. Climatologia Histórica (Médias de Chuva mm)
+BRAZIL_CLIMATE_NORMS = {
+    'SP': {1: 230, 2: 210, 6: 45, 7: 35, 11: 144, 12: 200},
+    'MG': {1: 270, 2: 200, 6: 20, 7: 15, 11: 210, 12: 250},
+    'GO': {1: 270, 2: 220, 6: 10, 7: 5, 11: 220, 12: 260},
+    'BA': {1: 60, 2: 50, 6: 180, 7: 150, 11: 100, 12: 80},
+    'RS': {1: 120, 2: 110, 6: 140, 7: 150, 11: 130, 12: 110},
+    'CE': {1: 100, 2: 150, 6: 40, 7: 20, 11: 10, 12: 30}
+}
+
+# --- MODELOS DE DADOS (REQ/RES) ---
+
 class SimulationRequest(BaseModel):
     product: str
+    state: str = 'SP' 
     current_price: float
     storage_cost_per_day: float
     risk_factor: float
     daily_rain: Optional[List[float]] = None 
-    daily_temp: Optional[List[float]] = None 
+    daily_temp_max: Optional[List[float]] = None 
+    daily_temp_min: Optional[List[float]] = None 
     daily_sun: Optional[List[float]] = None 
 
-# --- FUNÇÕES AUXILIARES (ETL & IA) ---
+class ProductionRequest(BaseModel):
+    product: str
+    state: str
+    area_ha: float
+    cost_per_ha: float
+    expected_productivity: float
+    expected_sell_price: float
+    planting_month: int
+
+class ArbitrageRequest(BaseModel):
+    product: str
+    origin_state: str
+    destination_state: str
+    planting_month: int
+    area_ha: float
+
+# --- FUNÇÕES AUXILIARES ---
 
 def get_real_dollar_rate():
-    """Busca a cotação do Dólar (USD) para Real (BRL) em tempo real."""
     try:
-        response = requests.get("https://economia.awesomeapi.com.br/last/USD-BRL", timeout=5)
+        response = requests.get("https://economia.awesomeapi.com.br/last/USD-BRL", timeout=3)
         data = response.json()
         return float(data['USDBRL']['bid'])
     except Exception as e:
@@ -64,45 +155,66 @@ def get_prediction_model(product_name):
         with engine.connect() as conn:
             df = pd.read_sql(query, conn, params={"prod": product_name})
         
-        if df.empty or len(df) < 5: return None, 0.05
+        if df.empty or len(df) < 10: return None, 0.05
 
         df = df.dropna()
         df['date_ordinal'] = pd.to_datetime(df['createdAt']).map(datetime.toordinal)
         
-        model = LinearRegression()
+        model = make_pipeline(PolynomialFeatures(3), LinearRegression())
         model.fit(df[['date_ordinal']], df['price'])
         
         volatility = df['price'].std()
-        if pd.isna(volatility) or volatility == 0: volatility = 0.05
-        
-        return model, volatility
+        return model, (volatility if not pd.isna(volatility) else 0.05)
     except Exception as e:
         print(f"Erro no modelo: {e}")
         return None, 0.05
+
+def calculate_distance(state_a, state_b):
+    if state_a == state_b: return 50.0 
+    
+    coord_a = STATE_COORDS.get(state_a, (-15.0, -47.0))
+    coord_b = STATE_COORDS.get(state_b, (-15.0, -47.0))
+    
+    # Fórmula de Haversine
+    R = 6371
+    dlat = math.radians(coord_b[0] - coord_a[0])
+    dlon = math.radians(coord_b[1] - coord_a[1])
+    a = math.sin(dlat/2)**2 + math.cos(math.radians(coord_a[0])) * math.cos(math.radians(coord_b[0])) * math.sin(dlon/2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    distance_km = R * c
+    
+    return distance_km * 1.35 # Fator de sinuosidade (estradas não são retas)
+
+def get_predicted_market_price(product, state, month):
+    # Preço base simulado
+    base_prices = {'Tomate': 80.0, 'Soja': 130.0, 'Milho': 60.0}
+    price = base_prices.get(product, 50.0)
+    
+    # Sazonalidade (Inverno valoriza hortaliças)
+    if product == 'Tomate' and month in [6, 7, 8]:
+        price *= 1.3
+        
+    # Fator Regional
+    region_factor = PRICE_MULTIPLIERS.get(state, 1.0)
+    return round(price * region_factor, 2)
 
 # --- ROTAS DA API ---
 
 @app.get("/")
 def read_root():
-    return {"status": "AgroAI Brain Online (V2 - Com Robô ETL) 🚜🧠"}
+    return {"status": "AgroAI Brain Online V4 (Full Enterprise) 🧠🚜"}
 
-# 🚀 NOVO: Rota para Rodar o Robô ETL (Sincronizar Preços)
+# 1. ROTA DO ROBÔ ETL
 @app.post("/etl/sync-prices")
 def sync_market_prices():
-    """
-    V2: Atualiza preços E gera histórico para a IA treinar.
-    """
     try:
         dollar = get_real_dollar_rate()
-        
-        # Simulação de preços base em Dólar
         market_prices_usd = {
             'Tomate': {'buy': 0.80, 'sell': 1.10}, 
             'Soja':   {'buy': 25.00, 'sell': 28.50},
             'Milho':  {'buy': 12.00, 'sell': 14.00},
             'Alface': {'buy': 0.30, 'sell': 0.50}
         }
-
         updates_count = 0
         history_count = 0
         
@@ -110,15 +222,10 @@ def sync_market_prices():
             for product, prices in market_prices_usd.items():
                 new_buy = round(prices['buy'] * dollar, 2)
                 new_sell = round(prices['sell'] * dollar, 2)
-                
-                # 1. Busca os IDs dos produtos para vincular o histórico
-                # (Precisamos saber QUAL oportunidade estamos atualizando)
                 ids_query = text('SELECT id FROM "Opportunity" WHERE product = :product')
                 ids = conn.execute(ids_query, {"product": product}).fetchall()
-                
                 if not ids: continue
 
-                # 2. Atualiza o Preço Atual (Tabela Opportunity)
                 update_query = text("""
                     UPDATE "Opportunity"
                     SET "buyPrice" = :buy, "sellPrice" = :sell, "climate" = 'Atualizado via Bot'
@@ -127,8 +234,6 @@ def sync_market_prices():
                 conn.execute(update_query, {"buy": new_buy, "sell": new_sell, "product": product})
                 updates_count += len(ids)
 
-                # 3. 📸 SNAPSHOT: Grava na Tabela PriceHistory (Memória para a IA)
-                # Vamos criar um ponto no passado para cada oportunidade desse produto
                 for row in ids:
                     opp_id = row[0]
                     history_query = text("""
@@ -139,112 +244,204 @@ def sync_market_prices():
                     history_count += 1
         
         return {
-            "message": "Sincronização com Histórico concluída!",
-            "dollar_rate": dollar,
+            "message": "Sincronização completa!",
             "opportunities_updated": updates_count,
-            "history_entries_created": history_count # <--- O novo indicador de sucesso
+            "history_entries_created": history_count
         }
     except Exception as e:
         print(f"Erro no ETL: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# ai-service/main.py (Apenas a função de previsão corrigida)
-
+# 2. ROTA DE ARMAZENAGEM (Inteligência Climática / StorageAdvisor)
 @app.post("/predict/storage")
 def predict_storage_viability(data: SimulationRequest):
     days = 30
-    future_dates = []
-    prices = []
-    costs = []
+    current_month = datetime.now().month
+    specs = CROP_SPECS.get(data.product, CROP_SPECS['Default'])
     
-    # Busca modelo linear e volatilidade histórica
+    # --- Engenharia Climática (Gap Fill) ---
+    forecast_rain = data.daily_rain if data.daily_rain else [0] * 16
+    forecast_max = data.daily_temp_max if data.daily_temp_max else [25] * 16
+    forecast_min = data.daily_temp_min if data.daily_temp_min else [18] * 16
+    
+    days_blind = max(0, days - len(forecast_rain))
+    monthly_avg = BRAZIL_CLIMATE_NORMS.get(data.state, {}).get(current_month, 150)
+    rain_accumulated_forecast = sum(forecast_rain)
+    missing_rain = max(0, monthly_avg - rain_accumulated_forecast)
+    daily_avg_missing = missing_rain / days_blind if days_blind > 0 else 0
+
+    final_rain = list(forecast_rain)
+    final_max = list(forecast_max)
+    final_min = list(forecast_min)
+    
+    for _ in range(days_blind):
+        sim_rain = 0
+        if daily_avg_missing > 0 and np.random.random() > 0.4:
+            sim_rain = np.random.normal(daily_avg_missing * 1.5, daily_avg_missing * 0.5)
+        final_rain.append(max(0, sim_rain))
+        final_max.append(np.mean(forecast_max[-3:]) + np.random.normal(0, 1))
+        final_min.append(np.mean(forecast_min[-3:]) + np.random.normal(0, 1))
+
+    final_rain = final_rain[:days]
+    
+    # --- Modelagem ---
     model, volatility = get_prediction_model(data.product)
-    
-    # Proteção contra NaN (Se a volatilidade vier nula, assume 5%)
-    if volatility is None or np.isnan(volatility):
-        volatility = 0.05
-
     base_date = datetime.now()
-    current_p = data.current_price
+    prices, costs, future_dates = [], [], []
+    risk_accumulator = 0
 
-    # Fallbacks para dados climáticos (se o front não mandar)
-    rain_data = data.daily_rain if data.daily_rain else [0] * days
-    
     for i in range(days):
         future_date = base_date + timedelta(days=i)
         future_dates.append(future_date.strftime('%d/%m'))
-        
-        # Custo acumulado
         costs.append(round(i * data.storage_cost_per_day, 2))
-
-        # 1. Previsão Base (Tendência Linear)
-        if model:
-            date_ordinal = np.array([[future_date.toordinal()]])
-            trend_price = float(model.predict(date_ordinal)[0])
-        else:
-            # Sem histórico? Crescimento leve de 0.5% ao dia
-            trend_price = current_p * (1 + (0.005 * i))
-
-        # 2. Fator Climático (Simulação simples)
-        # Se chover muito nos 3 dias anteriores, preço sobe (logística difícil)
-        recent_rain = sum(rain_data[max(0, i-2):i+1])
-        climate_impact = 0
-        if recent_rain > 30: climate_impact = 0.05 # +5% se chover muito
-
-        # 3. Ruído de Mercado (Volatilidade)
-        noise = np.random.normal(0, volatility * 0.5)
         
-        # Preço Final do Dia
-        final_price = trend_price * (1 + climate_impact) + noise
-        prices.append(round(max(0.1, final_price), 2))
+        trend = data.current_price
+        if model:
+            trend = float(model.predict([[future_date.toordinal()]])[0])
 
-    # --- LÓGICA DE DECISÃO (O que estava faltando!) ---
-    
-    # Calcula lucro líquido para cada dia futuro
-    net_profit = [p - c - current_p for p, c in zip(prices, costs)]
+        day_max = final_max[i] if i < len(final_max) else 25
+        day_min = final_min[i] if i < len(final_min) else 18
+        thermal_range = day_max - day_min
+        impact = 0.0
+
+        # Regras Fisiológicas
+        if specs.get('daily_thermal_range_ideal'):
+            if specs['daily_thermal_range_ideal'][0] <= thermal_range <= specs['daily_thermal_range_ideal'][1]:
+                impact -= 0.01 
+        
+        is_cold_region = data.state in ['RS', 'SC', 'PR', 'SP', 'MG']
+        if day_min < specs['temp_min_critical'] and is_cold_region:
+            impact += 0.05
+            risk_accumulator += 1
+        
+        rain_total = sum(final_rain[:i+1]) + 100
+        if rain_total > specs['ideal_rain_cycle']:
+            impact += 0.15
+            risk_accumulator += 2
+
+        prices.append(round(trend * (1 + impact), 2))
+
+    net_profit = [p - c - data.current_price for p, c in zip(prices, costs)]
     max_profit = max(net_profit)
-    best_day_idx = net_profit.index(max_profit)
-    best_date_str = future_dates[best_day_idx]
+    best_idx = net_profit.index(max_profit)
     
-    # Definição da Recomendação e Confiança
-    confidence = 0.0
-    risk_msg = ""
-    action = ""
-
-    base_confidence = 0.95
+    action = "ARMAZENAR" if max_profit > 0 else "VENDER AGORA"
+    risk_msg = "Tendência favorável." if max_profit > 0 else "Custos ou riscos elevados."
     
-    # Se volatilidade for 0.10 (10%), confiança cai pouco.
-    # Se for 0.50 (50%), confiança cai bastante, mas não zera.
-    confidence = base_confidence / (1 + (volatility * 3))
-
-    if best_day_idx > 0 and max_profit > 0:
-        action = "ARMAZENAR"
-        risk_msg = f"Tendência de alta supera custos. Pico previsto para {best_date_str}."
-    elif max_profit <= 0:
-        action = "VENDER IMEDIATAMENTE"
-        risk_msg = "Custos de armazenagem corroem o lucro. Mercado em baixa."
-        best_date_str = "Hoje"
-        # Se a recomendação é vender logo para evitar prejuízo, a confiança costuma ser alta
-        confidence = max(confidence, 0.85) 
-    else:
-        action = "AGUARDAR / VENDER PARCIAL"
-        risk_msg = "Margens apertadas. Monitore o clima."
-        confidence = confidence * 0.9 # Penalidade leve por incerteza
-
-    confidence = round(max(0.0, min(1.0, confidence)), 2)
+    if risk_accumulator > 5: risk_msg = "Alto risco climático detectado."
 
     return {
-        "chart_data": { 
-            "labels": future_dates, 
-            "prices": prices, 
-            "costs": costs 
-        },
+        "chart_data": { "labels": future_dates, "prices": prices, "costs": costs },
         "recommendation": {
             "action": action,
-            "best_day_index": best_day_idx,
-            "best_day_date": best_date_str,    # <--- O Frontend precisa disso
+            "best_day_date": future_dates[best_idx] if max_profit > 0 else "Hoje",
             "projected_profit": round(max_profit, 2),
-            "confidence_score": round(confidence, 2), # <--- O Frontend precisa disso (0.95)
-            "risk_event": risk_msg             # <--- O "Motivo"
+            "confidence_score": 0.85 if risk_accumulator < 3 else 0.60,
+            "risk_event": risk_msg
         }
+    }
+
+# 3. ROTA DE PRODUÇÃO (Cálculo Local / Legado)
+@app.post("/calc/production")
+def calculate_production_roi(data: ProductionRequest):
+    specs = CROP_SPECS.get(data.product, CROP_SPECS['Default'])
+    norms = BRAZIL_CLIMATE_NORMS.get(data.state, {})
+    
+    cycle_months = [data.planting_month + i for i in range(4)]
+    cycle_months = [m if m <= 12 else m - 12 for m in cycle_months]
+    avg_rain_cycle = sum([norms.get(m, 150) for m in cycle_months])
+    
+    prod_factor = 1.0
+    risk_notes = []
+
+    if avg_rain_cycle > specs['ideal_rain_cycle']:
+        prod_factor -= 0.15
+        risk_notes.append("Chuva excessiva prevista no ciclo.")
+
+    is_cold = data.state in ['RS', 'SC', 'PR']
+    if is_cold and any(m in [6, 7] for m in cycle_months):
+        prod_factor -= 0.20
+        risk_notes.append("Ciclo atravessa inverno rigoroso.")
+
+    final_prod = data.expected_productivity * prod_factor
+    net_profit = (final_prod * data.area_ha * data.expected_sell_price) - (data.area_ha * data.cost_per_ha)
+    
+    return {
+        "adjusted_productivity": round(final_prod, 1),
+        "productivity_loss_pct": round((1 - prod_factor) * 100, 1),
+        "net_profit": round(net_profit, 2),
+        "roi": round((net_profit / (data.area_ha * data.cost_per_ha)) * 100, 1),
+        "risk_analysis": risk_notes if risk_notes else ["Clima favorável."]
+    }
+
+# 4. ROTA DE ARBITRAGEM (Nova Lógica Completa)
+@app.post("/calc/arbitrage")
+def calculate_arbitrage(data: ArbitrageRequest):
+    specs = CROP_SPECS.get(data.product, CROP_SPECS['Default'])
+    
+    # 1. Produção na Origem
+    predicted_productivity = specs.get('base_productivity', 100)
+    climate_notes = []
+    
+    # Simulação simples de risco na origem
+    if data.origin_state in ['RS', 'SC'] and data.planting_month in [5, 6]:
+        predicted_productivity *= 0.8
+        climate_notes.append(f"Risco de geada em {data.origin_state}.")
+    
+    total_volume = data.area_ha * predicted_productivity
+    production_cost = data.area_ha * specs.get('base_cost_ha', 5000)
+    unit_cost = production_cost / total_volume if total_volume > 0 else 0
+
+    # 2. Logística
+    distance = calculate_distance(data.origin_state, data.destination_state)
+    diesel = LOGISTICS_DATA['avg_diesel_price']
+    km_l = LOGISTICS_DATA['truck_km_per_liter']
+    maint = LOGISTICS_DATA['maintenance_per_km'] + LOGISTICS_DATA['driver_cost_per_km']
+    
+    trip_cost = (distance / km_l * diesel) + (distance * maint)
+    
+    # Capacidade de carga
+    capacity = 1200 if data.product == 'Tomate' else 550
+    trips = math.ceil(total_volume / capacity)
+    total_logistics = trip_cost * trips
+
+    # 3. Venda
+    harvest_month = (data.planting_month + 3) % 12 or 12
+    sell_price = get_predicted_market_price(data.product, data.destination_state, harvest_month)
+    revenue = total_volume * sell_price
+
+    # 4. Resultado
+    total_cost = production_cost + total_logistics
+    profit = revenue - total_cost
+    roi = (profit / total_cost) * 100 if total_cost > 0 else 0
+
+    return {
+        "analysis": {
+            "origin": data.origin_state,
+            "destination": data.destination_state,
+            "distance_km": round(distance),
+            "est_harvest_month": harvest_month
+        },
+        "production": {
+            "productivity_ha": round(predicted_productivity, 1),
+            "total_volume": round(total_volume),
+            "unit_cost_origin": round(unit_cost, 2),
+            "total_production_cost": round(production_cost, 2)
+        },
+        "logistics": {
+            "diesel_price_ref": diesel,
+            "trips_needed": trips,
+            "cost_per_trip": round(trip_cost, 2),
+            "total_logistics_cost": round(total_logistics, 2)
+        },
+        "market": {
+            "predicted_sell_price": sell_price,
+            "gross_revenue": round(revenue, 2)
+        },
+        "financial": {
+            "total_cost": round(total_cost, 2),
+            "net_profit": round(profit, 2),
+            "roi": round(roi, 1)
+        },
+        "risks": climate_notes if climate_notes else ["Condições favoráveis."]
     }

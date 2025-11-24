@@ -116,7 +116,30 @@ app.post('/api/ai/storage', verifyToken, checkRole(['admin', 'premium']), async 
   }
 });
 
-// 4. ROTA DE HISTÓRICO (Com Filtros Dinâmicos)
+// 4. NOVA ROTA: Ponte para a Calculadora de Produção (Node -> Python)
+app.post('/calc/production', verifyToken, async (req, res) => {
+  try {
+    // Repassa o pedido para o Python
+    const response = await axios.post(`${PYTHON_API_URL}/calc/production`, req.body);
+    res.json(response.data);
+  } catch (error) {
+    console.error("Erro na ponte de produção:", error.message);
+    res.status(500).json({ error: 'Erro ao conectar com serviço de cálculo.' });
+  }
+});
+
+// backend/server.js
+app.post('/calc/arbitrage', verifyToken, async (req, res) => {
+  try {
+    const response = await axios.post(`${PYTHON_API_URL}/calc/arbitrage`, req.body);
+    res.json(response.data);
+  } catch (error) {
+    console.error("Erro Arbitragem:", error.message);
+    res.status(500).json({ error: 'Erro no cálculo de arbitragem.' });
+  }
+});
+
+// 5. ROTA DE HISTÓRICO (Com Filtros Dinâmicos)
 app.get('/api/analytics/trend', verifyToken, async (req, res) => {
   try {
     const { product, city } = req.query;

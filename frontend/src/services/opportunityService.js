@@ -101,10 +101,9 @@ export const OpportunityService = {
     }
   },
 
-// --- 2. INTEGRAÇÃO CLIMÁTICA ---
   getForecast: async (lat, lng) => {
     try {
-      // REMOVIDO: 'soil_moisture_0_to_1cm_mean' (Causava erro 400)
+      // Pega dados detalhados para os próximos 16 dias
       const params = [
         'temperature_2m_max',
         'temperature_2m_min',
@@ -117,7 +116,6 @@ export const OpportunityService = {
       
       const response = await fetch(url);
       
-      // Debug: Se der erro de novo, vamos saber o porquê
       if (!response.ok) {
           console.error("Erro API OpenMeteo:", response.status, await response.text());
           return null;
@@ -132,7 +130,7 @@ export const OpportunityService = {
         tempMin: data.daily.temperature_2m_min[index],
         rain: data.daily.precipitation_sum[index],
         wind: data.daily.windspeed_10m_max[index],
-        soil: 0, // Placeholder: Definimos como 0 para não quebrar o gráfico
+        soil: 0, 
         sun: data.daily.shortwave_radiation_sum[index]
       }));
     } catch (error) {
@@ -194,20 +192,22 @@ export const OpportunityService = {
     };
   },
 
- // --- 4. IA MULTIVARIÁVEL ---
-  getStorageAnalysis: async (product, currentPrice = 4.00, riskLevel = 1, dailyRain = [], dailyTemp = [], dailySun = []) => {
+ // --- 4. IA MULTIVARIÁVEL (ARMAZENAMENTO) ---
+  getStorageAnalysis: async (product, state, currentPrice = 4.00, riskLevel = 1, dailyRain = [], dailyTempMax = [], dailySun = [], dailyTempMin = []) => {
     try {
         const riskMap = { 1: 0.1, 2: 0.5, 3: 0.9 };
         const riskFactor = riskMap[riskLevel] || 0.1;
 
         const payload = {
             product: product,
+            state: state || 'SP', // Fallback
             current_price: Number(currentPrice),
             storage_cost_per_day: 0.05,
             risk_factor: riskFactor,
             daily_rain: dailyRain,
-            daily_temp: dailyTemp, // Novo
-            daily_sun: dailySun    // Novo
+            daily_temp_max: dailyTempMax, // Python espera 'daily_temp_max'
+            daily_temp_min: dailyTempMin, // Python espera 'daily_temp_min'
+            daily_sun: dailySun
         };
 
         const response = await fetch(`${API_URL}/api/ai/storage`, {
@@ -226,6 +226,27 @@ export const OpportunityService = {
     } catch (error) {
         console.error("❌ Falha na IA:", error);
         return null; 
+    }
+  },
+
+ // --- 5. SIMULADOR DE ARBITRAGEM (IA COMPLETA) ---
+  calculateArbitrage: async (payload) => {
+    try {
+      // payload espera: { product, origin_state, destination_state, planting_month, area_ha }
+      const response = await fetch(`${API_URL}/calc/arbitrage`, {
+        method: 'POST',
+        headers: {
+          ...getAuthHeaders(),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) throw new Error('Erro ao calcular Arbitragem');
+      return await response.json();
+    } catch (error) {
+      console.error("Erro calc arbitragem:", error);
+      return null;
     }
   }
 };

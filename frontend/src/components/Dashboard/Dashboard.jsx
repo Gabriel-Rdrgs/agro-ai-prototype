@@ -92,6 +92,30 @@ const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [], o
     }
   }, [newOpAlert]);
 
+  // --- LÓGICA DE FILTRAGEM (O Coração da Reatividade) ---
+  
+  // 1. Criamos uma lista nova contendo APENAS o que bate com os filtros
+ // 1. Filtra as oportunidades com base nos selects do topo
+  const filteredOps = opportunities.filter(op => {
+    const matchCrop = !selectedCrop || op.product === selectedCrop;
+    const matchCity = !selectedCity || op.city === selectedCity;
+    return matchCrop && matchCity;
+  });
+
+  // 2. Recalcula os Cards (KPIs) usando apenas a lista filtrada
+  const stats = {
+    total: filteredOps.length,
+    volume: filteredOps.reduce((acc, curr) => acc + (Number(curr.volume) || 0), 0),
+    avgRoi: filteredOps.length > 0 
+      ? (filteredOps.reduce((acc, curr) => {
+          const buy = Number(curr.buyPrice) || 1; 
+          const sell = Number(curr.sellPrice) || 0;
+          return acc + ((sell - buy) / buy) * 100;
+        }, 0) / filteredOps.length).toFixed(1) 
+      : 0,
+    highRisk: filteredOps.filter(op => op.riskLevel === 3).length
+  };
+
   // --- LÓGICA DE DADOS ---
 
   // Filtro por cultura

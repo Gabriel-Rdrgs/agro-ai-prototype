@@ -39,17 +39,22 @@ const StorageAdvisor = ({ opportunity, forecast }) => {
   const fetchAnalysis = async () => {
     setLoading(true);
     try {
+      // 1. Extração de dados (Agora pegamos a Mínima também!)
       const dailyRain = forecast ? forecast.map(d => d.rain) : [];
-      const dailyTemp = forecast ? forecast.map(d => d.tempMax) : [];
+      const dailyTempMax = forecast ? forecast.map(d => d.tempMax) : []; 
+      const dailyTempMin = forecast ? forecast.map(d => d.tempMin) : []; 
       const dailySun = forecast ? forecast.map(d => d.sun) : [];
 
+      // 2. Chamada ao Serviço (Com os novos parâmetros)
       const data = await OpportunityService.getStorageAnalysis(
         opportunity.product,
+        opportunity.state,    // <--- NOVO: O Estado (SP, RS, BA...)
         opportunity.buyPrice,
         opportunity.riskLevel,
         dailyRain,
-        dailyTemp,
-        dailySun
+        dailyTempMax,
+        dailySun,
+        dailyTempMin          // <--- NOVO: Enviando a mínima
       );
       setAnalysis(data);
     } catch (error) {

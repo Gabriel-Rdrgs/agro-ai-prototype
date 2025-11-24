@@ -1,32 +1,45 @@
-const STORAGE_KEY = 'agro_ai_saved_scenarios';
+// frontend/src/services/storageService.js
+
+const STORAGE_KEY = 'agro_roi_scenarios';
 
 export const StorageService = {
-  // Salva um novo cenário
-  save: (scenario) => {
-    const current = StorageService.getAll();
-    // Adiciona ID único e Data de criação
-    const newScenario = { 
-      ...scenario, 
-      id: Date.now(), 
-      savedAt: new Date().toISOString() 
-    };
-    // Salva no topo da lista (mais recente primeiro)
-    const updated = [newScenario, ...current];
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-    return newScenario;
+  // Salva um cenário
+  saveScenario: (scenario) => {
+    try {
+      const current = StorageService.getScenarios();
+      const updated = [
+        { ...scenario, id: Date.now(), savedAt: new Date() }, 
+        ...current
+      ].slice(0, 10);
+      
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      window.dispatchEvent(new Event('storage'));
+      return true;
+    } catch (e) {
+      console.error("Erro ao salvar cenário:", e);
+      return false;
+    }
   },
 
-  // Busca todos os cenários
+  // Busca a lista de cenários (Versão Nova)
+  getScenarios: () => {
+    try {
+      const data = localStorage.getItem(STORAGE_KEY);
+      return data ? JSON.parse(data) : [];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  // --- CORREÇÃO DO ERRO ---
+  // Mantemos o nome 'getAll' para não quebrar seu Dashboard antigo.
+  // Ela faz a mesma coisa que a getScenarios.
   getAll: () => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    return stored ? JSON.parse(stored) : [];
+    return StorageService.getScenarios();
   },
 
-  // Deleta um cenário pelo ID
-  delete: (id) => {
-    const current = StorageService.getAll();
-    const updated = current.filter(s => s.id !== id);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-    return updated;
+  clearScenarios: () => {
+    localStorage.removeItem(STORAGE_KEY);
+    window.dispatchEvent(new Event('storage'));
   }
 };
