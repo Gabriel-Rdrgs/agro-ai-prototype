@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import theme from '../../styles/theme';
 
-// Pega a URL da API do ambiente ou usa localhost
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+// URL Base padronizada (Raiz do servidor)
+const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
 
 const Login = ({ onLogin }) => {
   const [email, setEmail] = useState('');
@@ -16,8 +16,8 @@ const Login = ({ onLogin }) => {
     setLoading(true);
 
     try {
-      // 🚀 AQUI ESTÁ A MÁGICA: Chamada real ao Backend
-      const response = await fetch(`${API_URL}/auth/login`, {
+      // 🚀 CORREÇÃO: Adicionamos /api aqui para casar com o server.js
+      const response = await fetch(`${BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -27,17 +27,17 @@ const Login = ({ onLogin }) => {
 
       const data = await response.json();
 
-    if (response.ok) {
-  // Sucesso!
-  // Ajuste: O backend agora retorna 'accessToken', não mais apenas 'token'
-  localStorage.setItem('token', data.accessToken); 
-  
-  // (Opcional) Se quiser salvar o refresh token para usar depois:
-  localStorage.setItem('refreshToken', data.refreshToken);
-
-  onLogin(data.user); 
-} else {
-        // Erro (Senha errada ou usuário não encontrado)
+      if (response.ok) {
+        // Sucesso! Salva o token
+        localStorage.setItem('token', data.accessToken); // Backend retorna 'accessToken'
+        
+        // Se tiver refresh token, salva também
+        if (data.refreshToken) {
+            localStorage.setItem('refreshToken', data.refreshToken);
+        }
+        
+        onLogin(data.user); 
+      } else {
         setError(data.error || 'Falha na autenticação');
       }
     } catch (err) {
@@ -71,17 +71,17 @@ const Login = ({ onLogin }) => {
         <div style={{ marginBottom: '30px' }}>
           <div style={{ fontSize: '40px', marginBottom: '10px' }}>🚀</div>
           <h1 style={{ margin: 0, fontSize: '24px', color: theme.colors.textPrimary }}>AgroArbitrage AI</h1>
-          <p style={{ color: theme.colors.textMuted, marginTop: '5px' }}>Inteligência de Mercado (Acesso Seguro)</p>
+          <p style={{ color: theme.colors.textMuted, marginTop: '5px' }}>Acesso Corporativo</p>
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div style={{ textAlign: 'left' }}>
-            <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', color: theme.colors.textMuted, fontWeight: 'bold', letterSpacing: '1px' }}>E-MAIL CORPORATIVO</label>
+            <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', color: theme.colors.textMuted, fontWeight: 'bold', letterSpacing: '1px' }}>E-MAIL</label>
             <input 
               type="email" 
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="ex: paulo@agro.com"
+              placeholder="admin@agro.com"
               required
               style={{
                 width: '100%',
@@ -139,14 +139,9 @@ const Login = ({ onLogin }) => {
               opacity: loading ? 0.7 : 1
             }}
           >
-            {loading ? 'Validando Credenciais...' : 'Entrar na Plataforma'}
+            {loading ? 'Entrando...' : 'Acessar Sistema'}
           </button>
         </form>
-
-        <div style={{ marginTop: '30px', paddingTop: '20px', borderTop: `1px solid ${theme.colors.border}`, fontSize: '12px', color: theme.colors.textMuted }}>
-          <p>Ambiente Seguro • Criptografia Ponta-a-Ponta</p>
-          <p style={{ marginTop: '5px', opacity: 0.5 }}>v1.0 (Production Ready)</p>
-        </div>
       </div>
     </div>
   );

@@ -2,7 +2,7 @@
 
 // URL da sua API Node.js
 // Se estiver rodando localmente, usa a porta 3001
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
 
 // Fator de sinuosidade para cálculo de distância rodoviária
 const ROAD_FACTOR = 1.35;
@@ -42,7 +42,7 @@ export const OpportunityService = {
   // --- 1. BUSCA DE DADOS (API) ---
   getAll: async () => {
     try {
-      const response = await fetch(`${API_URL}/opportunities`, {
+      const response = await fetch(`${API_URL}/api/opportunities`, {
         headers: getAuthHeaders()
       });
 
@@ -90,7 +90,7 @@ export const OpportunityService = {
   // --- 2. INTEGRAÇÃO CLIMÁTICA (OpenMeteo) ---
   getWeather: async (lat, lng) => {
     try {
-        const response = await fetch(`${API_URL}/weather?lat=${lat}&lng=${lng}`, {
+        const response = await fetch(`${API_URL}/api/weather?lat=${lat}&lng=${lng}`, {
             headers: getAuthHeaders()
         });
         if (!response.ok) return null;
@@ -210,7 +210,7 @@ export const OpportunityService = {
             daily_sun: dailySun    // Novo
         };
 
-        const response = await fetch(`${API_URL}/ai/storage`, {
+        const response = await fetch(`${API_URL}/api/ai/storage`, {
             method: 'POST',
             headers: {
                 ...getAuthHeaders(),
