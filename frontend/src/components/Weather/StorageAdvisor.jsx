@@ -39,22 +39,34 @@ const StorageAdvisor = ({ opportunity, forecast }) => {
   const fetchAnalysis = async () => {
     setLoading(true);
     try {
-      // 1. Extração de dados (Agora pegamos a Mínima também!)
       const dailyRain = forecast ? forecast.map(d => d.rain) : [];
-      const dailyTempMax = forecast ? forecast.map(d => d.tempMax) : []; 
-      const dailyTempMin = forecast ? forecast.map(d => d.tempMin) : []; 
+      const dailyTempMax = forecast ? forecast.map(d => d.tempMax) : [];
+      const dailyTempMin = forecast ? forecast.map(d => d.tempMin) : [];
       const dailySun = forecast ? forecast.map(d => d.sun) : [];
 
-      // 2. Chamada ao Serviço (Com os novos parâmetros)
+      // --- CORREÇÃO DE COORDENADAS ---
+      // Tenta pegar lat/lng da raiz OU do array position (fallback)
+      let lat = opportunity.lat;
+      let lng = opportunity.lng;
+
+      if (!lat && opportunity.position && opportunity.position.length === 2) {
+          lat = opportunity.position[0];
+          lng = opportunity.position[1];
+      }
+      
+      console.log("📍 Enviando para IA:", { product: opportunity.product, state: opportunity.state, lat, lng });
+
       const data = await OpportunityService.getStorageAnalysis(
         opportunity.product,
-        opportunity.state,    // <--- NOVO: O Estado (SP, RS, BA...)
+        opportunity.state,
         opportunity.buyPrice,
         opportunity.riskLevel,
         dailyRain,
         dailyTempMax,
         dailySun,
-        dailyTempMin          // <--- NOVO: Enviando a mínima
+        dailyTempMin,
+        lat, // <--- Agora usamos as variáveis tratadas
+        lng
       );
       setAnalysis(data);
     } catch (error) {
@@ -63,7 +75,7 @@ const StorageAdvisor = ({ opportunity, forecast }) => {
       setLoading(false);
     }
   };
-
+  
   if (!opportunity) return null;
 
   // --- Helpers de Visual ---

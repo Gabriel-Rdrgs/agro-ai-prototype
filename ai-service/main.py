@@ -11,6 +11,7 @@ from sklearn.pipeline import make_pipeline
 from sqlalchemy import create_engine, text
 from datetime import datetime, timedelta
 import os
+import hashlib
 from dotenv import load_dotenv
 
 # Carrega variáveis de ambiente
@@ -56,16 +57,20 @@ PRICE_MULTIPLIERS = {
 }
 
 # 3. Fisiologia Vegetal (Baseado no PDF Estudos Tomate)
+# ai-service/main.py
+
+# 2. Fisiologia & Armazenagem
 CROP_SPECS = {
     'Tomate': {
-        'base_productivity': 300, # cx/ha
+        'base_productivity': 300, 
         'base_cost_ha': 25000.00, 
         'temp_min_critical': 10.0,
         'temp_max_critical': 34.0,
         'ideal_rain_cycle': 600.0,
-        'daily_thermal_range_ideal': (6.0, 8.0),
-        'volatility_factor': 2.5, # NOVO: Alta volatilidade de mercado
-        'rain_logistics_limit': 15.0 # NOVO: Chuva que para a colheita
+        'volatility_factor': 2.5,
+        'rain_logistics_limit': 15.0,
+        'min_solar_mj': 8.4, # NOVO: Mínimo de 8.4 MJ/m² de sol para qualidade
+        'storage': {'loss_rate_daily': 0.015, 'energy_cost_daily_unit': 0.15, 'fixed_cost_unit': 1.50}
     },
     'Soja': {
         'base_productivity': 60,  
@@ -73,9 +78,10 @@ CROP_SPECS = {
         'temp_min_critical': 15.0,
         'temp_max_critical': 40.0,
         'ideal_rain_cycle': 800.0,
-        'daily_thermal_range_ideal': (5.0, 15.0),
         'volatility_factor': 0.8,
-        'rain_logistics_limit': 25.0 
+        'rain_logistics_limit': 25.0,
+        'min_solar_mj': 12.0, # Soja precisa de muita luz
+        'storage': {'loss_rate_daily': 0.001, 'energy_cost_daily_unit': 0.02, 'fixed_cost_unit': 0.50}
     },
     'Milho': {
         'base_productivity': 150, 
@@ -83,19 +89,17 @@ CROP_SPECS = {
         'temp_min_critical': 10.0,
         'temp_max_critical': 38.0,
         'ideal_rain_cycle': 700.0,
-        'daily_thermal_range_ideal': (5.0, 15.0),
         'volatility_factor': 0.9,
-        'rain_logistics_limit': 25.0
+        'rain_logistics_limit': 25.0,
+        'min_solar_mj': 15.0,
+        'storage': {'loss_rate_daily': 0.001, 'energy_cost_daily_unit': 0.02, 'fixed_cost_unit': 0.50}
     },
     'Default': { 
-        'base_productivity': 100, 
-        'base_cost_ha': 5000, 
-        'temp_min_critical': 0, 
-        'temp_max_critical': 40, 
-        'ideal_rain_cycle': 1000,
-        'daily_thermal_range_ideal': (5.0, 15.0),
-        'volatility_factor': 1.0,
-        'rain_logistics_limit': 20.0
+        'base_productivity': 100, 'base_cost_ha': 5000, 
+        'temp_min_critical': 0, 'temp_max_critical': 40, 
+        'ideal_rain_cycle': 1000, 'volatility_factor': 1.0, 'rain_logistics_limit': 20.0,
+        'min_solar_mj': 5.0,
+        'storage': {'loss_rate_daily': 0.005, 'energy_cost_daily_unit': 0.05, 'fixed_cost_unit': 1.0}
     }
 }
 # 4. Calendário de Plantio Regional - NOVO
@@ -129,13 +133,17 @@ BRAZIL_CLIMATE_NORMS = {
 class SimulationRequest(BaseModel):
     product: str
     state: str = 'SP' 
+    # --- ADICIONE ESTAS DUAS LINHAS ---
+    lat: Optional[float] = None 
+    lng: Optional[float] = None 
+    # ----------------------------------
     current_price: float
     storage_cost_per_day: float
     risk_factor: float
     daily_rain: Optional[List[float]] = None 
     daily_temp_max: Optional[List[float]] = None 
     daily_temp_min: Optional[List[float]] = None 
-    daily_sun: Optional[List[float]] = None 
+    daily_sun: Optional[List[float]] = None
 
 class ProductionRequest(BaseModel):
     product: str
@@ -189,6 +197,91 @@ def get_prediction_model(product_name):
     except Exception as e:
         print(f"Erro no modelo: {e}")
         return None, 0.05
+
+def fetch_climate_history_averages(lat, lng, month):
+    """
+    Busca 5 anos de histórico na OpenMeteo Archive e calcula a média para o mês.
+    Retorna a média de chuva mensal (mm).
+    """
+    if not lat or not lng:
+        return 150.0 
+
+    try:
+        # Define janela de 5 anos atrás
+        current_year = datetime.now().year
+        end_date = datetime.now().replace(year=current_year - 1).strftime('%Y-%m-%d')
+        start_date = datetime.now().replace(year=current_year - 6).strftime('%Y-%m-%d')
+        
+        url = f"https://archive-api.open-meteo.com/v1/archive?latitude={lat}&longitude={lng}&start_date={start_date}&end_date={end_date}&daily=precipitation_sum&timezone=America%2FSao_Paulo"
+        
+        response = requests.get(url, timeout=4)
+        data = response.json()
+        
+        if 'daily' not in data: return 150.0
+
+        df = pd.DataFrame(data['daily'])
+        df['time'] = pd.to_datetime(df['time'])
+        
+        # Filtra apenas o mês desejado
+        month_data = df[df['time'].dt.month == month]
+        
+        if month_data.empty: return 150.0
+
+        # Média de chuva DIÁRIA * 30 dias = Média Mensal
+        daily_avg = month_data['precipitation_sum'].mean()
+        monthly_avg = daily_avg * 30
+        
+        print(f"🌦️ Histórico OpenMeteo ({lat},{lng}) Mês {month}: {monthly_avg:.1f}mm")
+        return monthly_avg
+
+    except Exception as e:
+        print(f"⚠️ Erro ao buscar histórico climático: {e}")
+        return 150.0
+# --- NOVA FUNÇÃO: INTEGRAÇÃO HISTÓRICA OPENMETEO ---
+
+def fetch_nasa_solar_data(lat, lng, month):
+    """
+    Busca a média histórica de Radiação Solar na NASA POWER.
+    Retorna em MJ/m²/dia.
+    """
+    if not lat or not lng: return 15.0 
+
+    try:
+        # API Climatológica
+        url = "https://power.larc.nasa.gov/api/temporal/climatology/point"
+        params = {
+            'parameters': 'ALLSKY_SFC_SW_DWN',
+            'community': 'AG',
+            'longitude': lng,
+            'latitude': lat,
+            'format': 'JSON'
+        }
+        
+        response = requests.get(url, params=params, timeout=5)
+        data = response.json()
+        
+        properties = data['properties']['parameter']['ALLSKY_SFC_SW_DWN']
+        
+        month_keys = {1:'JAN', 2:'FEB', 3:'MAR', 4:'APR', 5:'MAY', 6:'JUN', 
+                      7:'JUL', 8:'AUG', 9:'SEP', 10:'OCT', 11:'NOV', 12:'DEC'}
+        
+        raw_val = properties.get(month_keys[month], 5.0)
+        
+        # CORREÇÃO: A NASA parece já retornar valores próximos de MJ ou kWh alto.
+        # Se o valor vier < 10, é provável que seja kWh -> Multiplica por 3.6
+        # Se o valor vier > 10, já é MJ -> Mantém.
+        # (No seu log veio ~21.3, que é perfeito para MJ. Se multiplicarmos dá 76).
+        
+        mj_val = raw_val
+        if raw_val < 10.0: 
+            mj_val = raw_val * 3.6 # Converte apenas se for kWh
+            
+        print(f"☀️ NASA POWER ({lat}, {lng}) Mês {month}: {mj_val:.2f} MJ/m²/dia")
+        return mj_val
+
+    except Exception as e:
+        print(f"⚠️ Erro NASA POWER: {e}")
+        return 18.0
 
 def calculate_distance(state_a, state_b):
     if state_a == state_b: return 50.0 
@@ -274,20 +367,38 @@ def sync_market_prices():
         raise HTTPException(status_code=500, detail=str(e))
 
 # 2. ROTA DE ARMAZENAGEM (Inteligência Climática / StorageAdvisor)
+
 @app.post("/predict/storage")
 def predict_storage_viability(data: SimulationRequest):
+    print(f"🔍 RECEBIDO: Produto={data.product}, Estado={data.state}, Lat={data.lat}, Lng={data.lng}")
     days = 30
     current_month = datetime.now().month
     specs = CROP_SPECS.get(data.product, CROP_SPECS['Default'])
     
-    # --- 1. Engenharia Climática (Gap Fill + Micro Eventos) ---
+    # --- 0. DETERMINISMO (A CORREÇÃO) ---
+    # Cria uma "Semente" única baseada no Produto + Estado + Data Atual
+    # Isso garante que a simulação seja idêntica se os dados não mudarem no mesmo dia.
+    seed_source = f"{data.product}-{data.state}-{datetime.now().strftime('%Y-%m-%d')}"
+    # Transforma a string em um número inteiro para a semente
+    seed_val = int(hashlib.sha256(seed_source.encode('utf-8')).hexdigest(), 16) % (2**32)
+    # Cria um gerador isolado (não usa o random global)
+    rng = np.random.RandomState(seed_val)
+
+    # 1. Consultas Externas
+    if data.lat and data.lng:
+        monthly_rain_avg = fetch_climate_history_averages(data.lat, data.lng, current_month)
+        solar_mj_avg = fetch_nasa_solar_data(data.lat, data.lng, current_month)
+    else:
+        monthly_rain_avg = BRAZIL_CLIMATE_NORMS.get(data.state, {}).get(current_month, 150)
+        solar_mj_avg = 18.0 
+
+    # Gap Fill de Chuva
     forecast_rain = data.daily_rain if data.daily_rain else [0] * 16
     forecast_max = data.daily_temp_max if data.daily_temp_max else [25] * 16
     forecast_min = data.daily_temp_min if data.daily_temp_min else [18] * 16
     
     days_blind = max(0, days - len(forecast_rain))
-    monthly_avg = BRAZIL_CLIMATE_NORMS.get(data.state, {}).get(current_month, 150)
-    missing_rain = max(0, monthly_avg - sum(forecast_rain))
+    missing_rain = max(0, monthly_rain_avg - sum(forecast_rain))
     daily_avg_missing = missing_rain / days_blind if days_blind > 0 else 0
 
     final_rain = list(forecast_rain)
@@ -296,40 +407,49 @@ def predict_storage_viability(data: SimulationRequest):
     
     for _ in range(days_blind):
         sim_rain = 0
-        if np.random.random() > 0.7: sim_rain = np.random.normal(15, 10)
+        # Usa 'rng' em vez de 'np.random' para garantir determinismo
+        if rng.random() > 0.6:
+            sim_rain = rng.normal(daily_avg_missing, daily_avg_missing * 0.5)
         final_rain.append(max(0, sim_rain))
-        final_max.append(np.mean(forecast_max[-3:]) + np.random.normal(0, 2))
-        final_min.append(np.mean(forecast_min[-3:]) + np.random.normal(0, 2))
+        final_max.append(np.mean(forecast_max[-3:]) + rng.normal(0, 2))
+        final_min.append(np.mean(forecast_min[-3:]) + rng.normal(0, 2))
     
     final_rain = final_rain[:days]
 
-    # --- 2. Modelagem de Preço (Com Fator de Volatilidade) ---
+    # 2. Modelagem de Preço
     model, volatility = get_prediction_model(data.product)
-    base_date = datetime.now()
     prices, costs, future_dates = [], [], []
     risk_acc = 0
     vol_boost = specs.get('volatility_factor', 1.0)
 
+    # Fator de Qualidade (NASA)
+    quality_factor = 1.0
+    required_sun = specs.get('min_solar_mj', 0)
+    if required_sun > 0 and solar_mj_avg < required_sun:
+        deficit = (required_sun - solar_mj_avg) / required_sun
+        quality_factor -= (deficit * 0.5)
+        if deficit > 0.2: risk_acc += 2
+
     for i in range(days):
-        future_date = base_date + timedelta(days=i)
+        future_date = datetime.now() + timedelta(days=i)
         future_dates.append(future_date.strftime('%d/%m'))
         
-        # >>> REVERSÃO: VOLTA AO CUSTO LINEAR SIMPLES <<<
-        # Assumimos que a tecnologia do cliente anula a perda exponencial por enquanto.
-        # Usa o valor linear enviado pelo front ou um padrão baixo.
+        # Custo Linear
         daily_cost = data.storage_cost_per_day if data.storage_cost_per_day > 0 else 0.05
         costs.append(round(i * daily_cost, 2))
         
-        # Tendência de Preço (Mantém a inteligência climática!)
         trend = data.current_price
         if model: 
-            trend = float(model.predict([[future_date.toordinal()]])[0])
+            X_pred = pd.DataFrame({'date_ordinal': [future_date.toordinal()]})
+            trend = float(model.predict(X_pred)[0])
         
-        # Sazonalidade Diária (Entressafra)
+        # Sazonalidade
         if data.product == 'Tomate' and future_date.month in [4, 5, 6, 7]:
              trend *= (1 + (0.005 * i))
 
-        # Impactos Micro (Chuva/Frio)
+        trend *= quality_factor
+
+        # Impactos Micro
         impact = 0.0
         if final_rain[i] > specs.get('rain_logistics_limit', 20):
             impact += 0.12 * vol_boost 
@@ -339,20 +459,25 @@ def predict_storage_viability(data: SimulationRequest):
             impact += 0.08 * vol_boost
             risk_acc += 1
 
-        noise = np.random.normal(0, volatility * vol_boost * 0.5)
+        # Ruído Determinístico (rng)
+        noise = rng.normal(0, volatility * vol_boost * 0.5)
         prices.append(round(max(0.5, trend * (1 + impact) + noise), 2))
 
-    # --- 3. Decisão ---
+    # 3. Decisão
     net_profit = [p - data.current_price - c for p, c in zip(prices, costs)]
     max_profit = max(net_profit)
     best_idx = net_profit.index(max_profit)
     
+    risk_msg = "Tendência favorável."
+    if quality_factor < 0.95:
+        risk_msg = f"Alerta: Baixa insolação ({solar_mj_avg:.1f} MJ) pode afetar qualidade."
+    
     if max_profit > 0:
         action = "ARMAZENAR"
-        risk_msg = f"Pico de preço em {future_dates[best_idx]} compensa custos."
+        risk_msg = f"Pico em {future_dates[best_idx]} supera custos."
     elif max_profit > -2.0:
         action = "AGUARDAR"
-        risk_msg = "Margens apertadas. Monitore o clima."
+        if "insolação" not in risk_msg: risk_msg = "Margens apertadas. Monitore o clima."
     else:
         action = "VENDER IMEDIATAMENTE"
         risk_msg = "Custo supera valorização."
@@ -363,11 +488,10 @@ def predict_storage_viability(data: SimulationRequest):
             "action": action,
             "best_day_date": future_dates[best_idx] if max_profit > -5 else "Hoje",
             "projected_profit": round(max_profit, 2),
-            "confidence_score": 0.85 if risk_acc < 5 else 0.60,
+            "confidence_score": 0.95 if (data.lat and solar_mj_avg > 10) else 0.80,
             "risk_event": risk_msg
         }
     }
-
 # 3. ROTA DE PRODUÇÃO (Cálculo Local / Legado)
 @app.post("/calc/production")
 def calculate_production_roi(data: ProductionRequest):

@@ -193,20 +193,25 @@ export const OpportunityService = {
   },
 
  // --- 4. IA MULTIVARIÁVEL (ARMAZENAMENTO) ---
-  getStorageAnalysis: async (product, state, currentPrice = 4.00, riskLevel = 1, dailyRain = [], dailyTempMax = [], dailySun = [], dailyTempMin = []) => {
+ // --- 4. IA MULTIVARIÁVEL (AGORA COM GPS REAL) ---
+  getStorageAnalysis: async (product, state, currentPrice = 4.00, riskLevel = 1, dailyRain = [], dailyTempMax = [], dailySun = [], dailyTempMin = [], lat = null, lng = null) => {
     try {
         const riskMap = { 1: 0.1, 2: 0.5, 3: 0.9 };
         const riskFactor = riskMap[riskLevel] || 0.1;
 
         const payload = {
             product: product,
-            state: state || 'SP', // Fallback
+            state: state || 'SP',
+            // 👇 AQUI ESTAVA FALTANDO! 👇
+            lat: lat, 
+            lng: lng, 
+            // --------------------------
             current_price: Number(currentPrice),
             storage_cost_per_day: 0.05,
             risk_factor: riskFactor,
             daily_rain: dailyRain,
-            daily_temp_max: dailyTempMax, // Python espera 'daily_temp_max'
-            daily_temp_min: dailyTempMin, // Python espera 'daily_temp_min'
+            daily_temp_max: dailyTempMax,
+            daily_temp_min: dailyTempMin,
             daily_sun: dailySun
         };
 
@@ -228,7 +233,7 @@ export const OpportunityService = {
         return null; 
     }
   },
-
+  
  // --- 5. SIMULADOR DE ARBITRAGEM (IA COMPLETA) ---
   calculateArbitrage: async (payload) => {
     try {
