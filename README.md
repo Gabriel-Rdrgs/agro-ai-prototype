@@ -1,5 +1,4 @@
-🚀 AgroArbitrage AI (MVP v1.0)
-==============================
+# 🚀 AgroArbitrage AI (MVP v1.0)
 
 **Plataforma de Inteligência Estratégica para Arbitragem Agrícola**
 
@@ -26,59 +25,69 @@ Para calcular o **ROI exato** de cada operação.
 ## 🎯 Diferenciais do MVP
 
 ### ✨ Visualização Inteligente
+
 O sistema desenha automaticamente as rotas mais lucrativas (ROI 50%) conectando origem e destino.
 
 ### 🌡️ Clima em Tempo Real
+
 Ao clicar em uma região, o sistema consulta satélites e informa a temperatura e chuva no local exato.
 
 ### 📊 Clustering Automático
+
 Agrupamento automático de oportunidades para visualização limpa em alta escala.
 
 ## 🏗️ Arquitetura Técnica
 
 ### Arquitetura de Microsserviços
+
 - ✅ Separação clara entre Aplicação Node.js e Inteligência Python
 - ✅ Dados vivos com integração de APIs
 - ✅ Segurança Enterprise (JWT + Bcrypt + Variáveis de Ambiente)
 
 ## 📦 Stack Tecnológico
 
-| Camada | Tecnologia | Detalhes |
-|--------|------------|----------|
-| **Frontend** | React.js, Leaflet, Chart.js | Responsivo, Visualizações em tempo real |
-| **Backend** | Node.js, Express, Prisma ORM | APIs RESTful escaláveis com dotenv |
-| **IA/ML** | Python 3.12, FastAPI | Processamento de dados e algoritmos |
-| **Banco de Dados** | PostgreSQL (Supabase/Neon) | Dados estruturados e persistentes |
-| **Infraestrutura** | Vercel, Render | Deploy automático, escalabilidade |
+| Camada             | Tecnologia                   | Detalhes                                |
+| ------------------ | ---------------------------- | --------------------------------------- |
+| **Frontend**       | React.js, Leaflet, Chart.js  | Responsivo, Visualizações em tempo real |
+| **Backend**        | Node.js, Express, Prisma ORM | APIs RESTful escaláveis com dotenv      |
+| **IA/ML**          | Python 3.12, FastAPI         | Processamento de dados e algoritmos     |
+| **Banco de Dados** | PostgreSQL (Supabase/Neon)   | Dados estruturados e persistentes       |
+| **Infraestrutura** | Vercel, Render               | Deploy automático, escalabilidade       |
 
 ## 🎁 Funcionalidades Entregues
 
 ### 1️⃣ Mapa de Fluxo Comercial (Trade Flow)
 
 **Análise de Armazenagem**
+
 - Algoritmo rodando em Python que analisa a curva de preços futura vs. custos de estocagem
 - Localidade: Boca de Jacaré
 
 **Previsão de Risco**
+
 - O sistema recomenda a melhor data de venda baseada em eventos climáticos futuros
 
 ### 2️⃣ Cérebro de IA (Python Microservice)
 
 **Custo Real de Logística**
+
 - Cálculo de frete baseado em:
   - Distância rodoviária
   - Fator de Sinuosidade: 1.35
   - Preço do diesel em tempo real
 
 **Multimoeda**
+
 - Conversão automática de valores para Dólar (PTAX) em tempo real
 
 **Persistência**
+
 - Salve cenários de simulação para comparar estratégias posteriormente
 
 ### 3️⃣ Simulador Logístico-Financeiro
 
 **Simulações Avançadas**
+
 - Teste múltiplos cenários com um clique
 - Análise de sensibilidade para riscos
 - Exportação de resultados em tempo real
@@ -86,11 +95,13 @@ Agrupamento automático de oportunidades para visualização limpa em alta escal
 ### 4️⃣ Dashboard & Relatórios
 
 **KPIs Dinâmicos**
+
 - Volume total em movimentação
 - ROI médio das operações
 - Alertas de Risco atualizados ao vivo
 
 **Exportação PDF**
+
 - Geração de relatórios executivos completos
 - Pronto para envio via WhatsApp/Email
 
@@ -240,6 +251,7 @@ Coloque o resultado no `.env` do backend.
 Crie um arquivo `.env.example` em cada pasta:
 
 **backend/.env.example:**
+
 ```env
 DATABASE_URL=postgresql://user:password@localhost:5432/agro-ai-dev
 JWT_SECRET=XXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -248,6 +260,7 @@ PORT=3001
 ```
 
 **ai-service/.env.example:**
+
 ```env
 DATABASE_URL=postgresql://user:password@localhost:5432/agro-ai-dev
 CLIMATE_API_URL=https://api.openweathermap.org/data/2.5
@@ -258,6 +271,7 @@ PORT=8000
 ```
 
 **frontend/.env.example:**
+
 ```env
 REACT_APP_API_URL=http://localhost:3001
 REACT_APP_MAP_TOKEN=XXXXXXXXXXXXXXXXX
@@ -266,13 +280,15 @@ REACT_APP_MAP_TOKEN=XXXXXXXXXXXXXXXXX
 ### Como as Variáveis Funcionam
 
 **Backend (Node.js):**
+
 ```javascript
-require('dotenv').config();
+require("dotenv").config();
 const port = process.env.PORT || 3001;
 const jwtSecret = process.env.JWT_SECRET;
 ```
 
 **AI Service (Python):**
+
 ```python
 from dotenv import load_dotenv
 import os
@@ -282,6 +298,7 @@ db_url = os.getenv('DATABASE_URL')
 ```
 
 **Frontend (React):**
+
 ```javascript
 const apiUrl = process.env.REACT_APP_API_URL;
 ```
@@ -297,18 +314,38 @@ Email: paulo@agro.com
 Senha: 123456
 ```
 
+## 🛰️ Integrações e APIs
+
+O sistema utiliza uma arquitetura híbrida de dados para garantir precisão e disponibilidade:
+
+| Serviço                  | Função                                                                  | Fallback / Segurança                      |
+| :----------------------- | :---------------------------------------------------------------------- | :---------------------------------------- |
+| **OpenMeteo Forecast**   | Previsão do tempo (16 dias) para tomada de decisão tática.              | Se falhar, IA usa médias históricas.      |
+| **OpenMeteo Historical** | Histórico real de chuvas (5 anos) da fazenda específica.                | Cache LRU + Fallback para média estadual. |
+| **NASA POWER**           | Radiação Solar (MJ/m²) para análise de qualidade (Brix) e fotossíntese. | Cache LRU + Fallback para média nacional. |
+| **AwesomeAPI**           | Cotação do Dólar em tempo real para commodities.                        | Valor fixo seguro em caso de erro.        |
+
+### 🛡️ Robustez e Segurança
+
+- **Validação de Coordenadas:** Proteção contra inputs geográficos inválidos.
+- **Cache Inteligente (LRU):** Minimiza chamadas de API, reduzindo latência e evitando rate-limits.
+- **Timeouts Configuráveis:** Nenhuma chamada externa trava o sistema por mais de 5 segundos.
+
 ## 🗺️ Roadmap - Próximos Passos (Fase 2)
 
 - [ ] **Machine Learning Avançado**
+
   - Treinar modelos com histórico de 5 anos da CONAB
   - Previsões com 90%+ de acurácia
 
 - [ ] **PostGIS Integration**
+
   - Implementar buscas por raio geográfico
   - Exemplo: Fazendas a 50km de um ponto
-  - Otimização de rotas com A*
+  - Otimização de rotas com A\*
 
 - [ ] **Sistema de Notificações**
+
   - Alertas via WhatsApp/SMS para oportunidades urgentes
   - Notificações push em tempo real
   - Webhooks customizáveis

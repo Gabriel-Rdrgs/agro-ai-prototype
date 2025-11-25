@@ -12,6 +12,7 @@ from sqlalchemy import create_engine, text
 from datetime import datetime, timedelta
 import os
 import hashlib
+from functools import lru_cache
 from dotenv import load_dotenv
 
 # Carrega variáveis de ambiente
@@ -197,17 +198,26 @@ def get_prediction_model(product_name):
     except Exception as e:
         print(f"Erro no modelo: {e}")
         return None, 0.05
-
+def validate_coords(lat, lng):
+    """Verifica se as coordenadas são geográficamente válidas."""
+    try:
+        lat = float(lat)
+        lng = float(lng)
+        return -90 <= lat <= 90 and -180 <= lng <= 180
+    except (TypeError, ValueError):
+        return False
+    
+@lru_cache(maxsize=128) # Cache para 128 combinações de local/mês
 def fetch_climate_history_averages(lat, lng, month):
     """
-    Busca 5 anos de histórico na OpenMeteo Archive e calcula a média para o mês.
-    Retorna a média de chuva mensal (mm).
+    Busca 5 anos de histórico na OpenMeteo Archive e calcula a média.
+    Com Cache LRU para evitar chamadas repetidas.
     """
-    if not lat or not lng:
+    if not validate_coords(lat, lng):
+        print(f"⚠️ Coordenadas inválidas: ({lat}, {lng})")
         return 150.0 
 
     try:
-        # Define janela de 5 anos atrás
         current_year = datetime.now().year
         end_date = datetime.now().replace(year=current_year - 1).strftime('%Y-%m-%d')
         start_date = datetime.now().replace(year=current_year - 6).strftime('%Y-%m-%d')
@@ -215,19 +225,21 @@ def fetch_climate_history_averages(lat, lng, month):
         url = f"https://archive-api.open-meteo.com/v1/archive?latitude={lat}&longitude={lng}&start_date={start_date}&end_date={end_date}&daily=precipitation_sum&timezone=America%2FSao_Paulo"
         
         response = requests.get(url, timeout=4)
+        
+        if response.status_code != 200:
+            print(f"⚠️ OpenMeteo Offline/Erro: {response.status_code}")
+            return 150.0
+
         data = response.json()
         
         if 'daily' not in data: return 150.0
 
         df = pd.DataFrame(data['daily'])
         df['time'] = pd.to_datetime(df['time'])
-        
-        # Filtra apenas o mês desejado
         month_data = df[df['time'].dt.month == month]
         
         if month_data.empty: return 150.0
 
-        # Média de chuva DIÁRIA * 30 dias = Média Mensal
         daily_avg = month_data['precipitation_sum'].mean()
         monthly_avg = daily_avg * 30
         
@@ -237,17 +249,17 @@ def fetch_climate_history_averages(lat, lng, month):
     except Exception as e:
         print(f"⚠️ Erro ao buscar histórico climático: {e}")
         return 150.0
-# --- NOVA FUNÇÃO: INTEGRAÇÃO HISTÓRICA OPENMETEO ---
 
+@lru_cache(maxsize=128)
 def fetch_nasa_solar_data(lat, lng, month):
     """
     Busca a média histórica de Radiação Solar na NASA POWER.
-    Retorna em MJ/m²/dia.
+    Com Cache LRU.
     """
-    if not lat or not lng: return 15.0 
+    if not validate_coords(lat, lng): 
+        return 15.0 
 
     try:
-        # API Climatológica
         url = "https://power.larc.nasa.gov/api/temporal/climatology/point"
         params = {
             'parameters': 'ALLSKY_SFC_SW_DWN',
@@ -258,23 +270,25 @@ def fetch_nasa_solar_data(lat, lng, month):
         }
         
         response = requests.get(url, params=params, timeout=5)
+        
+        if response.status_code != 200:
+            print(f"⚠️ NASA Offline/Erro: {response.status_code}")
+            return 18.0
+
         data = response.json()
         
-        properties = data['properties']['parameter']['ALLSKY_SFC_SW_DWN']
+        properties = data.get('properties', {}).get('parameter', {}).get('ALLSKY_SFC_SW_DWN', {})
         
         month_keys = {1:'JAN', 2:'FEB', 3:'MAR', 4:'APR', 5:'MAY', 6:'JUN', 
                       7:'JUL', 8:'AUG', 9:'SEP', 10:'OCT', 11:'NOV', 12:'DEC'}
         
-        raw_val = properties.get(month_keys[month], 5.0)
+        raw_val = properties.get(month_keys[month], -1)
         
-        # CORREÇÃO: A NASA parece já retornar valores próximos de MJ ou kWh alto.
-        # Se o valor vier < 10, é provável que seja kWh -> Multiplica por 3.6
-        # Se o valor vier > 10, já é MJ -> Mantém.
-        # (No seu log veio ~21.3, que é perfeito para MJ. Se multiplicarmos dá 76).
-        
+        if raw_val < 0: return 15.0 # Dado inválido da NASA
+
         mj_val = raw_val
         if raw_val < 10.0: 
-            mj_val = raw_val * 3.6 # Converte apenas se for kWh
+            mj_val = raw_val * 3.6 
             
         print(f"☀️ NASA POWER ({lat}, {lng}) Mês {month}: {mj_val:.2f} MJ/m²/dia")
         return mj_val
