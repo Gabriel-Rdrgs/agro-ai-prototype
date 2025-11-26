@@ -617,3 +617,68 @@ def calculate_arbitrage(data: ArbitrageRequest):
         },
         "risks": climate_notes if climate_notes else ["Condições favoráveis."]
     }
+@app.post("/admin/seed-history")
+def seed_history_data():
+    """
+    Limpa e popula a tabela PriceHistory com 6 meses de dados simulados.
+    Útil para ambientes de demonstração/produção inicial.
+    """
+    import random
+    
+    print("⏳ Iniciando Seed de Histórico...")
+    days_back = 180
+    data_buffer = []
+    
+    # Configurações de Mercado (Mock)
+    products_config = {
+        'Tomate': {'base': 80.0, 'volatility': 0.15, 'shock_prob': 0.05},
+        'Soja':   {'base': 130.0, 'volatility': 0.03, 'shock_prob': 0.01},
+        'Milho':  {'base': 60.0, 'volatility': 0.04, 'shock_prob': 0.02}
+    }
+
+    try:
+        with engine.connect() as conn:
+            # 1. Limpa tabela antiga
+            conn.execute(text('TRUNCATE TABLE "PriceHistory" RESTART IDENTITY CASCADE'))
+            conn.commit() # Importante commitar o truncate
+            
+            # 2. Busca IDs dos produtos
+            opps = pd.read_sql(text('SELECT id, product FROM "Opportunity"'), conn)
+            
+            # 3. Gera dados
+            for _, row in opps.iterrows():
+                product = row['product']
+                if product not in products_config: continue
+                
+                conf = products_config[product]
+                base_price = conf['base']
+                
+                for i in range(days_back):
+                    date = datetime.now() - timedelta(days=(days_back - i))
+                    
+                    # Sazonalidade + Ruído
+                    season = math.sin(i * 0.05) * (base_price * conf['volatility'])
+                    noise = np.random.normal(0, base_price * 0.02)
+                    
+                    # Choque
+                    shock = 1.6 if random.random() < conf['shock_prob'] else 1.0
+                    
+                    price = (base_price + season + noise) * shock
+                    
+                    data_buffer.append({
+                        "opportunityId": row['id'],
+                        "price": round(max(0.1, price), 2),
+                        "createdAt": date
+                    })
+            
+            # 4. Inserção em Massa
+            if data_buffer:
+                df = pd.DataFrame(data_buffer)
+                df.to_sql('PriceHistory', engine, if_exists='append', index=False, method='multi', chunksize=1000)
+                return {"status": "Success", "entries_created": len(df)}
+            else:
+                return {"status": "No data created", "reason": "No opportunities found"}
+
+    except Exception as e:
+        print(f"Erro no Seed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
