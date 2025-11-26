@@ -52,9 +52,11 @@ const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [], o
         if (selectedCity) params.append('city', selectedCity);
 
         // Faz a chamada para a API com os filtros
-        const response = await fetch(`http://localhost:3001/api/analytics/trend?${params.toString()}`, {
-           headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const response = await fetch(`${API_URL}/api/analytics/trend?${params.toString()}`, {
+    headers: {
+        'Authorization': `Bearer ${token}`
+    }
+});
         
         const data = await response.json();
         setTrendData(data);
