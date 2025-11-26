@@ -1,122 +1,115 @@
 import os
-import random
-import math
-import pandas as pd # <--- O Rei da Performance voltou
+import pandas as pd
 import numpy as np
+import math
+import random
+import io
+import time
 from datetime import datetime, timedelta
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Configuração do Banco
+# Configuração
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
-    DATABASE_URL = os.getenv("PYTHON_DB_URL") # Fallback
-if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    DATABASE_URL = os.getenv("PYTHON_DB_URL")
 
 if not DATABASE_URL:
-    raise ValueError("❌ Sem DATABASE_URL definida!")
+    raise ValueError("❌ Defina DATABASE_URL no .env local!")
+
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 engine = create_engine(DATABASE_URL)
 
-def generate_fake_history():
-    print("⏳ Iniciando Máquina do Tempo V2 (Pandas Bulk Mode)...")
+def fast_pg_insert(df, engine, table_name):
+    """Usa o protocolo COPY para inserção ultra-rápida."""
+    output = io.StringIO()
+    df.to_csv(output, sep='\t', header=False, index=False)
+    output.seek(0)
     
-    # Configurações de Mercado
+    connection = engine.raw_connection()
+    cursor = connection.cursor()
+    
+    try:
+        print(f"🚀 Enviando {len(df)} linhas via COPY...")
+        cursor.copy_from(output, table_name, null="", columns=df.columns)
+        connection.commit()
+        print("✅ Inserção concluída!")
+    except Exception as e:
+        print(f"❌ Erro no COPY: {e}")
+        connection.rollback()
+    finally:
+        cursor.close()
+        connection.close()
+
+def generate_fake_history():
+    print("⏳ Gerando dados CORRIGIDOS (Por Kg)...")
+    days_back = 180
+    data_buffer = []
+    
+    # --- CONFIGURAÇÃO AJUSTADA (PREÇO POR KG) ---
     products_config = {
         'Tomate': {
-            'base': 4.50, 
-            'volatility': 0.15, # 15% de variação normal
-            'shock_prob': 0.05, # 5% de chance de "Evento Climático Extremo"
-            'shock_factor': 1.6 # Preço sobe 60% no choque (Chuva forte)
+            'base': 4.50, # Agora é R$ 4,50/kg (não 80/caixa)
+            'volatility': 0.15, 
+            'shock_prob': 0.05, 
+            'shock_factor': 1.6 # Máximo ~R$ 7,20
         },
         'Soja': {
-            'base': 130.00, 
-            'volatility': 0.03,
+            'base': 130.00, # Saca continua 130
+            'volatility': 0.03, 
             'shock_prob': 0.01,
             'shock_factor': 1.1
         },
         'Milho': {
             'base': 60.00, 
-            'volatility': 0.04,
+            'volatility': 0.04, 
             'shock_prob': 0.02,
             'shock_factor': 1.15
-        },
-        'Alface': {
-            'base': 2.00, 
-            'volatility': 0.10,
-            'shock_prob': 0.08, # Muito sensível
-            'shock_factor': 1.4
         }
     }
-    
-    days_back = 180
-    data_buffer = [] # Lista para guardar tudo na memória antes de enviar
 
     with engine.connect() as conn:
-        # 1. Limpa histórico antigo (Rápido)
-        conn.execute(text('TRUNCATE TABLE "PriceHistory" RESTART IDENTITY CASCADE'))
-        print("🧹 Tabela limpa.")
+        print("🧹 Limpando dados antigos (DELETE)...")
+        try:
+            # Timeout maior para garantir que limpa
+            conn.execute(text("SET statement_timeout = '60s'"))
+            conn.execute(text('DELETE FROM "PriceHistory"'))
+            conn.commit()
+            print("✨ Tabela limpa.")
+        except Exception as e:
+            print(f"⚠️ Erro ao limpar: {e}. Tentando inserir por cima...")
 
-        # 2. Busca Oportunidades
-        opportunities = pd.read_sql('SELECT id, product FROM "Opportunity"', conn)
+        print("🔍 Lendo produtos...")
+        opps = pd.read_sql(text('SELECT id, product FROM "Opportunity"'), conn)
 
-    print(f"   -> Gerando dados para {len(opportunities)} produtos...")
-
-    # 3. Geração Matemática (Tudo em RAM)
-    for _, row in opportunities.iterrows():
-        opp_id = row['id']
+    print(f"🧮 Calculando preços para {len(opps)} produtos...")
+    for _, row in opps.iterrows():
         product = row['product']
-        
-        if product not in products_config:
-            continue
-            
-        conf = products_config[product]
+        # Se não achar o produto, usa Tomate como base
+        conf = products_config.get(product, products_config['Tomate'])
         base_price = conf['base']
-        
-        # Simulação dia a dia
-        current_price = base_price
         
         for i in range(days_back):
             date = datetime.now() - timedelta(days=(days_back - i))
-            
-            # A. Sazonalidade (Onda)
             season = math.sin(i * 0.05) * (base_price * conf['volatility'])
-            
-            # B. Ruído Diário (Random Walk)
             noise = np.random.normal(0, base_price * 0.02)
-            
-            # C. O Fator "Caos" (O que tu pediste sobre o Tomate 🍅)
-            shock = 1.0
-            if random.random() < conf['shock_prob']:
-                shock = conf['shock_factor'] # BOMBA! Preço dispara.
-                print(f"      ⛈️ Choque climático em {product} no dia {date.strftime('%d/%m')}")
-            
-            # Cálculo final
+            shock = 1.6 if random.random() < conf['shock_prob'] else 1.0
             price = (base_price + season + noise) * shock
             
-            # Recuperação elástica (o preço tende a voltar ao normal nos dias seguintes)
-            # Mas aqui simplificamos: o choque dura 1 dia (flash spike) ou a onda segura a média.
-            
             data_buffer.append({
-                "opportunityId": opp_id,
+                "opportunityId": row['id'],
                 "price": round(max(0.1, price), 2),
                 "createdAt": date
             })
 
-    # 4. Inserção em Massa (O Pulo do Gato do Pandas 🐈)
     if data_buffer:
         df = pd.DataFrame(data_buffer)
-        print(f"🚀 Inserindo {len(df)} registros via Pandas Chunk Insert...")
-        
-        # method='multi' envia várias linhas num único comando SQL. Muito mais rápido.
-        df.to_sql('PriceHistory', engine, if_exists='append', index=False, method='multi', chunksize=1000)
-        
-        print("✅ Histórico gerado com sucesso!")
-    else:
-        print("⚠️ Nenhuma oportunidade encontrada para gerar histórico.")
+        df = df[['opportunityId', 'price', 'createdAt']]
+        fast_pg_insert(df, engine, 'PriceHistory')
 
 if __name__ == "__main__":
     generate_fake_history()

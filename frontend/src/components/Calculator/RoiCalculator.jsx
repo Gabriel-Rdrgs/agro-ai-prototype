@@ -267,7 +267,7 @@ const RoiCalculator = () => {
 
               {/* Avisos */}
               <div style={{marginTop: '10px', padding: '10px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px'}}>
-                 <small style={{color: '#64748b', display: 'block'}}>• Diesel Ref: R$ {result.logistics.diesel_price_ref.toFixed(2)}/L (Média ANP)</small>
+                 <small style={{color: '#64748b', display: 'block'}}>• Diesel Ref: {result.logistics.diesel_price_ref} (Média ANP)</small>
                  {result.risks.map((note, i) => (
                     <small key={i} style={{color: '#f59e0b', display: 'block'}}>• {note}</small>
                  ))}
