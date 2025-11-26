@@ -1,2 +1,10 @@
 fastapi
 uvicorn
+pydantic
+python-dotenv
+requests
+pandas
+numpy
+scikit-learn
+sqlalchemy
+psycopg2-binary
