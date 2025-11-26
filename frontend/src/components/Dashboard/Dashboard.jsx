@@ -29,6 +29,8 @@ ChartJS.register(
   Filler
 );
 
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+
 const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [], onLoadScenario, currentDollar }) => {
   // --- ESTADOS ---
   const [selectedCrop, setSelectedCrop] = useState("");
