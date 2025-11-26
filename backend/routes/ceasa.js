@@ -1,0 +1,290 @@
+// backend/routes/ceasa.js
+
+const express = require('express');
+const router = express.Router();
+const { PrismaClient } = require('@prisma/client');
+const { verifyToken } = require('../authMiddleware');
+
+const prisma = new PrismaClient();
+
+// ============================================
+// 📈 ROTAS DE CEASA
+// ============================================
+
+/**
+ * GET /api/ceasa/latest
+ * Retorna os preços mais recentes de todas as regiões
+ */
+router.get('/latest', verifyToken, async (req, res) => {
+  try {
+    console.log('📊 Buscando preços mais recentes...');
+    
+    const prices = await prisma.ceasaPrice.findMany({
+      orderBy: {
+        price_date: 'desc'
+      },
+      take: 100,
+      distinct: ['ceasa_region'] // Um por região
+    });
+
+    res.json({
+      success: true,
+      count: prices.length,
+      data: prices
+    });
+  } catch (error) {
+    console.error('❌ Erro ao buscar preços recentes:', error.message);
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
+  }
+});
+
+/**
+ * GET /api/ceasa/region/:region
+ * Retorna preços de uma região específica
+ * Exemplo: /api/ceasa/region/SP
+ */
+router.get('/region/:region', verifyToken, async (req, res) => {
+  try {
+    const region = req.params.region.toUpperCase();
+    console.log(`📍 Buscando preços da região: ${region}`);
+
+    const prices = await prisma.ceasaPrice.findMany({
+      where: {
+        ceasa_region: region
+      },
+      orderBy: {
+        price_date: 'desc'
+      },
+      take: 30
+    });
+
+    if (prices.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: `Nenhum preço encontrado para a região ${region}`
+      });
+    }
+
+    res.json({
+      success: true,
+      region: region,
+      count: prices.length,
+      data: prices
+    });
+  } catch (error) {
+    console.error('❌ Erro ao buscar preços por região:', error.message);
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
+  }
+});
+
+/**
+ * GET /api/ceasa/history/:product
+ * Retorna histórico de preços de um produto
+ * Exemplo: /api/ceasa/history/Tomate
+ */
+router.get('/history/:product', verifyToken, async (req, res) => {
+  try {
+    const product = req.params.product;
+    console.log(`📉 Buscando histórico de: ${product}`);
+
+    const prices = await prisma.ceasaPrice.findMany({
+      where: {
+        product_name: {
+          contains: product,
+          mode: 'insensitive'
+        }
+      },
+      orderBy: {
+        price_date: 'asc'
+      }
+    });
+
+    if (prices.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: `Nenhum histórico encontrado para ${product}`
+      });
+    }
+
+    res.json({
+      success: true,
+      product: product,
+      count: prices.length,
+      data: prices
+    });
+  } catch (error) {
+    console.error('❌ Erro ao buscar histórico:', error.message);
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
+  }
+});
+
+/**
+ * GET /api/ceasa/:region/:product
+ * Retorna preços de um produto em uma região específica
+ * Exemplo: /api/ceasa/SP/Tomate
+ */
+router.get('/:region/:product', verifyToken, async (req, res) => {
+  try {
+    const region = req.params.region.toUpperCase();
+    const product = req.params.product;
+    console.log(`🔍 Buscando ${product} em ${region}`);
+
+    const prices = await prisma.ceasaPrice.findMany({
+      where: {
+        ceasa_region: region,
+        product_name: {
+          contains: product,
+          mode: 'insensitive'
+        }
+      },
+      orderBy: {
+        price_date: 'desc'
+      }
+    });
+
+    if (prices.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: `${product} não encontrado em ${region}`
+      });
+    }
+
+    res.json({
+      success: true,
+      region: region,
+      product: product,
+      count: prices.length,
+      data: prices
+    });
+  } catch (error) {
+    console.error('❌ Erro na busca:', error.message);
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
+  }
+});
+
+/**
+ * GET /api/ceasa/stats/regions
+ * Retorna estatísticas por região
+ */
+router.get('/stats/regions', verifyToken, async (req, res) => {
+  try {
+    console.log('📊 Calculando estatísticas por região...');
+
+    const stats = await prisma.ceasaPrice.groupBy({
+      by: ['ceasa_region'],
+      _count: {
+        id: true
+      },
+      _avg: {
+        price_avg: true
+      },
+      _min: {
+        price_min: true
+      },
+      _max: {
+        price_max: true
+      }
+    });
+
+    res.json({
+      success: true,
+      count: stats.length,
+      data: stats
+    });
+  } catch (error) {
+    console.error('❌ Erro ao buscar estatísticas:', error.message);
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
+  }
+});
+
+/**
+ * GET /api/ceasa/stats/products
+ * Retorna estatísticas por produto
+ */
+router.get('/stats/products', verifyToken, async (req, res) => {
+  try {
+    console.log('📊 Calculando estatísticas por produto...');
+
+    const stats = await prisma.ceasaPrice.groupBy({
+      by: ['product_name'],
+      _count: {
+        id: true
+      },
+      _avg: {
+        price_avg: true
+      },
+      _min: {
+        price_min: true
+      },
+      _max: {
+        price_max: true
+      }
+    });
+
+    res.json({
+      success: true,
+      count: stats.length,
+      data: stats
+    });
+  } catch (error) {
+    console.error('❌ Erro ao buscar estatísticas:', error.message);
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
+  }
+});
+
+/**
+ * POST /api/ceasa/import (Futuro - para sincronização)
+ * Importa novos preços de CEASA
+ */
+router.post('/import', verifyToken, async (req, res) => {
+  try {
+    console.log('🔄 Iniciando importação de preços...');
+    
+    // Validação básica
+    const { prices } = req.body;
+    if (!Array.isArray(prices)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Esperado array de preços'
+      });
+    }
+
+    // Importar em lote
+    const result = await prisma.ceasaPrice.createMany({
+      data: prices,
+      skipDuplicates: true // Ignorar duplicadas por unique constraint
+    });
+
+    res.json({
+      success: true,
+      imported: result.count,
+      message: `${result.count} preços importados com sucesso`
+    });
+  } catch (error) {
+    console.error('❌ Erro ao importar preços:', error.message);
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
+  }
+});
+
+module.exports = router;

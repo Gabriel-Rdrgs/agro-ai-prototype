@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  # Serviço de IA (Python)
+  ai-service:
+    build: ./ai-service
+    container_name: agro_brain
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./ai-service/.env
+    environment:
+      - PORT=8000
+    restart: always
+
+  # Serviço Backend (Node)
+  backend:
+    build: ./backend
+    container_name: agro_backend
+    ports:
+      - "3001:3001"
+    env_file:
+      - ./backend/.env
+    environment:
+      - PORT=3001
+      # No Docker, para falar com outro container, usamos o nome do serviço
+      - PYTHON_API_URL=http://ai-service:8000 
+    depends_on:
+      - ai-service
+    restart: always
+
+# O Frontend continua rodando localmente com 'npm start' ou na Vercel
+# pois ele é estático e não precisa necessariamente de container em dev.

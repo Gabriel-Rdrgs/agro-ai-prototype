@@ -9,6 +9,7 @@ const axios = require('axios');
 const { PrismaClient } = require('@prisma/client');
 const authController = require('./authController');
 const { verifyToken, checkRole } = require('./authMiddleware');
+const ceasaRoutes = require('./routes/ceasa');
 
 const app = express();
 const prisma = new PrismaClient();
@@ -169,6 +170,11 @@ app.get('/api/analytics/trend', verifyToken, async (req, res) => {
     res.status(500).json({ error: 'Erro ao buscar tendência' });
   }
 });
+
+// ============================================
+// 📈 ROTAS DE CEASA
+// ============================================
+app.use('/api/ceasa', ceasaRoutes);
 
 // ============================================
 // 🚀 INICIAR SERVIDOR

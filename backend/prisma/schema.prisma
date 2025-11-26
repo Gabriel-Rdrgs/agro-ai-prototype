@@ -2,6 +2,7 @@
 
 generator client {
   provider = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -87,7 +88,6 @@ model RefreshToken {
   expiresAt DateTime
   createdAt DateTime @default(now())
 }
-// Adicione isso no final do arquivo schema.prisma
 
 model AuditLog {
   id        Int      @id @default(autoincrement())
@@ -98,4 +98,48 @@ model AuditLog {
   createdAt DateTime @default(now())
   
   @@index([userId])
+}
+// ============================================
+// MODELOS PARA INTEGRAÇÃO CEASA
+// ============================================
+
+model CeasaPrice {
+  id Int @id @default(autoincrement())
+  
+  // Localização
+  ceasa_region String
+  ceasa_name String
+  
+  // Produto
+  product_name String
+  unit_type String?
+  
+  // Preços (em Decimal para evitar problemas de ponto flutuante)
+  price_min Float
+  price_max Float
+  price_avg Float
+  
+  // Data e Timestamps
+  price_date DateTime
+  sync_timestamp DateTime @default(now())
+  
+  // Índices para queries rápidas
+  @@unique([ceasa_region, product_name, price_date])
+  @@index([product_name])
+  @@index([ceasa_region])
+  @@index([price_date])
+}
+
+model CeasaSyncLog {
+  id Int @id @default(autoincrement())
+  
+  source String
+  status String
+  records_synced Int
+  error_message String?
+  
+  sync_timestamp DateTime @default(now())
+  
+  @@index([source])
+  @@index([sync_timestamp])
 }

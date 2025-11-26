@@ -1,0 +1,11 @@
+### Sincronizar CEASA
+POST http://localhost:3001/api/ceasa/sync
+Content-Type: application/json
+
+### Obter estatísticas
+GET http://localhost:3001/api/ceasa/sync/stats
+Content-Type: application/json
+
+### Limpar dados antigos
+POST http://localhost:3001/api/ceasa/sync/clean
+Content-Type: application/json
