@@ -14,6 +14,7 @@ import os
 import hashlib
 from functools import lru_cache
 from dotenv import load_dotenv
+from fuel_intelligence import fuel_api
 import asyncio
 import httpx
 import logging
@@ -225,6 +226,45 @@ def get_real_dollar_rate():
         print(f'Erro ao buscar dólar: {e}. Usando backup: R$ 5.50')
         return 5.50
 
+LOGISTICS_CACHE = {
+    'diesel_price': 6.10, # Valor inicial de segurança
+    'last_update': datetime.now()
+}
+
+def update_fuel_prices():
+    """
+    ETL Job: Busca preço atualizado do Diesel S-10 (Média Brasil).
+    Roda em background para não travar o usuário.
+    """
+    print("⛽ Iniciando atualização do preço do Diesel...")
+    try:
+        # Tenta buscar de uma API de dados abertos (exemplo usando Caqti ou similar)
+        # Nota: Como APIs públicas mudam muito, aqui simula uma busca robusta
+        # Sugestão: Usar a API da 'Combustivel BR' ou Scraper da ANP
+        
+        # Aqui, vamos simular uma lógica de scraper que você pode evoluir
+        # url = "https://api.kanye.rest" # Placeholder para teste de conexão
+        
+        # Para produção real, recomendo assinar uma API barata ou fazer o scraper da tabela da ANP:
+        # https://preco.anp.gov.br/
+        
+        # Simulando uma variação de mercado baseada em dados reais aproximados
+        # (Em um projeto real, aqui entra o requests.get na API da Base dos Dados)
+        new_price = 6.25 # Imagine que isso veio do JSON da API
+        
+        LOGISTICS_CACHE['diesel_price'] = new_price
+        LOGISTICS_CACHE['last_update'] = datetime.now()
+        print(f"✅ Diesel Atualizado: R$ {new_price:.2f}/L")
+        
+    except Exception as e:
+        print(f"⚠️ Falha ao buscar Diesel: {e}. Mantendo valor antigo.")
+
+# Agendamento do Job (Adicione isso no seu startup ou scheduler existente)
+def run_fuel_scheduler():
+    schedule.every(24).hours.do(update_fuel_prices)
+    while True:
+        schedule.run_pending()
+        time.sleep(3600)
 
 def get_prediction_model(product_name):
     try:
@@ -895,15 +935,20 @@ def calculate_arbitrage(data: ArbitrageRequest):
     production_cost = data.area_ha * specs.get('base_cost_ha', 5000)
     unit_cost = production_cost / total_volume_units if total_volume_units > 0 else 0
     
-    # 2. Logística
+        # 2. Logística
     distance = calculate_distance(data.origin_state, data.destination_state)
-    diesel = LOGISTICS_DATA['avg_diesel_price']
-    km_l = LOGISTICS_DATA['truck_km_per_liter']
+    
+    # NOVO: Usa preços REAIS de combustível da API Petrobras
+    fuel_cost_data = fuel_api.calculate_route_fuel_cost(
+        data.origin_state,
+        data.destination_state,
+        distance
+    )
+
     maint = LOGISTICS_DATA['maintenance_per_km']
     driver = LOGISTICS_DATA['driver_cost_per_km']
-    
-    trip_cost = distance * (diesel / km_l + maint + driver)
-    
+
+    trip_cost = fuel_cost_data['total_fuel_cost'] + (distance * (maint + driver))
     capacity = 1200 if data.product == 'Tomate' else 550
     trips = math.ceil(total_volume_units / capacity) if total_volume_units > 0 else 0
     total_logistics = trip_cost * trips
@@ -934,7 +979,7 @@ def calculate_arbitrage(data: ArbitrageRequest):
         },
         'total_production_cost': round(production_cost, 2),
         'logistics': {
-            'diesel_price_ref': f'R${diesel:.2f}/L',
+            'fuel_breakdown': fuel_cost_data,
             'trips_needed': trips,
             'cost_per_trip': round(trip_cost, 2),
             'total_logistics_cost': round(total_logistics, 2)
@@ -1512,6 +1557,60 @@ def get_api_version():
         'last_updated': '2025-11-26',
         'status': 'production'
     }
+@app.get('/api/fuel/price/{state}')
+def get_state_diesel_price(state: str):
+    """Preço do diesel para estado específico"""
+    try:
+        price_data = fuel_api.get_diesel_price(state.upper())
+        return {
+            'status': 'success',
+            'data': price_data
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get('/api/fuel/current-prices')
+def get_all_fuel_prices():
+    """Retorna todos os preços atuais"""
+    try:
+        data = fuel_api.fetch_current_prices()
+        return {
+            'status': 'success',
+            'data': data,
+            'timestamp': datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get('/api/fuel/history/{state}')
+def get_fuel_price_history(state: str, days: int = 30):
+    """Histórico de preços dos últimos X dias"""
+    try:
+        with engine.connect() as conn:
+            query = text("""
+                SELECT price, created_at 
+                FROM fuel_price_history 
+                WHERE state = :state 
+                AND created_at >= NOW() - INTERVAL ':days days'
+                ORDER BY created_at ASC
+            """)
+            result = conn.execute(query, {'state': state.upper(), 'days': days})
+            
+            history = [
+                {'price': row[0], 'date': str(row[1])} 
+                for row in result
+            ]
+            
+            return {
+                'status': 'success',
+                'state': state.upper(),
+                'history': history,
+                'total_records': len(history)
+            }
+    except Exception as e:
+        logger.error(f"Erro ao buscar histórico: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================================
@@ -1534,6 +1633,12 @@ if __name__ == '__main__':
     logger.info("📡 Endpoints disponíveis em http://localhost:3001/docs")
     logger.info("="*70)
     
+# 1. Atualiza o preço imediatamente ao ligar
+    Thread(target=update_fuel_prices).start()
+    
+    # 2. Inicia o agendador em background
+    Thread(target=run_fuel_scheduler, daemon=True).start()
+
     # Inicia o servidor Uvicorn
     uvicorn.run(
         'main:app',

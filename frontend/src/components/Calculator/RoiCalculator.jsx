@@ -12,6 +12,10 @@ import {
 } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import '../../styles/calculator.css';
+import { generateRoiReport } from '../../services/pdfService';  // ← +1 ../
+import { PdfService } from '../../services/pdfService';
+
+
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
 
@@ -78,22 +82,23 @@ const RoiCalculator = () => {
   };
 
   const handleCalculate = async () => {
-    setLoading(true);
-    
-    // Chama a IA passando o Estado descoberto (pois o Python precisa do Estado)
-    const data = await OpportunityService.calculateArbitrage({
-      product: inputs.product,
-      origin_state: inputs.origin_state, // A IA usa isso para clima/imposto
-      destination_state: inputs.destination_state,
-      planting_month: Number(inputs.planting_month),
-      area_ha: Number(inputs.area)
-    });
+  setLoading(true);
+  
+  const data = await OpportunityService.calculateArbitrage({
+    product: inputs.product,
+    origin_state: inputs.origin_state,
+    destination_state: inputs.destination_state,
+    planting_month: Number(inputs.planting_month),
+    area_ha: Number(inputs.area)
+  });
 
-    if (data) {
-      setResult(data);
-    }
-    setLoading(false);
-  };
+  if (data) {
+    setResult(data);
+    //PdfService.generateRoiReport(data);  // ← PDF AUTO
+  }
+  setLoading(false);
+};  // ← FECHADO
+
 
   // --- Configurações dos Gráficos (Mantidas iguais) ---
   const barData = result ? {
@@ -229,11 +234,28 @@ const RoiCalculator = () => {
                 <div className="roi-value" style={{color: result.financial.net_profit > 0 ? '#10b981' : '#ef4444', fontSize: '2.5rem'}}>
                     {result.financial.net_profit.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}
                 </div>
+                <button 
+                  className="btn-export"
+                  onClick={() => PdfService.generateRoiReport(result)}
+                  style={{
+                  background: 'linear-gradient(45deg, #4CAF50, #45a049)',
+                  color: 'white',
+                  padding: '12px 24px',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '16px',
+                  cursor: 'pointer',
+                  margin: '0 auto 20px',
+                  display: 'block',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                }}
+              >
+                📄 Exportar Relatório PDF Completo
+              </button>
                 <p style={{color: result.financial.roi > 0 ? '#10b981' : '#ef4444', fontWeight: 'bold'}}>
                     ROI: {result.financial.roi}%
                 </p>
               </div>
-
               {/* Detalhes Automatizados pela IA */}
               <div className="metrics-grid">
                 <div className="metric-card">
@@ -280,5 +302,4 @@ const RoiCalculator = () => {
     </div>
   );
 };
-
 export default RoiCalculator;

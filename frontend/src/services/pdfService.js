@@ -60,6 +60,52 @@ export const PdfService = {
     yPos += 7;
     const dist = scenarioData.result.details?.distanceKm || 0;
     doc.text(`Distância Rodoviária Est.: ${Math.round(dist)} km`, 14, yPos);
+// ========== NOVO: SEÇÃO DE COMBUSTÍVEL ==========
+if (scenarioData.result.details?.fuel_breakdown) {
+  yPos += 10;
+  
+  // Título da seção
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(0, 150, 200);
+  doc.text('⛽ Detalhamento de Combustível', 14, yPos);
+  
+  yPos += 8;
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(0, 0, 0);
+  
+  const fuel = scenarioData.result.details.fuel_breakdown;
+  
+  // Preços nas pontas
+  doc.text(`Diesel Origem (${fuel.origin_price.state}): R$ ${fuel.origin_price.price_per_liter.toFixed(2)}/L`, 14, yPos);
+  doc.text(`Diesel Destino (${fuel.dest_price.state}): R$ ${fuel.dest_price.price_per_liter.toFixed(2)}/L`, 110, yPos);
+  
+  yPos += 7;
+  
+  // Consumo
+  doc.text(`Litros necessários: ${fuel.fuel_liters.toFixed(1)}L`, 14, yPos);
+  doc.text(`Preço médio ponderado: R$ ${fuel.weighted_price_liter.toFixed(2)}/L`, 110, yPos);
+  
+  yPos += 7;
+  
+  // Total
+  doc.setFont('helvetica', 'bold');
+  doc.text(`💰 Custo total combustível: R$ ${fuel.total_fuel_cost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 14, yPos);
+  doc.setFont('helvetica', 'normal');
+  
+  yPos += 3;
+  
+  // Info de atualização
+  if (fuel.data_coleta) {
+    doc.setFontSize(8);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Atualizado: ${fuel.data_coleta}`, 14, yPos);
+    doc.setFontSize(10);
+    doc.setTextColor(0, 0, 0);
+  }
+}
+// ========== FIM DA SEÇÃO DE COMBUSTÍVEL ==========
 
     // 2. Tabela Financeira
     yPos += 15;
@@ -275,5 +321,191 @@ export const PdfService = {
     doc.text('AgroArbitrage AI - Panorama de Mercado.', 105, pageHeight - 10, { align: 'center' });
 
     doc.save('Dashboard_Agro_AI.pdf');
+  },
+    // --- RELATÓRIO 3: ROI ARBITRAGEM (RoiCalculator) ---
+  generateRoiReport: (roiData, userName = 'Produtor') => {
+    const doc = new jsPDF('p', 'mm', 'a4');
+    
+    // Cores da marca (mesmo padrão)
+    const primaryColor = [0, 217, 255]; // #00d9ff
+    const darkBg = [15, 23, 42]; // #0f172a
+    
+    // --- CABEÇALHO ---
+    doc.setFillColor(...darkBg);
+    doc.rect(0, 0, 210, 40, 'F');
+    
+    doc.setTextColor(...primaryColor);
+    doc.setFontSize(22);
+    doc.setFont('helvetica', 'bold');
+    doc.text('AgroArbitrage AI', 14, 20);
+    
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Análise de Arbitragem Agrícola', 14, 28);
+    
+    const today = new Date().toLocaleDateString('pt-BR');
+    doc.setFontSize(9);
+    doc.text(`Gerado em: ${today}`, 196, 20, { align: 'right' });
+    doc.text(`Responsável: ${userName}`, 196, 28, { align: 'right' });
+    
+    // --- CORPO ---
+    let yPos = 55;
+    
+    // 1. Operação
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('1. Definição da Operação', 14, yPos);
+    
+    yPos += 10;
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    
+    const analysis = roiData.analysis || {};
+    doc.text(`Produto: ${roiData.product || '-'}`, 14, yPos);
+    doc.text(`Origem: ${analysis.origin || '-'}`, 100, yPos);
+    
+    yPos += 7;
+    doc.text(`Destino: ${analysis.destination || '-'}`, 14, yPos);
+    doc.text(`Distância: ${analysis.distance_km ? analysis.distance_km.toFixed(1) + ' km' : '-' }`, 100, yPos);
+    
+    yPos += 10;
+    
+    // 2. Produção
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('2. Custos de Produção', 14, yPos);
+    
+    yPos += 8;
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    
+    const production = roiData.production || {};
+    doc.text(`Produtividade: ${production.productivity_ha ? production.productivity_ha.toFixed(1) + ' un/ha' : '-' }`, 14, yPos);
+    doc.text(`Volume Total: ${production.total_volume ? production.total_volume.toFixed(1) + ' un' : '-' }`, 100, yPos);
+    
+    yPos += 7;
+    if (roiData.total_production_cost !== undefined) {
+      doc.text(
+        `Custo Total Produção: R$ ${roiData.total_production_cost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+        14,
+        yPos
+      );
+      yPos += 10;
+    }
+    
+    // 3. Logística + Combustível REAL
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('3. Logística & Combustível', 14, yPos);
+    
+    yPos += 8;
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    
+    const logistics = roiData.logistics || {};
+    const fuel = logistics.fuel_breakdown || {};
+    
+    if (fuel.origin_price) {
+      doc.text(
+        `Diesel Origem (${fuel.origin_price.state}): R$ ${fuel.origin_price.price_per_liter.toFixed(2)}/L`,
+        14,
+        yPos
+      );
+      doc.text(
+        `Diesel Destino (${fuel.dest_price.state}): R$ ${fuel.dest_price.price_per_liter.toFixed(2)}/L`,
+        110,
+        yPos
+      );
+      yPos += 7;
+    }
+    
+    doc.text(
+      `Litros Diesel: ${fuel.fuel_liters ? fuel.fuel_liters.toFixed(1) + ' L' : '-'}`,
+      14,
+      yPos
+    );
+    doc.text(
+      `Custo Combustível: R$ ${fuel.total_fuel_cost ? fuel.total_fuel_cost.toLocaleString('pt-BR') : '-'}`,
+      110,
+      yPos
+    );
+    yPos += 7;
+    
+    doc.text(
+      `Custo Total Logística: R$ ${logistics.total_logistics_cost ? logistics.total_logistics_cost.toLocaleString('pt-BR') : '-'}`,
+      14,
+      yPos
+    );
+    yPos += 10;
+    
+    if (fuel.data_coleta) {
+      doc.setFontSize(8);
+      doc.text(`Dados Petrobras: ${fuel.data_coleta}`, 14, yPos);
+      doc.setFontSize(10);
+      yPos += 8;
+    }
+    
+    // 4. Lucratividade
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('4. Lucratividade Projetada', 14, yPos);
+    
+    yPos += 8;
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    
+    const profitability = roiData.profitability || {};
+    
+    const tableData = [
+      ['Receita Bruta', `R$ ${profitability.gross_revenue ? profitability.gross_revenue.toLocaleString('pt-BR') : '-'}`],
+      ['Custo Total', `R$ ${roiData.total_cost ? roiData.total_cost.toLocaleString('pt-BR') : '-'}`],
+      ['Lucro Líquido', `R$ ${profitability.net_profit ? profitability.net_profit.toLocaleString('pt-BR') : '-'}`],
+      ['ROI', `${profitability.roi_percent ? profitability.roi_percent.toFixed(2) + '%' : '-'}`]
+    ];
+    
+    autoTable(doc, {
+      startY: yPos,
+      head: [['Indicador', 'Valor']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: darkBg, textColor: primaryColor },
+      styles: { fontSize: 10 },
+      columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 100, halign: 'right' } }
+    });
+    
+    yPos = doc.lastAutoTable.finalY + 15;
+    
+    // Recomendação
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    const roi = profitability.roi_percent || 0;
+    let recommendation = '';
+if (roi > 25) {
+  recommendation = 'RECOMENDAÇÃO: ALTAMENTE VIÁVEL ✓';
+  doc.setTextColor(16, 185, 129); // Verde
+} else if (roi > 10) {
+  recommendation = 'RECOMENDAÇÃO: VIÁVEL COM ATENÇÃO';
+  doc.setTextColor(245, 158, 11); // Laranja
+} else {
+  recommendation = 'RECOMENDAÇÃO: NÃO RECOMENDADO';
+  doc.setTextColor(239, 68, 68); // Vermelho
+}
+
+doc.setFontSize(12);
+doc.setFont('helvetica', 'bold');
+doc.text(recommendation, 14, yPos);
+doc.setTextColor(0, 0, 0); // Reset cor
+
+    
+    // Rodapé
+    const pageHeight = doc.internal.pageSize.height;
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text('AgroArbitrage AI © 2025 - Análise Automatizada.', 105, pageHeight - 10, { align: 'center' });
+    
+    doc.save(`ROI_${roiData.product || 'Arbitragem'}_${today.replace(/\//g, '-')}.pdf`);
   }
+
 };

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<!-- saved from url=(0030)https://combustivelapi.com.br/ -->
+<html lang="pt-BR"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="API de monitoramento de preços de combustíveis no Brasil. Obtenha informações atualizadas sobre os valores da gasolina e diesel em diferentes estados.">
+    <meta name="keywords" content="API, combustível, gasolina, diesel, preços, Brasil, monitoramento">
+    <meta name="author" content="API Combustível">
+
+    <!-- Open Graph Meta Tags -->
+    <meta property="og:title" content="API Combustível - API de Preços">
+    <meta property="og:description" content="API para monitoramento de preços de combustíveis no Brasil, oferecendo dados atualizados sobre gasolina e diesel.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://combustivelapi.com.br">
+    <meta property="og:image" content="https://combustivelapi.com.br/img/logo.png">
+
+    <!-- Favicon e Ícones -->
+    <link rel="apple-touch-icon" sizes="180x180" href="https://combustivelapi.com.br/img/apple-icon-180x180.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="https://combustivelapi.com.br/img/favicon-32x32.png">
+    <link rel="manifest" href="https://combustivelapi.com.br/img/manifest.json">
+    <meta name="theme-color" content="#007bff">
+
+    <title>API Combustível - Monitoramento de Preços</title>
+
+    <!-- Bootstrap -->
+    <link rel="stylesheet" href="./API Combustível - Monitoramento de Preços_files/bootstrap.min.css">
+    <link rel="canonical" href="https://combustivelapi.com.br/">
+
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="./API Combustível - Monitoramento de Preços_files/all.min.css">
+
+    <!-- Estilos -->
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+
+        .hero {
+            background: #007bff;
+            color: white;
+            padding: 50px 20px;
+            text-align: center;
+        }
+
+        .api-example {
+            background: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .footer {
+            background: #343a40;
+            color: white;
+            text-align: center;
+            padding: 10px;
+            margin-top: 50px;
+        }
+    </style>
+</head>
+
+<body cz-shortcut-listen="true">
+    <header class="hero">
+        <h1><i class="fas fa-gas-pump"></i> API Combustível</h1>
+        <p>Monitoramento de preços de gasolina e diesel no Brasil</p>
+    </header>
+
+    <div class="container mt-5">
+        <h2>Como Usar a API</h2>
+        <p>A API fornece dados de preços da gasolina e do diesel em vários estados do Brasil.</p>
+
+        <div class="api-example">
+            <h4>Exemplo de Requisição:</h4>
+            <code>GET /api/precos</code>
+
+            <h4 class="mt-3">Resposta:</h4>
+            <pre id="apiResponse">{
+    "error": false,
+    "message": "Requisição processada com sucesso",
+    "data_coleta": "2025-11-27 14:57:01",
+    "fonte": "https://precos.petrobras.com.br/",
+    "moeda": "BRL",
+    "tempo_execucao_segundos": 2.7,
+    "precos": {
+        "gasolina": {
+            "br": "6,16",
+            "al": "6,22",
+            "am": "6,97",
+            "ce": "6,18",
+            "df": "6,33",
+            "es": "6,22",
+            "go": "6,39",
+            "ma": "5,83",
+            "mt": "6,3",
+            "mg": "5,98",
+            "pr": "6,47",
+            "pb": "5,91",
+            "pa": "6,23",
+            "pe": "6,33",
+            "rs": "6,15",
+            "rj": "6,08",
+            "sc": "6,27",
+            "sp": "6,03"
+        },
+        "diesel": {
+            "br": "6,06",
+            "al": "5,93",
+            "am": "6,51",
+            "ce": "5,83",
+            "df": "5,98",
+            "es": "6,04",
+            "go": "6,06",
+            "ma": "5,92",
+            "mt": "6,32",
+            "mg": "5,95",
+            "pr": "5,98",
+            "pa": "6,2",
+            "pe": "5,82",
+            "rs": "6,14",
+            "rj": "6,15",
+            "sc": "6,12",
+            "sp": "6,12"
+        }
+    },
+    "analise": {
+        "estado_mais_barato_gasolina": {
+            "sigla": "ma",
+            "preco": "5,83"
+        },
+        "estado_mais_caro_gasolina": {
+            "sigla": "am",
+            "preco": "6,97"
+        },
+        "diferenca_gasolina": "1,14",
+        "variacao_percentual_gasolina": "19,55%",
+        "estado_mais_barato_diesel": {
+            "sigla": "pe",
+            "preco": "5,82"
+        },
+        "estado_mais_caro_diesel": {
+            "sigla": "am",
+            "preco": "6,51"
+        },
+        "diferenca_diesel": "0,69",
+        "variacao_percentual_diesel": "11,86%"
+    }
+}</pre>
+        </div>
+
+        <h2 class="mt-5">Última Análise de Preços</h2>
+        <div class="api-example">
+            <h4>Estado Mais Barato:</h4>
+            <p><strong>Gasolina:</strong> <span id="estado_barato_gasolina">ma - 5,83</span></p>
+            <p><strong>Diesel:</strong> <span id="estado_barato_diesel">pe - 5,82</span></p>
+
+            <h4>Estado Mais Caro:</h4>
+            <p><strong>Gasolina:</strong> <span id="estado_caro_gasolina">am - 6,97</span></p>
+            <p><strong>Diesel:</strong> <span id="estado_caro_diesel">am - 6,51</span></p>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>© 2025 API Combustível - Todos os direitos reservados.</p>
+    </footer>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            fetch("/api/precos/")
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById("apiResponse").textContent = JSON.stringify(data, null, 4);
+
+                    // Atualiza os dados da análise
+                    document.getElementById("estado_barato_gasolina").textContent = data.analise.estado_mais_barato_gasolina.sigla + " - " + data.analise.estado_mais_barato_gasolina.preco;
+                    document.getElementById("estado_barato_diesel").textContent = data.analise.estado_mais_barato_diesel.sigla + " - " + data.analise.estado_mais_barato_diesel.preco;
+                    document.getElementById("estado_caro_gasolina").textContent = data.analise.estado_mais_caro_gasolina.sigla + " - " + data.analise.estado_mais_caro_gasolina.preco;
+                    document.getElementById("estado_caro_diesel").textContent = data.analise.estado_mais_caro_diesel.sigla + " - " + data.analise.estado_mais_caro_diesel.preco;
+                })
+                .catch(error => {
+                    document.getElementById("apiResponse").textContent = "Erro ao carregar dados";
+                });
+        });
+    </script>
+
+    <script src="./API Combustível - Monitoramento de Preços_files/bootstrap.bundle.min.js.download"></script>
+<script defer="" src="./API Combustível - Monitoramento de Preços_files/vcd15cbe7772f49c399c6a5babf22c1241717689176015" integrity="sha512-ZpsOmlRQV6y907TI0dKBHq9Md29nnaEIPlkf84rnaERnq6zvWvPUqr2ft8M1aS28oN72PdrCzSjY4U6VaAw1EQ==" data-cf-beacon="{&quot;version&quot;:&quot;2024.11.0&quot;,&quot;token&quot;:&quot;62181b8eaddc48a9b04b4540325e5cc4&quot;,&quot;r&quot;:1,&quot;server_timing&quot;:{&quot;name&quot;:{&quot;cfCacheStatus&quot;:true,&quot;cfEdge&quot;:true,&quot;cfExtPri&quot;:true,&quot;cfL4&quot;:true,&quot;cfOrigin&quot;:true,&quot;cfSpeedBrain&quot;:true},&quot;location_startswith&quot;:null}}" crossorigin="anonymous"></script>
+
+
+
+</body></html>
