@@ -253,5 +253,33 @@ export const OpportunityService = {
       console.error("Erro calc arbitragem:", error);
       return null;
     }
+  },
+  // --- 6. PREVISÃO EM LOTE (MAPA) ---
+  getBatchPredictions: async (opportunities) => {
+    try {
+        // Prepara o payload leve
+        const items = opportunities.map(op => ({
+            id: op.id,
+            product: op.product,
+            state: op.state,
+            current_price: op.sellPrice, // Preço de venda atual no mercado
+            buy_price: op.buyPrice
+        }));
+
+        const response = await fetch(`${API_URL}/api/ai/batch`, { // Vamos criar a ponte no server.js
+            method: 'POST',
+            headers: {
+                ...getAuthHeaders(),
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ items })
+        });
+
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (error) {
+        console.error("Erro Batch AI:", error);
+        return null;
+    }
   }
 };

@@ -227,33 +227,72 @@ def get_real_dollar_rate():
 
 
 def get_prediction_model(product_name):
-    """Retorna modelo de predição de preços"""
     try:
-        query = text("""
-            SELECT h.createdAt, price FROM PriceHistory h
-            JOIN Opportunity o ON h.opportunityId = o.id
-            WHERE o.product = :prod
-            ORDER BY h.createdAt ASC
+        # 1. Busca dados brutos
+        query_real = text("""
+            SELECT price_date as date, price_avg as price
+            FROM "CeasaPrice"
+            WHERE product_name ILIKE :prod
+            ORDER BY price_date ASC
         """)
+        
         with engine.connect() as conn:
-            df = pd.read_sql(query, conn, params={'prod': product_name})
+            df = pd.read_sql(query_real, conn, params={"prod": f"%{product_name}%"})
         
-        if df.empty or len(df) < 10:
-            return None, 0.05
-        
+        # Fallback para tabela antiga se necessário
+        if df.empty or len(df) < 5:
+            query_sim = text("""
+                SELECT h."createdAt" as date, price 
+                FROM "PriceHistory" h
+                JOIN "Opportunity" o ON h."opportunityId" = o.id
+                WHERE o.product = :prod
+                ORDER BY h."createdAt" ASC
+            """)
+            with engine.connect() as conn:
+                df = pd.read_sql(query_sim, conn, params={"prod": product_name})
+
+        if df.empty or len(df) < 5: return None, 0.05
+
+        # --- LIMPEZA DE DADOS HISTÓRICOS (A CORREÇÃO) ---
+        # Identifica se é Tomate/Soja e normaliza valores de "Caixa" para "Kg"
+        # Isso impede que dados antigos (ex: R$ 80,00) estraguem a média e a volatilidade
+        prod_key = product_name.strip().capitalize()
+        specs = CROPS_SPECS.get(prod_key, CROPS_SPECS['Default'])
+        weight = specs.get('unit_weight_kg', 1.0)
+
+        def clean_price(row):
+            p = float(row['price'])
+            # Se for Tomate e preço > 15, é Caixa -> divide por 20
+            if prod_key == 'Tomate' and p > 15.0: return p / weight
+            # Se for Grãos e preço > 10, é Saca -> divide por 60
+            if prod_key in ['Soja', 'Milho'] and p > 10.0: return p / weight
+            return p
+
+        # Aplica a limpeza em todo o histórico
+        df['price'] = df.apply(clean_price, axis=1)
+        # -----------------------------------------------
+
         df = df.dropna()
-        df['date_ordinal'] = pd.to_datetime(df['createdAt']).map(datetime.toordinal)
+        df['date_ordinal'] = pd.to_datetime(df['date']).map(datetime.toordinal)
         
-        model = make_pipeline(PolynomialFeatures(3), LinearRegression())
-        model.fit(df['date_ordinal'].values.reshape(-1, 1), df['price'])
+        # Treina o modelo com dados limpos
+        model = make_pipeline(PolynomialFeatures(4), LinearRegression())
+        model.fit(df[['date_ordinal']], df['price'])
+        
         volatility = df['price'].std()
         
-        return model, volatility if not pd.isna(volatility) else 0.05
+        # Trava de segurança na volatilidade (máximo 20% do preço médio)
+        # Evita que o gráfico fique louco mesmo se tiver lixo no banco
+        avg_price = df['price'].mean()
+        if volatility > avg_price * 0.3:
+            volatility = avg_price * 0.1
+            
+        return model, (volatility if not pd.isna(volatility) else 0.05)
+
     except Exception as e:
-        print(f'Erro no modelo: {e}')
+        print(f"Erro no modelo de predição: {e}")
         return None, 0.05
-
-
+        
 def validate_coords(lat, lng):
     """Verifica se as coordenadas são geograficamente válidas"""
     try:
@@ -365,17 +404,47 @@ def calculate_distance(state_a, state_b):
 
 
 def get_predicted_market_price(product, state, month):
-    """Retorna preço predito do mercado baseado em sazonalidade e região"""
-    base_prices = {'Tomate': 80.0, 'Soja': 130.0, 'Milho': 60.0}
-    price = base_prices.get(product, 50.0)
-    
-    # Sazonalidade
-    if product == 'Tomate' and month in [6, 7, 8]:
-        price *= 1.3  # Inverno valoriza hortaliças
-    
-    # Fator Regional
-    region_factor = PRICE_MULTIPLIERS.get(state, 1.0)
-    return round(price * region_factor, 2)
+    """
+    Busca o preço de mercado (Kg) REAL no Banco de Dados.
+    Agora assume que o banco JÁ ESTÁ em Kg.
+    """
+    try:
+        # Busca preço mais recente na CEASA para esse estado
+        query = text("""
+            SELECT price_avg 
+            FROM "CeasaPrice"
+            WHERE product_name ILIKE :prod
+            AND (ceasa_region = :state OR ceasa_name ILIKE :state_like)
+            ORDER BY price_date DESC
+            LIMIT 1
+        """)
+
+        with engine.connect() as conn:
+            result = conn.execute(query, {
+                "prod": f"%{product}%",
+                "state": state,
+                "state_like": f"%{state}%"
+            }).fetchone()
+
+        if result:
+            price_kg = float(result[0])
+            # Se por algum acidente ainda tiver lixo no banco (> 20 reais o kg do tomate), corrige
+            if product == 'Tomate' and price_kg > 15.0: price_kg /= 20.0
+            
+            print(f"💰 Preço Banco ({product}/{state}): R$ {price_kg:.2f}/kg")
+            return round(price_kg, 2)
+        else:
+            # Fallback
+            print(f"⚠️ Sem dados para {product}/{state}. Usando estimativa.")
+            base_prices = {'Tomate': 4.50, 'Soja': 2.20, 'Milho': 1.00}
+            price = base_prices.get(product, 2.00)
+            region_factor = PRICE_MULTIPLIERS.get(state, 1.0)
+            if product == 'Tomate' and month in [6, 7, 8]: price *= 1.3
+            return round(price * region_factor, 2)
+
+    except Exception as e:
+        print(f"Erro preço: {e}")
+        return 4.00
 
 
 # ============================================================================
@@ -600,22 +669,32 @@ def sync_market_prices():
         logger.error(f"Erro no ETL: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
-@app.post('/predict/storage')
+@app.post("/predict/storage")
 def predict_storage_viability(data: SimulationRequest):
-    """Predição de armazenagem inteligente - StorageAdvisor"""
-    print(f"🔍 RECEBIDO: Produto={data.product}, Estado={data.state}")
+    """Predição de armazenagem inteligente (Sempre em KG)"""
     
+    # 1. Configuração e Normalização Inicial
+    product_key = data.product.strip().capitalize()
+    specs = CROPS_SPECS.get(product_key, CROPS_SPECS['Default'])
+    weight = specs.get('unit_weight_kg', 1.0)
+    
+    # Preço Atual em KG
+    price_per_kg = data.current_price
+    
+    # Heurística: Se preço atual for de caixa, converte para Kg
+    if (product_key == 'Tomate' and price_per_kg > 15.0) or \
+       (product_key in ['Soja', 'Milho'] and price_per_kg > 10.0):
+        price_per_kg /= weight
+
     days = 30
     current_month = datetime.now().month
-    specs = CROPS_SPECS.get(data.product, CROPS_SPECS['Default'])
     
-    # --- 0. Determinismo ---
+    # --- 1. Determinismo ---
     seed_source = f"{data.product}-{data.state}-{datetime.now().strftime('%Y-%m-%d')}"
     seed_val = int(hashlib.sha256(seed_source.encode('utf-8')).hexdigest(), 16) % (2**32)
     rng = np.random.RandomState(seed_val)
-    
-    # --- 1. Clima (Gap Fill) ---
+
+    # --- 2. Clima (Gap Fill) ---
     if data.lat and data.lng:
         monthly_rain_avg = fetch_climate_history_averages(data.lat, data.lng, current_month)
         solar_mj_avg = fetch_nasa_solar_data(data.lat, data.lng, current_month)
@@ -644,8 +723,8 @@ def predict_storage_viability(data: SimulationRequest):
         final_min.append(np.mean(forecast_min) - 3 + rng.normal(0, 2))
     
     final_rain = final_rain[:days]
-    
-    # --- 2. Modelagem de Preço ---
+
+    # --- 3. Modelagem e Projeção ---
     model, volatility = get_prediction_model(data.product)
     prices, costs, future_dates = [], [], []
     risk_acc = 0
@@ -655,11 +734,10 @@ def predict_storage_viability(data: SimulationRequest):
     quality_factor = 1.0
     required_sun = specs.get('min_solar_mj', 0)
     if required_sun > 0 and solar_mj_avg < required_sun:
-        deficit = required_sun - solar_mj_avg
-        quality_factor -= deficit / (required_sun * 0.5) # Penalidade proporcional
+        deficit = (required_sun - solar_mj_avg) / required_sun
+        quality_factor -= deficit * 0.5
         if deficit > 0.2: risk_acc += 2
-    
-    # Loop Diário
+
     for i in range(days):
         future_date = datetime.now() + timedelta(days=i)
         future_dates.append(future_date.strftime('%d/%m'))
@@ -668,51 +746,67 @@ def predict_storage_viability(data: SimulationRequest):
         daily_cost = data.storage_cost_per_day if data.storage_cost_per_day > 0 else 0.05
         costs.append(round(i * daily_cost, 2))
         
-        # Tendência
-        trend = data.current_price
+        # Tendência Base (Começa com o preço atual em KG)
+        trend = price_per_kg
+        
+        # Se houver modelo, tenta prever
         if model:
-            X_pred = pd.DataFrame({'date_ordinal': [future_date.toordinal()]})
-            try: trend = float(model.predict(X_pred)[0])
-            except: pass
+            try:
+                X_pred = pd.DataFrame({'date_ordinal': [future_date.toordinal()]})
+                predicted = float(model.predict(X_pred)[0])
+                
+                # 🛑 FILTRO DE SEGURANÇA DE UNIDADE 🛑
+                # Se o modelo cuspir um valor absurdo (ex: 80.00 para tomate), 
+                # forçamos a conversão para Kg dividindo pelo peso.
+                if (product_key == 'Tomate' and predicted > 15.0) or \
+                   (product_key in ['Soja', 'Milho'] and predicted > 10.0):
+                    predicted /= weight
+                
+                trend = predicted
+            except: 
+                pass
         
         # Sazonalidade
-        if data.product == 'Tomate' and future_date.month in [4, 5, 6, 7]:
+        if product_key == 'Tomate' and future_date.month in [4, 5, 6, 7]:
             trend *= 1 + 0.005 * i
         
         trend *= quality_factor
         
-        # Impactos Micro (Chuva/Frio)
+        # Impactos Micro
         impact = 0.0
         if final_rain[i] > specs.get('rain_logistics_limit', 20):
-            impact = 0.12
+            impact = 0.12 * vol_boost
             risk_acc += 1
         if final_min[i] < specs.get('temp_min_critical', 10):
-            impact = 0.08
+            impact = 0.08 * vol_boost
             risk_acc += 1
         
         noise = rng.normal(0, volatility * vol_boost * 0.5)
-        prices.append(round(max(0.5, trend * (1 + impact) + noise), 2))
-    
-    # --- 3. Decisão e Retorno (CORRIGIDO PARA O FRONTEND) ---
-    net_profit = [p - data.current_price - c for p, c in zip(prices, costs)]
+        
+        # Preço Final do Dia (KG)
+        final_price_kg = max(0.5, trend * (1 + impact) + noise)
+        prices.append(round(final_price_kg, 2))
+
+    # --- 4. Decisão ---
+    # Lucro = Preço Futuro (Kg) - Preço Atual (Kg) - Custo (Kg)
+    net_profit = [p - price_per_kg - c for p, c in zip(prices, costs)]
     max_profit = max(net_profit)
     best_idx = net_profit.index(max_profit)
     
     risk_msg = 'Tendência favorável.'
     if quality_factor < 0.95:
-        risk_msg = f'Alerta: Baixa insolação {solar_mj_avg:.1f}MJ pode afetar qualidade.'
+        risk_msg = f'Alerta: Baixa insolação {solar_mj_avg:.1f}MJ afeta qualidade.'
     
     if max_profit > 0:
         action = 'ARMAZENAR'
         if 'insolação' not in risk_msg: risk_msg = f'Pico em {future_dates[best_idx]} supera custos.'
-    elif max_profit > -2.0:
+    elif max_profit > -1.0:
         action = 'AGUARDAR'
         if 'insolação' not in risk_msg: risk_msg = 'Margens apertadas. Monitore o clima.'
     else:
         action = 'VENDER IMEDIATAMENTE'
         if 'insolação' not in risk_msg: risk_msg = 'Custo supera valorização.'
     
-    # Calculando confiança
     conf_score = 0.95 if (data.lat and solar_mj_avg > 10) else 0.80
     if risk_acc > 5: conf_score -= 0.15
 
@@ -726,11 +820,10 @@ def predict_storage_viability(data: SimulationRequest):
             'action': action,
             'best_day_date': future_dates[best_idx] if max_profit > -5 else 'Hoje',
             'projected_profit': round(max_profit, 2),
-            'confidence_score': round(conf_score, 2), # <--- MOVIDO PARA DENTRO
-            'risk_event': risk_msg                    # <--- MOVIDO PARA DENTRO
+            'confidence_score': round(conf_score, 2),
+            'risk_event': risk_msg
         }
     }
-
 
 @app.post('/calc/production')
 def calculate_production_roi(data: ProductionRequest):
@@ -858,76 +951,56 @@ def calculate_arbitrage(data: ArbitrageRequest):
         'risks': climate_notes if climate_notes else ['Condições favoráveis.']
     }
 
-
-@app.post('/admin/seed-history')
+@app.post("/admin/seed-history")
 def seed_history_data():
-    """Popula tabela PriceHistory com 6 meses de dados simulados"""
     import random
-    
-    print('Iniciando Seed de Histórico...')
+    print("⏳ Gerando Histórico CEASA (EM KG)...")
     days_back = 180
-    data_buffer = []
     
+    # PREÇOS EM KG (Não em Caixa!)
+    products = {
+        'Tomate': {'base': 4.50, 'vol': 0.15}, # R$ 4,50/kg
+        'Soja':   {'base': 2.20, 'vol': 0.03}, # R$ 2,20/kg
+        'Milho':  {'base': 1.00, 'vol': 0.04}
+    }
+
     try:
         with engine.connect() as conn:
-            # Limpa tabela antiga
-            conn.execute(text('TRUNCATE TABLE PriceHistory RESTART IDENTITY CASCADE'))
+            # Limpa a sujeira antiga
+            conn.execute(text('DELETE FROM "CeasaPrice"')) # Limpa TUDO para garantir
             conn.commit()
-        
-        # Busca IDs dos produtos existentes
-        with engine.connect() as conn:
-            opps = pd.read_sql(text('SELECT id, product FROM Opportunity'), conn)
-        
-        if opps.empty:
-            return {
-                'status': 'Error',
-                'message': 'Nenhuma oportunidade encontrada. Rode o seed do backend primeiro.'
-            }
-        
-        # Configurações de Mercado - Simulação
-        products_config = {
-            'Tomate': {'base': 80.0, 'volatility': 0.15, 'shock_prob': 0.05},
-            'Soja': {'base': 130.0, 'volatility': 0.03, 'shock_prob': 0.01},
-            'Milho': {'base': 60.0, 'volatility': 0.04, 'shock_prob': 0.02}
-        }
-        
-        # Gera dados retroativos
-        for _, row in opps.iterrows():
-            product = row['product']
-            conf = products_config.get(product, products_config['Tomate'])
             
-            for i in range(days_back):
-                date = datetime.now() - timedelta(days=days_back - i)
-                
-                shock = 1.6 if random.random() < conf['shock_prob'] else 1.0
-                season = math.sin(i * 0.05)
-                base_price = conf['base']
-                volatility = conf['volatility']
-                noise = np.random.normal(0, base_price * 0.02)
-                
-                price = base_price * shock * (1 + season * volatility) + noise
-                
-                data_buffer.append({
-                    'opportunityId': row['id'],
-                    'price': round(max(0.1, price), 2),
-                    'createdAt': date
-                })
-        
-        # Insere em massa
-        if data_buffer:
-            df = pd.DataFrame(data_buffer)
-            df.to_sql('PriceHistory', engine, if_exists='append', index=False, method='multi', chunksize=1000)
+            ceasa_buffer = []
+            today = datetime.now()
+
+            for prod_name, conf in products.items():
+                base = conf['base']
+                for i in range(days_back):
+                    date = today - timedelta(days=(days_back - i))
+                    season = math.sin(i * 0.05) * (base * conf['vol'])
+                    noise = np.random.normal(0, base * 0.05)
+                    price = base + season + noise
+                    
+                    ceasa_buffer.append({
+                        "ceasa_region": "BR-Média",
+                        "ceasa_name": "Simulação IA",
+                        "product_name": prod_name,
+                        "unit_type": "kg",
+                        "price_min": round(price * 0.9, 2),
+                        "price_max": round(price * 1.1, 2),
+                        "price_avg": round(price, 2),
+                        "price_date": date,
+                        "sync_timestamp": today
+                    })
             
-            return {
-                'status': 'Success',
-                'entries_created': len(df)
-            }
-        else:
-            return {
-                'status': 'No data created'
-            }
+            if ceasa_buffer:
+                df = pd.DataFrame(ceasa_buffer)
+                df.to_sql('CeasaPrice', engine, if_exists='append', index=False, method='multi', chunksize=1000)
+                return {"status": "Success", "entries_created": len(df), "msg": "Banco limpo e regenerado em KG"}
+            
+            return {"status": "No data"}
+
     except Exception as e:
-        print(f'Erro no Seed: {e}')
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1471,3 +1544,81 @@ if __name__ == '__main__':
         workers=4,
         access_log=True
     )
+# --- MODELOS NOVOS PARA BATCH ---
+class BatchItem(BaseModel):
+    id: int
+    product: str
+    state: str
+    current_price: float
+    buy_price: float # Precisa do preço de compra para calcular ROI futuro
+
+class BatchSimulationRequest(BaseModel):
+    items: List[BatchItem]
+
+# --- ROTA DE PREVISÃO EM MASSA (PARA O MAPA) ---
+@app.post("/predict/batch")
+def predict_batch_roi(data: BatchSimulationRequest):
+    """
+    Calcula projeção de ROI para 7 e 30 dias para múltiplos itens.
+    Otimizado para performance (Mapa).
+    """
+    results = {}
+    current_month = datetime.now().month
+    
+    # Carrega histórico climático apenas uma vez por estado para otimizar (Cache ajuda aqui)
+    
+    for item in data.items:
+        product_key = item.product.strip().capitalize()
+        specs = CROPS_SPECS.get(product_key, CROPS_SPECS['Default'])
+        
+        # 1. Normalização de Unidade (Igual ao StorageAdvisor)
+        weight = specs.get('unit_weight_kg', 1.0)
+        price_per_kg = item.current_price
+        if (product_key == 'Tomate' and price_per_kg > 15.0) or \
+           (product_key in ['Soja', 'Milho'] and price_per_kg > 10.0):
+            price_per_kg /= weight
+
+        # 2. Modelagem Simplificada (Sem simulação dia-a-dia pesada)
+        model, volatility = get_prediction_model(item.product)
+        
+        # Previsão para 7 e 30 dias
+        future_rois = {0: 0.0} # Dia 0 = variação zero
+        
+        for d in [7, 30]:
+            future_date = datetime.now() + timedelta(days=d)
+            
+            # Tendência
+            trend = price_per_kg
+            if model:
+                try:
+                    X_pred = pd.DataFrame({'date_ordinal': [future_date.toordinal()]})
+                    trend = float(model.predict(X_pred)[0])
+                except: pass
+            
+            # Sazonalidade (Inverno)
+            if product_key == 'Tomate' and future_date.month in [4, 5, 6, 7]:
+                trend *= 1 + (0.005 * d)
+
+            # Clima (Usa médias estaduais para ser rápido no batch)
+            norms = BRAZIL_CLIMATE_NORMS.get(item.state, {})
+            avg_rain = norms.get(future_date.month, 150)
+            
+            impact = 0.0
+            # Se for mês muito chuvoso e o produto sensível
+            if avg_rain > 200 and specs.get('rain_logistics_limit', 20) < 20:
+                impact += 0.05 # Preço sobe um pouco
+
+            # Preço Futuro Estimado (Kg)
+            future_price_kg = trend * (1 + impact)
+            
+            # Reconverte para Unidade de Venda (Caixa) para calcular ROI
+            future_sell_price = future_price_kg * weight
+            
+            # ROI = (Venda Futura - Compra Original) / Compra Original
+            roi = ((future_sell_price - item.buy_price) / item.buy_price) * 100
+            
+            future_rois[d] = round(roi, 1)
+            
+        results[item.id] = future_rois
+
+    return results 

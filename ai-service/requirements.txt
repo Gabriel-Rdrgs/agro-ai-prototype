@@ -8,5 +8,8 @@ numpy
 scikit-learn
 sqlalchemy
 psycopg2-binary
-httpx      
-schedule    
+httpx
+schedule
+lxml
+html5lib
+beautifulsoup4

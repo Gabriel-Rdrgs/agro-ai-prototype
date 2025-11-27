@@ -72,18 +72,58 @@ const MapView = React.forwardRef((props, ref) => {
   const [hoveredFlowId, setHoveredFlowId] = useState(null);
   const [timeHorizon, setTimeHorizon] = useState(0); // 0 = Hoje, 7 = +7d, 30 = +30d
   
-  // --- LÓGICA DO SLIDER TEMPORAL ---
-  // Simula a mudança de ROI baseada no tempo (apenas para visualização)
+// --- LÓGICA DO SLIDER TEMPORAL (CORRIGIDA) ---
+
+  // Estado para guardar as previsões reais da IA (Batch)
+  const [aiPredictions, setAiPredictions] = useState({});
+  // --- CARREGA PREVISÕES DA IA (NOVO) ---
+  useEffect(() => {
+    if (opportunities.length > 0) {
+        const fetchPredictions = async () => {
+            console.log("🤖 Mapa: Buscando previsões da IA para o slider...");
+            // Chama o serviço que bate na rota /api/ai/batch
+            const preds = await OpportunityService.getBatchPredictions(opportunities);
+            if (preds) {
+                setAiPredictions(preds);
+            }
+        };
+        fetchPredictions();
+    }
+  }, [opportunities]);
+
+  // Simula a mudança de ROI e ajusta o Preço de Venda para ser consistente
+ // --- LÓGICA DO SLIDER (CONECTADA À IA) ---
   const getSimulatedOpportunities = () => {
-    if (timeHorizon === 0) return opportunities; // Hoje = Dados Reais
+    if (timeHorizon === 0) return opportunities;
 
     return opportunities.map(opp => {
-        // Cria uma variação determinística baseada no ID para simular volatilidade
-        const variation = 1 + ((opp.id % 5) - 2) * (timeHorizon / 100); 
+        // Tenta pegar a previsão da IA para este ID
+        const prediction = aiPredictions[opp.id];
+        
+        let newRoi = opp.roi;
+        let newSellPrice = opp.sellPrice;
+
+        if (prediction) {
+            // A IA retorna chaves '7' e '30'
+            // Se o slider estiver em 7, pega o 7. Se for > 7 (ex: 14, 30), pega o 30.
+            const horizonKey = timeHorizon <= 7 ? 7 : 30;
+            const predictedRoi = prediction[horizonKey];
+            
+            if (predictedRoi !== undefined) {
+                newRoi = predictedRoi;
+                
+                // Recalcula o Preço de Venda para bater com o ROI da IA
+                // Fórmula: Venda = Compra * (1 + ROI/100)
+                newSellPrice = opp.buyPrice * (1 + newRoi / 100);
+            }
+        }
+
         return {
             ...opp,
-            roi: Math.round(opp.roi * variation),
-            riskLevel: variation < 0.9 ? Math.min(3, opp.riskLevel + 1) : opp.riskLevel
+            roi: Math.round(newRoi),
+            sellPrice: newSellPrice, // Atualiza o valor no Card/Popup
+            // Se o ROI cair para negativo, marca como risco alto
+            riskLevel: newRoi < 0 ? 3 : opp.riskLevel
         };
     });
   };
@@ -470,13 +510,9 @@ return (
                 position={opp.position}
                 icon={createRiskIcon(opp.roi, opp.riskLevel)}
                 eventHandlers={{
-                  click: () => { handleSelection(opp); },
-                  popupclose: () => {
-                    // Só limpa se for o item atual
-                    setSelectedOpportunity(prev => (prev?.id === opp.id ? null : prev));
-                    setSelectedState(prev => (prev === opp.state ? null : prev));
-                    setActiveMarkerId(prev => (prev === opp.id ? null : prev));
-                  }
+                  // Mantemos apenas o clique para selecionar
+                  click: () => { handleSelection(opp); }
+                  // Removemos o popupclose para evitar que o zoom feche o card
                 }}
               >
                 <Popup maxWidth={350} minWidth={250} autoPanPadding={[50, 50]}>

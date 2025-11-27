@@ -171,6 +171,16 @@ app.get('/api/analytics/trend', verifyToken, async (req, res) => {
   }
 });
 
+app.post('/api/ai/batch', verifyToken, async (req, res) => {
+  try {
+    const response = await axios.post(`${PYTHON_API_URL}/predict/batch`, req.body);
+    res.json(response.data);
+  } catch (error) {
+    console.error("Erro Batch:", error.message);
+    res.status(500).json({ error: 'Erro ao processar lote' });
+  }
+});
+
 // ============================================
 // 📈 ROTAS DE CEASA
 // ============================================
