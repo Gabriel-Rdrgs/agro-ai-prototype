@@ -196,7 +196,7 @@ if (scenarioData.result.details?.fuel_breakdown) {
     doc.save(`Relatorio_Agro_${scenarioData.input.product}_${Date.now()}.pdf`);
   },
 
-  // --- RELATÓRIO 2: DASHBOARD GERAL (PANORAMA) ---
+// --- RELATÓRIO 2: DASHBOARD GERAL (PANORAMA) ---
   generateDashboardReport: (data, userName = 'Gestor') => {
     const doc = new jsPDF('p', 'mm', 'a4');
     const primaryColor = [0, 217, 255]; 
@@ -205,12 +205,10 @@ if (scenarioData.result.details?.fuel_breakdown) {
     // Header
     doc.setFillColor(...darkBg);
     doc.rect(0, 0, 210, 40, 'F');
-    
     doc.setTextColor(...primaryColor);
     doc.setFontSize(22);
     doc.setFont('helvetica', 'bold');
     doc.text('AgroArbitrage AI', 14, 20);
-    
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
@@ -221,9 +219,13 @@ if (scenarioData.result.details?.fuel_breakdown) {
     doc.text(`Data: ${today}`, 196, 20, { align: 'right' });
     doc.text(`Solicitante: ${userName}`, 196, 28, { align: 'right' });
 
+    if (data.market) {
+        doc.text(`Dólar: R$ ${data.market.dollar.toFixed(3)} | Diesel Médio (BR): R$ ${data.market.dieselAvg.toFixed(2)}`, 196, 36, { align: 'right' });
+    }
+
     let yPos = 50;
 
-    // 1. Resumo Executivo (Cards)
+    // --- 1. Resumo Executivo (KPIs) ---
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
@@ -239,7 +241,7 @@ if (scenarioData.result.details?.fuel_breakdown) {
         { title: 'Oportunidades', value: data.kpis.total, color: [0, 217, 255] },
         { title: 'ROI Médio', value: `${data.kpis.avgROI}%`, color: [167, 139, 250] },
         { title: 'Alto Risco', value: data.kpis.highRisk, color: [239, 68, 68] },
-        { title: 'Volume Total', value: `${data.kpis.volume}t`, color: [16, 185, 129] }
+        { title: 'Volume Total', value: `${parseInt(data.kpis.volume).toLocaleString()}`, color: [16, 185, 129] }
     ];
 
     kpis.forEach(kpi => {
@@ -262,18 +264,42 @@ if (scenarioData.result.details?.fuel_breakdown) {
 
     yPos += 35;
 
-    // 2. Top 5 Oportunidades
+    // --- 2. Cotação do Diesel (Tabela) ---
+    if (data.market && data.market.fuelByState) {
+        doc.setFontSize(14);
+        doc.setTextColor(0, 0, 0);
+        doc.text('2. Cotação do Diesel por Estado (S-10)', 14, yPos);
+        
+        const fuelRows = data.market.fuelByState.labels.map((label, index) => [
+            label,
+            `R$ ${data.market.fuelByState.values[index].toFixed(2)}`
+        ]);
+
+        autoTable(doc, {
+            startY: yPos + 5,
+            head: [['Estado', 'Preço Médio (R$/L)']],
+            body: fuelRows,
+            theme: 'striped',
+            headStyles: { fillColor: [59, 130, 246], textColor: [255,255,255] },
+            styles: { fontSize: 10, halign: 'center' },
+            columnStyles: { 0: { halign: 'left' } }
+        });
+        
+        yPos = doc.lastAutoTable.finalY + 15;
+    }
+
+    // --- 3. Top 5 Oportunidades ---
     doc.setFontSize(14);
     doc.setTextColor(0, 0, 0);
-    doc.text('2. Top 5 Oportunidades (Maior ROI)', 14, yPos);
+    doc.text('3. Top 5 Oportunidades (Maior ROI)', 14, yPos);
     
     const top5Rows = data.top5.map(opp => [
-        opp.product,
-        `${opp.city} - ${opp.state}`,
-        opp.sellLocation,
-        `R$ ${opp.buyPrice.toFixed(2)}`,
-        `R$ ${opp.sellPrice.toFixed(2)}`,
-        `${opp.roi}%`
+        opp.product || '-',
+        `${opp.city || ''} - ${opp.state || ''}`,
+        opp.sellLocation || opp.destState || '-',
+        `R$ ${(opp.buyPrice || 0).toFixed(2)}`,
+        `R$ ${(opp.sellPrice || 0).toFixed(2)}`,
+        `${(opp.roi || 0).toFixed(1)}%`
     ]);
 
     autoTable(doc, {
@@ -283,36 +309,11 @@ if (scenarioData.result.details?.fuel_breakdown) {
         theme: 'grid',
         headStyles: { fillColor: darkBg, textColor: primaryColor },
         styles: { fontSize: 9, halign: 'center' },
-        columnStyles: {
-            0: { halign: 'left' },
-            1: { halign: 'left' },
-            2: { halign: 'left' }
-        }
+        columnStyles: { 0: { halign: 'left' }, 1: { halign: 'left' }, 2: { halign: 'left' } }
     });
 
-    // 3. Cenários Salvos
-    if (data.saved && data.saved.length > 0) {
-        yPos = doc.lastAutoTable.finalY + 20;
-        doc.setFontSize(14);
-        doc.text('3. Simulações Recentes (Salvas)', 14, yPos);
-
-        const savedRows = data.saved.map(s => [
-            new Date(s.savedAt).toLocaleDateString(),
-            s.input.product,
-            s.input.destinationName,
-            `R$ ${s.result.profit.toLocaleString('pt-BR')}`,
-            `${s.result.roi}%`
-        ]);
-
-        autoTable(doc, {
-            startY: yPos + 5,
-            head: [['Data', 'Produto', 'Destino', 'Lucro Liq.', 'ROI Calculado']],
-            body: savedRows,
-            theme: 'striped',
-            headStyles: { fillColor: [16, 185, 129], textColor: [255,255,255] },
-            styles: { fontSize: 9, halign: 'center' }
-        });
-    }
+    // --- 4. Histórico Completo REMOVIDO! ---
+    // (A secção de histórico que pediste para tirar foi apagada daqui)
 
     // Rodapé
     const pageHeight = doc.internal.pageSize.height;
@@ -320,8 +321,9 @@ if (scenarioData.result.details?.fuel_breakdown) {
     doc.setTextColor(150, 150, 150);
     doc.text('AgroArbitrage AI - Panorama de Mercado.', 105, pageHeight - 10, { align: 'center' });
 
-    doc.save('Dashboard_Agro_AI.pdf');
+    doc.save(`Dashboard_Agro_${Date.now()}.pdf`);
   },
+
     // --- RELATÓRIO 3: ROI ARBITRAGEM (RoiCalculator) ---
 generateRoiReport: (apiData, userName = 'Produtor') => {
     // ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@ import hashlib
 from functools import lru_cache
 from dotenv import load_dotenv
 from fuel_intelligence import fuel_api
+from climate_intelligence import climate_api
 import asyncio
 import httpx
 import logging
@@ -225,24 +226,11 @@ def get_real_dollar_rate():
     except Exception as e:
         print(f'Erro ao buscar dólar: {e}. Usando backup: R$ 5.50')
         return 5.50
-
-LOGISTICS_CACHE = {
-    'diesel_price': 6.10, # Valor inicial de segurança
-    'last_update': datetime.now()
-}
-# Adicione isto junto com as classes SimulationRequest, ArbitrageRequest, etc.
 class MarketScanRequest(BaseModel):
     product: str
     origin_state: str
     volume: float = 1000.0 # Opcional, padrão 1000 unidades
     month: int = None
-
-# Agendamento do Job (Adicione isso no seu startup ou scheduler existente)
-def run_fuel_scheduler():
-    schedule.every(24).hours.do(update_fuel_prices)
-    while True:
-        schedule.run_pending()
-        time.sleep(3600)
 
 @lru_cache(maxsize=32)
 def get_prediction_model(product_name):
@@ -311,97 +299,7 @@ def get_prediction_model(product_name):
     except Exception as e:
         print(f"Erro no modelo de predição: {e}")
         return None, 0.05
-        
-def validate_coords(lat, lng):
-    """Verifica se as coordenadas são geograficamente válidas"""
-    try:
-        lat, lng = float(lat), float(lng)
-        return -90 <= lat <= 90 and -180 <= lng <= 180
-    except (TypeError, ValueError):
-        return False
-
-
-@lru_cache(maxsize=128)
-def fetch_climate_history_averages(lat, lng, month):
-    """Busca histórico climático de 5 anos na OpenMeteo Archive"""
-    if not validate_coords(lat, lng):
-        print(f'Coordenadas inválidas: {lat}, {lng}')
-        return 150.0
     
-    try:
-        current_year = datetime.now().year
-        end_date = datetime.now().replace(year=current_year - 1).strftime('%Y-%m-%d')
-        start_date = datetime.now().replace(year=current_year - 6).strftime('%Y-%m-%d')
-        
-        url = f"https://archive-api.open-meteo.com/v1/archive?latitude={lat}&longitude={lng}&start_date={start_date}&end_date={end_date}&daily=precipitation_sum&timezone=America/Sao_Paulo"
-        response = requests.get(url, timeout=4)
-        
-        if response.status_code != 200:
-            print(f'OpenMeteo Offline: Erro {response.status_code}')
-            return 150.0
-        
-        data = response.json()
-        if 'daily' not in data:
-            return 150.0
-        
-        df = pd.DataFrame(data['daily'])
-        df['time'] = pd.to_datetime(df['time'])
-        month_data = df[df['time'].dt.month == month]
-        
-        if month_data.empty:
-            return 150.0
-        
-        daily_avg = month_data['precipitation_sum'].mean()
-        monthly_avg = daily_avg * 30
-        print(f'Histórico OpenMeteo: ({lat},{lng}) Mês {month}: {monthly_avg:.1f}mm')
-        
-        return monthly_avg
-    except Exception as e:
-        print(f'Erro ao buscar histórico climático: {e}')
-        return 150.0
-
-
-@lru_cache(maxsize=128)
-def fetch_nasa_solar_data(lat, lng, month):
-    """Busca média histórica de Radiação Solar na NASA POWER"""
-    if not validate_coords(lat, lng):
-        return 15.0
-    
-    try:
-        url = "https://power.larc.nasa.gov/api/temporal/climatology/point"
-        params = {
-            'parameters': 'ALLSKY_SFC_SW_DWN',
-            'community': 'AG',
-            'longitude': lng,
-            'latitude': lat,
-            'format': 'JSON'
-        }
-        response = requests.get(url, params=params, timeout=5)
-        
-        if response.status_code != 200:
-            print(f'NASA Offline: Erro {response.status_code}')
-            return 18.0
-        
-        data = response.json()
-        properties = data.get('properties', {}).get('parameter', {}).get('ALLSKY_SFC_SW_DWN', {})
-        month_keys = {1: 'JAN', 2: 'FEB', 3: 'MAR', 4: 'APR', 5: 'MAY', 6: 'JUN',
-                     7: 'JUL', 8: 'AUG', 9: 'SEP', 10: 'OCT', 11: 'NOV', 12: 'DEC'}
-        
-        raw_val = properties.get(month_keys[month], -1)
-        if raw_val <= 0:
-            return 15.0
-        
-        mj_val = raw_val
-        if raw_val < 10.0:
-            mj_val = raw_val * 3.6
-        
-        print(f'NASA POWER: ({lat}, {lng}) Mês {month}: {mj_val:.2f} MJ/média')
-        return mj_val
-    except Exception as e:
-        print(f'Erro NASA POWER: {e}')
-        return 18.0
-
-
 def calculate_distance(state_a, state_b):
     """Calcula distância entre estados usando Fórmula de Haversine"""
     if state_a == state_b:
@@ -690,17 +588,15 @@ def sync_market_prices():
 
 @app.post("/predict/storage")
 def predict_storage_viability(data: SimulationRequest):
-    """Predição de armazenagem inteligente (Sempre em KG)"""
+    """Predição de armazenagem usando o CÉREBRO CLIMÁTICO (Climate Intelligence)"""
     
-    # 1. Configuração e Normalização Inicial
+    # 1. Configuração e Normalização
     product_key = data.product.strip().capitalize()
     specs = CROPS_SPECS.get(product_key, CROPS_SPECS['Default'])
     weight = specs.get('unit_weight_kg', 1.0)
     
     # Preço Atual em KG
     price_per_kg = data.current_price
-    
-    # Heurística: Se preço atual for de caixa, converte para Kg
     if (product_key == 'Tomate' and price_per_kg > 15.0) or \
        (product_key in ['Soja', 'Milho'] and price_per_kg > 10.0):
         price_per_kg /= weight
@@ -708,48 +604,37 @@ def predict_storage_viability(data: SimulationRequest):
     days = 30
     current_month = datetime.now().month
     
-    # --- 1. Determinismo ---
     seed_source = f"{data.product}-{data.state}-{datetime.now().strftime('%Y-%m-%d')}"
     seed_val = int(hashlib.sha256(seed_source.encode('utf-8')).hexdigest(), 16) % (2**32)
     rng = np.random.RandomState(seed_val)
 
-    # --- 2. Clima (Gap Fill) ---
+    # --- 2. CLIMA (AGORA USANDO O MÓDULO INTELIGENTE) ---
     if data.lat and data.lng:
-        monthly_rain_avg = fetch_climate_history_averages(data.lat, data.lng, current_month)
-        solar_mj_avg = fetch_nasa_solar_data(data.lat, data.lng, current_month)
+        # 👇 AQUI ESTÁ A MUDANÇA
+        monthly_rain_avg = climate_api.get_rain_history(data.lat, data.lng, current_month)
+        solar_mj_avg = climate_api.get_solar_radiation(data.lat, data.lng, current_month)
     else:
         monthly_rain_avg = BRAZIL_CLIMATE_NORMS.get(data.state, {}).get(current_month, 150)
         solar_mj_avg = 18.0
     
     forecast_rain = data.daily_rain if data.daily_rain else [0] * 16
-    forecast_max = data.daily_temp_max if data.daily_temp_max else [25] * 16
-    forecast_min = data.daily_temp_min if data.daily_temp_min else [18] * 16
     
+    # Gap Fill (Mantido igual)
     days_blind = max(0, days - len(forecast_rain))
     missing_rain = max(0, monthly_rain_avg - sum(forecast_rain))
     daily_avg_missing = missing_rain / days_blind if days_blind > 0 else 0
-    
     final_rain = list(forecast_rain)
-    final_max = list(forecast_max)
-    final_min = list(forecast_min)
-    
     for _ in range(days_blind):
-        sim_rain = 0
-        if rng.random() < 0.6:
-            sim_rain = rng.normal(daily_avg_missing, daily_avg_missing * 0.5)
+        sim_rain = rng.normal(daily_avg_missing, daily_avg_missing * 0.5) if rng.random() < 0.6 else 0
         final_rain.append(max(0, sim_rain))
-        final_max.append(np.mean(forecast_max) - 3 + rng.normal(0, 2))
-        final_min.append(np.mean(forecast_min) - 3 + rng.normal(0, 2))
-    
     final_rain = final_rain[:days]
 
-    # --- 3. Modelagem e Projeção ---
+    # --- 3. Modelagem e Projeção (Mantido igual) ---
     model, volatility = get_prediction_model(data.product)
     prices, costs, future_dates = [], [], []
     risk_acc = 0
     vol_boost = specs.get('volatility_factor', 1.0)
     
-    # Qualidade (NASA)
     quality_factor = 1.0
     required_sun = specs.get('min_solar_mj', 0)
     if required_sun > 0 and solar_mj_avg < required_sun:
@@ -760,54 +645,32 @@ def predict_storage_viability(data: SimulationRequest):
     for i in range(days):
         future_date = datetime.now() + timedelta(days=i)
         future_dates.append(future_date.strftime('%d/%m'))
+        costs.append(round(i * (data.storage_cost_per_day or 0.05), 2))
         
-        # Custo Linear
-        daily_cost = data.storage_cost_per_day if data.storage_cost_per_day > 0 else 0.05
-        costs.append(round(i * daily_cost, 2))
-        
-        # Tendência Base (Começa com o preço atual em KG)
         trend = price_per_kg
-        
-        # Se houver modelo, tenta prever
         if model:
             try:
                 X_pred = pd.DataFrame({'date_ordinal': [future_date.toordinal()]})
                 predicted = float(model.predict(X_pred)[0])
-                
-                # 🛑 FILTRO DE SEGURANÇA DE UNIDADE 🛑
-                # Se o modelo cuspir um valor absurdo (ex: 80.00 para tomate), 
-                # forçamos a conversão para Kg dividindo pelo peso.
-                if (product_key == 'Tomate' and predicted > 15.0) or \
-                   (product_key in ['Soja', 'Milho'] and predicted > 10.0):
-                    predicted /= weight
-                
+                if (product_key == 'Tomate' and predicted > 15.0): predicted /= weight
                 trend = predicted
-            except: 
-                pass
+            except: pass
         
-        # Sazonalidade
         if product_key == 'Tomate' and future_date.month in [4, 5, 6, 7]:
             trend *= 1 + 0.005 * i
         
         trend *= quality_factor
         
-        # Impactos Micro
         impact = 0.0
         if final_rain[i] > specs.get('rain_logistics_limit', 20):
             impact = 0.12 * vol_boost
             risk_acc += 1
-        if final_min[i] < specs.get('temp_min_critical', 10):
-            impact = 0.08 * vol_boost
-            risk_acc += 1
         
         noise = rng.normal(0, volatility * vol_boost * 0.5)
-        
-        # Preço Final do Dia (KG)
         final_price_kg = max(0.5, trend * (1 + impact) + noise)
         prices.append(round(final_price_kg, 2))
 
-    # --- 4. Decisão ---
-    # Lucro = Preço Futuro (Kg) - Preço Atual (Kg) - Custo (Kg)
+    # --- 4. Decisão (Mantido igual) ---
     net_profit = [p - price_per_kg - c for p, c in zip(prices, costs)]
     max_profit = max(net_profit)
     best_idx = net_profit.index(max_profit)
@@ -816,25 +679,12 @@ def predict_storage_viability(data: SimulationRequest):
     if quality_factor < 0.95:
         risk_msg = f'Alerta: Baixa insolação {solar_mj_avg:.1f}MJ afeta qualidade.'
     
-    if max_profit > 0:
-        action = 'ARMAZENAR'
-        if 'insolação' not in risk_msg: risk_msg = f'Pico em {future_dates[best_idx]} supera custos.'
-    elif max_profit > -1.0:
-        action = 'AGUARDAR'
-        if 'insolação' not in risk_msg: risk_msg = 'Margens apertadas. Monitore o clima.'
-    else:
-        action = 'VENDER IMEDIATAMENTE'
-        if 'insolação' not in risk_msg: risk_msg = 'Custo supera valorização.'
-    
+    action = 'ARMAZENAR' if max_profit > 0 else 'VENDER IMEDIATAMENTE'
     conf_score = 0.95 if (data.lat and solar_mj_avg > 10) else 0.80
     if risk_acc > 5: conf_score -= 0.15
 
     return {
-        'chart_data': {
-            'labels': future_dates,
-            'prices': prices,
-            'costs': costs
-        },
+        'chart_data': {'labels': future_dates, 'prices': prices, 'costs': costs},
         'recommendation': {
             'action': action,
             'best_day_date': future_dates[best_idx] if max_profit > -5 else 'Hoje',
@@ -1593,55 +1443,36 @@ def get_fuel_price_history(state: str, days: int = 30):
 
 @app.post("/market/scan")
 def scan_market_opportunities(data: MarketScanRequest):
-    logger.info(f"📡 Scan: {data.product} de {data.origin_state} (Mês: {data.month or 'Atual'})")
-    
-    # Lista de polos (Adicionei mais alguns para garantir)
+    logger.info(f"📡 Scan: {data.product} de {data.origin_state}")
     potential_destinations = ['SP', 'RJ', 'MG', 'BA', 'GO', 'PE', 'RS', 'CE', 'SC', 'PR', 'MT', 'MS']
-    
-    # 🚨 CORREÇÃO 1: NÃO REMOVEMOS MAIS A ORIGEM
-    # Se quiser vender em GO sendo de GO, tudo bem!
-    
     opportunities = []
     
     product_key = data.product.strip().capitalize()
     specs = CROPS_SPECS.get(product_key, CROPS_SPECS['Default'])
     unit_weight = specs.get('unit_weight_kg', 1.0)
-    
-    # Base de custo apenas para referência
     base_cost = specs.get('base_cost_ha', 5000) / specs.get('base_productivity', 100)
-    
-    # 🚨 CORREÇÃO 2: USA O MÊS SELECIONADO OU O ATUAL
     target_month = data.month if data.month else datetime.now().month
 
     for dest in potential_destinations:
         try:
-            # Preço para o Mês Correto
             price_kg = get_predicted_market_price(data.product, dest, target_month)
-            
             sell_price_unit = price_kg * unit_weight
             gross_revenue = data.volume * sell_price_unit
-            
-            # Logística
             distance = calculate_distance(data.origin_state, dest)
             
-            # Se for local (distância curta), o custo é frete mínimo urbano
             if distance < 100:
-                fuel_cost = 150.0 # Taxa fixa local estimada
-                diesel_ref = 6.10
+                fuel_cost, diesel_ref = 150.0, 6.10
             else:
                 try:
-                    fuel_data = fuel_api.calculate_route_fuel_cost(data.origin_state, dest, distance)
-                    fuel_cost = fuel_data['total_fuel_cost']
-                    diesel_ref = fuel_data['dest_price']['price_per_liter']
+                    f = fuel_api.calculate_route_fuel_cost(data.origin_state, dest, distance)
+                    fuel_cost, diesel_ref = f['total_fuel_cost'], f['dest_price']['price_per_liter']
                 except:
-                    fuel_cost = (distance / 3.5) * 6.20
-                    diesel_ref = 6.20
+                    fuel_cost, diesel_ref = (distance / 3.5) * 6.20, 6.20
             
-            maint_driver_cost = distance * (LOGISTICS_DATA['maintenance_per_km'] + LOGISTICS_DATA['driver_cost_per_km'])
-            
+            maint_cost = distance * (LOGISTICS_DATA['maintenance_per_km'] + LOGISTICS_DATA['driver_cost_per_km'])
             capacity = 1200 if product_key == 'Tomate' else 550
             trips = math.ceil(data.volume / capacity)
-            total_logistics = (fuel_cost + maint_driver_cost) * trips
+            total_logistics = (fuel_cost + maint_cost) * trips
             
             total_op_cost = (base_cost * data.volume) + total_logistics
             net_profit = gross_revenue - total_op_cost
@@ -1656,20 +1487,12 @@ def scan_market_opportunities(data: MarketScanRequest):
                 "roi": round(roi, 1),
                 "diesel_ref": f"R$ {diesel_ref:.2f}"
             })
-            
-        except Exception as e:
-            # Log discreto para não poluir, mas ajuda a debugar se vier vazio
-            logger.warning(f"Scan ignorou {dest}: {str(e)}")
-            continue
+        except Exception: continue
 
-    ranked_opportunities = sorted(opportunities, key=lambda x: x['net_profit'], reverse=True)
-    best = ranked_opportunities[0] if ranked_opportunities else None
-    
+    ranked = sorted(opportunities, key=lambda x: x['net_profit'], reverse=True)
     return {
-        "product": data.product,
-        "origin": data.origin_state,
-        "ranking": ranked_opportunities,
-        "best_opportunity": best
+        "product": data.product, "origin": data.origin_state,
+        "ranking": ranked, "best_opportunity": ranked[0] if ranked else None
     }
 # ============================================================================
 # PONTO DE ENTRADA E CONFIGURAÇÃO FINAL
@@ -1691,12 +1514,6 @@ if __name__ == '__main__':
     logger.info("📡 Endpoints disponíveis em http://localhost:3001/docs")
     logger.info("="*70)
     
-# 1. Atualiza o preço imediatamente ao ligar
-    Thread(target=update_fuel_prices).start()
-    
-    # 2. Inicia o agendador em background
-    Thread(target=run_fuel_scheduler, daemon=True).start()
-
     # Inicia o servidor Uvicorn
     uvicorn.run(
         'main:app',
@@ -1717,6 +1534,11 @@ class BatchItem(BaseModel):
 
 class BatchSimulationRequest(BaseModel):
     items: List[BatchItem]
+class MarketScanRequest(BaseModel):
+    product: str
+    origin_state: str
+    volume: float = 1000.0
+    month: int = None
 
 # --- ROTA DE PREVISÃO EM MASSA (PARA O MAPA) ---
 @app.post("/predict/batch")

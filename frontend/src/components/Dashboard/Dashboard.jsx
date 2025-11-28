@@ -1,493 +1,290 @@
-import React, { useState, useEffect, useRef } from "react";
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  LineElement,
-  PointElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler,
-} from "chart.js";
-import { Bar, Line } from "react-chartjs-2";
-import { StorageService } from '../../services/storageService';
-import { PdfService } from '../../services/pdfService';
-import "../../styles/dashboard.css";
+// frontend/src/components/Dashboard/Dashboard.jsx
+import React, { useEffect, useState } from 'react';
+import { OpportunityService } from '../../services/opportunityService';
+import { PdfService } from '../../services/pdfService'; // 🔙 Trazendo o PDF de volta
+import { 
+  Chart as ChartJS, 
+  CategoryScale, 
+  LinearScale, 
+  BarElement, 
+  LineElement,    
+  PointElement,   
+  Title, 
+  Tooltip, 
+  Legend 
+} from 'chart.js';
+import { Bar, Line } from 'react-chartjs-2';
+import '../../styles/dashboard.css';
 
-// Registro dos componentes do Chart.js
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  LineElement,
-  PointElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-);
+ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend);
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
-
-const Dashboard = ({ setSelectedOpportunity, setActiveTab, opportunities = [], onLoadScenario, currentDollar }) => {
-  // --- ESTADOS ---
-  const [selectedCrop, setSelectedCrop] = useState("");
-  const [selectedCity, setSelectedCity] = useState("");
-  const [newOpAlert, setNewOpAlert] = useState(false);
-  const [alertVisible, setAlertVisible] = useState(false);
-  const [savedScenarios, setSavedScenarios] = useState([]);
+const Dashboard = () => {
+  // Estado
+  const [stats, setStats] = useState({
+    dollar: 0,
+    dieselAvg: 0,
+    opportunitiesCount: 0,
+    lastUpdate: '-'
+  });
+  
+  const [opportunities, setOpportunities] = useState([]); // 🔙 Lista Completa para a Tabela
+  const [fuelData, setFuelData] = useState(null);
   const [trendData, setTrendData] = useState(null);
-  // Busca histórico real no backend
- // Busca histórico real no backend (Com Filtros de Produto e Cidade!)
-  useEffect(() => {
-    const fetchTrend = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        
-        // Monta a URL com parâmetros dinâmicos
-        const params = new URLSearchParams();
-        
-        // Só adiciona na URL se o usuário tiver selecionado algo
-        if (selectedCrop) params.append('product', selectedCrop);
-        if (selectedCity) params.append('city', selectedCity);
+  const [loading, setLoading] = useState(true);
 
-        // Faz a chamada para a API com os filtros
-        const response = await fetch(`${API_URL}/api/analytics/trend?${params.toString()}`, {
-    headers: {
-        'Authorization': `Bearer ${token}`
-    }
-});
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [opps, fuel, trend] = await Promise.all([
+          OpportunityService.getAll(),
+          OpportunityService.getFuelPrices(),
+          OpportunityService.getPriceTrend()
+        ]);
+
+        // 1. Processa Estatísticas e Lista
+        const dollarRate = opps.length > 0 ? opps[0].dollarRate : 5.50;
         
-        const data = await response.json();
-        setTrendData(data);
-      } catch (e) {
-        console.error("Erro ao carregar gráfico:", e);
+        // Ordena oportunidades por ROI (do maior para o menor) para a tabela
+        const sortedOpps = [...opps].sort((a, b) => b.roi - a.roi);
+        setOpportunities(sortedOpps);
+
+        // 2. Processa Combustível
+        let dieselVal = 0;
+        let chartLabels = [];
+        let chartValues = [];
+
+        if (fuel && fuel.data && fuel.data.precos) {
+            const dieselRaw = fuel.data.precos.diesel.br || fuel.data.precos.diesel.sp;
+            dieselVal = parseFloat(dieselRaw.replace(',', '.'));
+            
+            const states = ['SP', 'MT', 'GO', 'BA', 'RS'];
+            chartLabels = states;
+            chartValues = states.map(uf => {
+                const val = fuel.data.precos.diesel[uf.toLowerCase()] || '0';
+                return parseFloat(val.replace(',', '.'));
+            });
+        }
+
+        setStats({
+            dollar: dollarRate,
+            dieselAvg: dieselVal,
+            opportunitiesCount: opps.length,
+            lastUpdate: new Date().toLocaleTimeString()
+        });
+
+        setFuelData({ labels: chartLabels, values: chartValues });
+
+        // 3. Processa Gráfico de Tendência
+        if (trend && trend.labels) {
+            setTrendData({
+                labels: trend.labels,
+                datasets: [{
+                    label: 'Tendência de Preços (Média Geral)',
+                    data: trend.data,
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                    tension: 0.4,
+                    fill: true
+                }]
+            });
+        }
+
+      } catch (error) {
+        console.error("Erro ao carregar Dashboard:", error);
+      } finally {
+        setLoading(false);
       }
     };
-    
-    fetchTrend();
-  }, [selectedCrop, selectedCity]); // <--- Recarrega sempre que esses dois mudarem
-  const barRef = useRef();
 
-  // --- EFEITOS ---
-
-  // 1. Carregar cenários salvos ao iniciar
-  useEffect(() => {
-    setSavedScenarios(StorageService.getAll());
+    fetchData();
   }, []);
 
-  // 2. Simulação de Alerta "Nova Oportunidade" (Timer)
-  useEffect(() => {
-    const timer = setTimeout(() => setNewOpAlert(true), 12000);
-    return () => clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    if (newOpAlert) {
-      setAlertVisible(true);
-      const hideTimer = setTimeout(() => setAlertVisible(false), 3500);
-      const offTimer = setTimeout(() => setNewOpAlert(false), 4200);
-      return () => {
-        clearTimeout(hideTimer);
-        clearTimeout(offTimer);
-      };
-    }
-  }, [newOpAlert]);
-
-  // --- LÓGICA DE FILTRAGEM (O Coração da Reatividade) ---
-  
-  // 1. Criamos uma lista nova contendo APENAS o que bate com os filtros
- // 1. Filtra as oportunidades com base nos selects do topo
-  const filteredOps = opportunities.filter(op => {
-    const matchCrop = !selectedCrop || op.product === selectedCrop;
-    const matchCity = !selectedCity || op.city === selectedCity;
-    return matchCrop && matchCity;
-  });
-
-  // 2. Recalcula os Cards (KPIs) usando apenas a lista filtrada
-  const stats = {
-    total: filteredOps.length,
-    volume: filteredOps.reduce((acc, curr) => acc + (Number(curr.volume) || 0), 0),
-    avgRoi: filteredOps.length > 0 
-      ? (filteredOps.reduce((acc, curr) => {
-          const buy = Number(curr.buyPrice) || 1; 
-          const sell = Number(curr.sellPrice) || 0;
-          return acc + ((sell - buy) / buy) * 100;
-        }, 0) / filteredOps.length).toFixed(1) 
-      : 0,
-    highRisk: filteredOps.filter(op => op.riskLevel === 3).length
-  };
-
-  // --- LÓGICA DE DADOS ---
-
-  // Filtro por cultura
-  const uniqueCrops = [...new Set(opportunities.map(o => o.product))];
-  
-  const cropFilteredOpps = opportunities.filter(
-    o => !selectedCrop || o.product === selectedCrop
-  );
-
-  // Estatísticas (KPIs)
-  const totalOpportunities = cropFilteredOpps.length;
-  const avgROI = cropFilteredOpps.length
-    ? (cropFilteredOpps.reduce((sum, opp) => sum + opp.roi, 0) / totalOpportunities).toFixed(1)
-    : 0;
-  const highRiskCount = cropFilteredOpps.filter(opp => opp.riskLevel === 3).length;
-  
-  // Extração de números da string de volume (ex: "50 toneladas" -> 50)
-  const totalVolume = cropFilteredOpps.reduce((sum, opp) => {
-    const volMatch = String(opp.volume).match(/\d+/);
-    return sum + (volMatch ? parseInt(volMatch[0], 10) : 0);
-  }, 0);
-
-  // Top 5 Oportunidades (Ordenadas por ROI)
-  const topOpportunities = [...cropFilteredOpps]
-    .sort((a, b) => b.roi - a.roi)
-    .slice(0, 5);
-
-  // Função para deletar cenário salvo
-  const handleDeleteScenario = (id) => {
-    const updated = StorageService.delete(id);
-    setSavedScenarios(updated);
-  };
-
-  // Função para Exportar PDF
+  // 🔙 Função para Gerar o PDF Geral do Dashboard
   const handleExportDashboard = () => {
+    // Cálculo seguro do Volume Total (Remove texto como 'sc', 'cx')
+    const totalVolume = opportunities.reduce((acc, curr) => {
+        const volString = String(curr.volume || '0'); 
+        const volNumber = parseFloat(volString.replace(/[^0-9.]/g, '')) || 0;
+        return acc + volNumber;
+    }, 0);
+
     const dashboardData = {
         kpis: {
-            total: totalOpportunities,
-            avgROI: avgROI,
-            highRisk: highRiskCount,
-            volume: totalVolume
+            total: stats.opportunitiesCount,
+            avgROI: (opportunities.reduce((acc, curr) => acc + curr.roi, 0) / (opportunities.length || 1)).toFixed(1),
+            highRisk: opportunities.filter(o => o.riskLevel >= 2).length,
+            volume: totalVolume // Agora vai como número limpo
         },
-        top5: topOpportunities,
-        saved: savedScenarios
+        // 👇 NOVOS DADOS DE MERCADO (Que faltavam)
+        market: {
+            dollar: stats.dollar,
+            dieselAvg: stats.dieselAvg,
+            fuelByState: fuelData // Passamos os dados do gráfico para fazer tabela
+        },
+        top5: opportunities.slice(0, 5),
+        saved: opportunities
     };
 
-    PdfService.generateDashboardReport(dashboardData, "Paulo (Sócio)");
+    PdfService.generateDashboardReport(dashboardData, 'Gestor Agro');
   };
 
-  // --- CONFIGURAÇÃO DOS GRÁFICOS ---
-
-  const barChartData = {
-    labels: topOpportunities.map(opp => opp.product),
-    datasets: [
-      {
-        label: "ROI (%)",
-        data: topOpportunities.map(opp => opp.roi),
-        backgroundColor: topOpportunities.map(opp =>
-          opp.roi > 100 ? "rgba(0,217,255,0.6)" : opp.roi > 50 ? "rgba(124,58,237,0.6)" : "rgba(239,68,68,0.6)"
-        ),
-        borderColor: topOpportunities.map(opp =>
-          opp.roi > 100 ? "#00d9ff" : opp.roi > 50 ? "#7c3aed" : "#ef4444"
-        ),
-        borderWidth: 2,
-        borderRadius: 8,
-      },
-    ],
-  };
-
-  const barChartOptions = {
+  // Opções dos Gráficos
+  const commonOptions = {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: {
-      legend: { display: false },
-      title: {
-        display: true,
-        text: "Top 5 Oportunidades por ROI",
-        color: "#00d9ff",
-        font: { size: 16, weight: "bold" },
-        padding: 20,
-      },
-      tooltip: {
-        backgroundColor: "rgba(10,14,39,0.95)",
-        titleColor: "#00d9ff",
-        bodyColor: "#fff",
-        borderColor: "#00d9ff",
-        borderWidth: 1,
-        callbacks: { label: ctx => `ROI: ${ctx.raw}%` },
-      },
-    },
+    plugins: { legend: { display: false } },
     scales: {
-      x: {
-        grid: { color: "rgba(0,217,255,0.1)" },
-        ticks: { color: "#00d9ff" },
-      },
-      y: {
-        grid: { color: "rgba(0,217,255,0.1)" },
-        ticks: { color: "#00d9ff" },
-        beginAtZero: true,
-      },
-    },
-  };
-
-  // Dados Mockados para Tendência
-  // 1. Calcula o preço médio ATUAL (Real do Banco)
-  const currentAvgPrice = cropFilteredOpps.length > 0
-    ? cropFilteredOpps.reduce((sum, op) => sum + op.buyPrice, 0) / cropFilteredOpps.length
-    : 4.50; // Fallback
-
-  // 2. Gera uma tendência simulada terminando no preço atual
-  // (Numa V2, isso viria de uma tabela 'HistoricalPrices')
-  // Se a API já retornou dados, usa eles. Se não, usa um placeholder.
-  const priceTrendData = {
-    labels: trendData ? trendData.labels : ["Carregando..."],
-    datasets: [
-      {
-        label: "Preço Médio Nacional (Histórico Real)",
-        data: trendData ? trendData.data : [],
-        borderColor: "#00d9ff",
-        backgroundColor: "rgba(0,217,255,0.1)",
-        borderWidth: 3,
-        fill: true,
-        tension: 0.4,
-        pointBackgroundColor: "#00d9ff"
-      },
-    ],
-  };
-
-  const lineChartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { display: false },
-      title: {
-        display: true,
-        text: "Tendência de Preços",
-        color: "#00d9ff",
-        font: { size: 16, weight: "bold" },
-        padding: 20,
-      },
-      tooltip: {
-        backgroundColor: "rgba(10,14,39,0.95)",
-        titleColor: "#00d9ff",
-        bodyColor: "#fff",
-        borderColor: "#00d9ff",
-        borderWidth: 1,
-        callbacks: { label: ctx => `R$ ${Number(ctx.raw).toFixed(2)}` },
-      },
-    },
-    scales: {
-      x: {
-        grid: { color: "rgba(0,217,255,0.1)" },
-        ticks: { color: "#00d9ff" },
-      },
-      y: {
-        grid: { color: "rgba(0,217,255,0.1)" },
-        ticks: {
-          color: "#00d9ff",
-          callback: v => `R$ ${v.toFixed(2)}`,
-        },
-      },
-    },
-  };
-
-  // Clique no gráfico de barras -> Leva ao Mapa
-  const handleBarClick = (nativeEvent) => {
-    const chart = barRef.current;
-    if (!chart) return;
-    const points = chart.getElementsAtEventForMode(
-      nativeEvent,
-      "nearest",
-      { intersect: true },
-      false
-    );
-    if (points?.length) {
-      const idx = points[0].index;
-      const opp = topOpportunities[idx];
-      if (opp) {
-        setSelectedOpportunity(opp);
-        setActiveTab("map");
-      }
+        y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+        x: { ticks: { color: '#94a3b8' }, grid: { display: false } }
     }
   };
+
+  const fuelChartData = {
+    labels: fuelData?.labels || [],
+    datasets: [{
+        label: 'Preço Diesel',
+        data: fuelData?.values || [],
+        backgroundColor: '#3b82f6',
+        borderRadius: 4
+    }]
+  };
+
+  if (loading) return <div className="dashboard-loading">🚀 Carregando Torre de Controle...</div>;
 
   return (
     <div className="dashboard-container">
-      {/* ALERTA FLUTUANTE */}
-      {newOpAlert && alertVisible && (
-        <div className="dashboard-alert">
-          Nova oportunidade detectada!
+      <header className="dashboard-header">
+        <div>
+            <h2>Torre de Controle</h2>
+            <p>Visão geral do mercado e logística em tempo real.</p>
         </div>
-      )}
-
-      {/* HEADER: FILTROS, DÓLAR E BOTÃO EXPORTAR */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
-          
-          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-              {/* Filtro de Produto */}
-              <div className="dashboard-crop-filter" style={{marginBottom: 0, display: 'flex', gap: '10px'}}>
-                <select 
-                    value={selectedCrop} 
-                    onChange={e => {
-                        setSelectedCrop(e.target.value);
-                        setSelectedCity(""); // Reseta cidade ao trocar produto
-                    }}
-                >
-                  <option value="">Todas culturas</option>
-                  {uniqueCrops.map(crop => (<option key={crop} value={crop}>{crop}</option>))}
-                </select>
-
-                {/* NOVO: Filtro de Cidade (Só aparece se tiver produto ou cidades disponíveis) */}
-                <select 
-                    value={selectedCity} 
-                    onChange={e => setSelectedCity(e.target.value)}
-                    disabled={!selectedCrop && uniqueCrops.length > 1} // Opcional: trava se não tiver filtro
-                    style={{ borderLeft: '4px solid #10b981' }} // Destaque visual
-                >
-                  <option value="">Todas as praças</option>
-                  {/* Lógica Sênior: Mostra cidades que têm o produto selecionado */}
-                  {[...new Set(opportunities
-                      .filter(o => !selectedCrop || o.product === selectedCrop)
-                      .map(o => o.city)
-                  )].sort().map(city => (
-                      <option key={city} value={city}>{city}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Badge do Dólar */}
-              {currentDollar > 0 && (
-                  <div style={{ 
-                      background: 'rgba(16, 185, 129, 0.1)', 
-                      border: '1px solid #10b981', 
-                      color: '#10b981',
-                      padding: '8px 12px', 
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      fontWeight: 'bold',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px'
-                  }}>
-                      <span>🇺🇸 USD PTAX:</span>
-                      <span style={{ color: '#fff' }}>R$ {currentDollar.toFixed(4)}</span>
-                  </div>
-              )}
-          </div>
-
-          {/* Botão Exportar PDF */}
-          <button 
-            onClick={handleExportDashboard}
-            style={{
-                background: '#1e293b',
-                color: '#facc15', // Amarelo
-                border: '1px solid #facc15',
-                padding: '8px 16px',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                transition: 'all 0.2s'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(250, 204, 21, 0.1)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = '#1e293b'}
-          >
-            📄 Relatório Gerencial
-          </button>
-      </div>
-
-      {/* CARDS (KPIs) */}
-      <div className="dashboard-cards">
-        <div className="card oportunidades">
-          <h3>Oportunidades</h3>
-          <p className="count">{totalOpportunities}</p>
-          <small>Monitoradas em tempo real</small>
+        <div style={{display: 'flex', gap: '15px', alignItems: 'center'}}>
+            <div className="last-update">Atualizado às {stats.lastUpdate}</div>
+            
+            {/* 🔙 BOTÃO DE EXPORTAR VOLTOU */}
+            <button 
+                onClick={handleExportDashboard}
+                style={{
+                    background: 'linear-gradient(45deg, #00d9ff, #00b8d9)',
+                    color: '#0f172a',
+                    border: 'none',
+                    padding: '8px 16px',
+                    borderRadius: '6px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                }}
+            >
+                📄 Exportar Panorama
+            </button>
         </div>
-        <div className="card roi">
-          <h3>ROI Médio</h3>
-          <p className="roi">{avgROI}%</p>
-          <small>Retorno sobre investimento</small>
-        </div>
-        <div className="card high-risk">
-          <h3>Alto Risco</h3>
-          <p className="high-risk">{highRiskCount}</p>
-          <small>Requer atenção especial</small>
-        </div>
-        <div className="card volume">
-          <h3>Volume total</h3>
-          <p className="volume">{totalVolume}t</p>
-          <small>Toneladas disponíveis</small>
-        </div>
-      </div>
+      </header>
 
-      {/* ÁREA DE CENÁRIOS SALVOS */}
-      {savedScenarios.length > 0 && (
-        <div style={{ marginBottom: '30px' }}>
-            <h3 style={{ color: '#fff', marginBottom: '15px', borderLeft: '4px solid #10b981', paddingLeft: '10px' }}>
-                📂 Cenários Simulados (Clique para Carregar)
-            </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '15px' }}>
-                {savedScenarios.map(scenario => (
-                    <div 
-                        key={scenario.id} 
-                        // AÇÃO: CLIQUE NO CARD PARA CARREGAR NA CALCULADORA
-                        onClick={() => onLoadScenario && onLoadScenario(scenario)}
-                        style={{ 
-                            background: '#15192c', 
-                            padding: '20px', 
-                            borderRadius: '12px', 
-                            border: '1px solid #334155', 
-                            position: 'relative', 
-                            boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-                            cursor: 'pointer', 
-                            transition: 'transform 0.2s, border-color 0.2s'
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.borderColor = '#00d9ff'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.borderColor = '#334155'; }}
-                    >
-                        <button 
-                          onClick={(e) => {
-                              e.stopPropagation(); // Impede o clique de carregar ao deletar
-                              handleDeleteScenario(scenario.id);
-                          }} 
-                          style={{ position: 'absolute', top: 10, right: 10, background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '16px', zIndex: 2 }}
-                          title="Remover cenário"
-                        >
-                          ✕
-                        </button>
-                        
-                        <h4 style={{ color: '#00d9ff', margin: '0 0 8px 0', fontSize: '16px' }}>{scenario.input.product}</h4>
-                        
-                        <div style={{display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px'}}>
-                           <span style={{fontSize: '12px', color: '#cbd5e1'}}>Para:</span>
-                           <strong style={{fontSize: '13px', color: '#fff'}}>{scenario.input.destinationName}</strong>
-                        </div>
-
-                        <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '20px', fontWeight: 'bold', color: scenario.result.roi >= 20 ? '#10b981' : '#facc15' }}>
-                                ROI {scenario.result.roi}%
-                            </span>
-                            <span style={{ fontSize: '11px', color: '#64748b' }}>
-                                {new Date(scenario.savedAt).toLocaleDateString()}
-                            </span>
-                        </div>
-                    </div>
-                ))}
+      {/* --- KPIS --- */}
+      <div className="kpi-grid">
+        <div className="kpi-card">
+            <div className="kpi-icon">💵</div>
+            <div className="kpi-info">
+                <span>Dólar PTAX</span>
+                <strong>R$ {stats.dollar.toFixed(3)}</strong>
             </div>
         </div>
-      )}
+        <div className="kpi-card">
+            <div className="kpi-icon">⛽</div>
+            <div className="kpi-info">
+                <span>Diesel Médio (BR)</span>
+                <strong>R$ {stats.dieselAvg.toFixed(2)}</strong>
+                <small className="trend-indicator text-red">▲ ANP</small>
+            </div>
+        </div>
+        <div className="kpi-card">
+            <div className="kpi-icon">📊</div>
+            <div className="kpi-info">
+                <span>Oportunidades</span>
+                <strong>{stats.opportunitiesCount}</strong>
+            </div>
+        </div>
+      </div>
 
-      {/* GRÁFICOS */}
-      <div className="dashboard-charts">
-        <div className="chart-container">
-          <Bar
-            ref={barRef}
-            data={barChartData}
-            options={barChartOptions}
-            onClick={e => handleBarClick(e.nativeEvent)}
-          />
+      <div className="dashboard-main">
+        {/* --- GRÁFICOS --- */}
+        <div className="charts-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '30px' }}>
+            <div className="chart-section">
+                <h4 style={{margin: '0 0 15px 0', color: '#94a3b8', fontSize: '0.9rem'}}>⛽ Diesel por Estado (R$/L)</h4>
+                <div style={{height: '220px'}}>
+                    <Bar data={fuelChartData} options={commonOptions} />
+                </div>
+            </div>
+            <div className="chart-section">
+                <h4 style={{margin: '0 0 15px 0', color: '#94a3b8', fontSize: '0.9rem'}}>📈 Tendência de Preços</h4>
+                <div style={{height: '220px'}}>
+                    {trendData ? (
+                        <Line data={trendData} options={commonOptions} />
+                    ) : (
+                        <div className="placeholder">Sem dados históricos</div>
+                    )}
+                </div>
+            </div>
         </div>
-        <div className="chart-container">
-          <Line
-            data={priceTrendData}
-            options={lineChartOptions}
-          />
+
+        {/* --- 🔙 TABELA DE MONITORAMENTO DE OPORTUNIDADES (A TUA LISTA DE VOLTA) --- */}
+        <div className="highlight-section" style={{background: 'var(--bg-card)', padding: '20px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)'}}>
+            <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '15px'}}>
+                <h3 style={{margin: 0, color: 'var(--text-primary)', fontSize: '1.1rem'}}>📡 Monitoramento de Oportunidades (Top ROI)</h3>
+            </div>
+            
+            <div style={{overflowX: 'auto'}}>
+                <table style={{width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem'}}>
+                    <thead>
+                        <tr style={{textAlign: 'left', color: '#94a3b8', borderBottom: '1px solid rgba(255,255,255,0.1)'}}>
+                            <th style={{padding: '12px'}}>Produto</th>
+                            <th style={{padding: '12px'}}>Origem</th>
+                            <th style={{padding: '12px'}}>Destino</th>
+                            <th style={{padding: '12px'}}>Compra</th>
+                            <th style={{padding: '12px'}}>Venda</th>
+                            <th style={{padding: '12px'}}>Lucro Liq.</th>
+                            <th style={{padding: '12px'}}>ROI</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {opportunities.slice(0, 8).map((op, idx) => (
+                            <tr key={idx} style={{borderBottom: '1px solid rgba(255,255,255,0.05)', color: 'var(--text-primary)'}}>
+                                <td style={{padding: '12px', fontWeight: 'bold'}}>{op.product}</td>
+                                <td style={{padding: '12px'}}>{op.city} - {op.state}</td>
+                                <td style={{padding: '12px'}}>{op.sellLocation}</td>
+                                <td style={{padding: '12px'}}>R$ {op.buyPrice.toFixed(2)}</td>
+                                <td style={{padding: '12px'}}>R$ {op.sellPrice.toFixed(2)}</td>
+                                <td style={{padding: '12px', color: (op.sellPrice - op.buyPrice) > 0 ? '#10b981' : '#ef4444'}}>
+                                    R$ {((op.sellPrice - op.buyPrice) * 1000).toLocaleString()} {/* Est. p/ 1000 un */}
+                                </td>
+                                <td style={{padding: '12px'}}>
+                                    <span style={{
+                                        background: op.roi > 20 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                                        color: op.roi > 20 ? '#10b981' : '#f59e0b',
+                                        padding: '4px 8px',
+                                        borderRadius: '4px',
+                                        fontWeight: 'bold',
+                                        fontSize: '0.8rem'
+                                    }}>
+                                        {op.roi}%
+                                    </span>
+                                </td>
+                            </tr>
+                        ))}
+                        {opportunities.length === 0 && (
+                            <tr>
+                                <td colSpan="7" style={{padding: '20px', textAlign: 'center', color: '#64748b'}}>
+                                    Nenhuma oportunidade mapeada. Use a Calculadora para criar cenários.
+                                </td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
         </div>
+
       </div>
     </div>
   );

@@ -37,18 +37,26 @@ const calculateLinearDistance = (lat1, lon1, lat2, lon2) => {
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 };
+// Função auxiliar para não repetir código
+const handleAuthError = (response) => {
+  if (response.status === 401 || response.status === 403) {
+    alert("Sessão expirada. Faça login novamente.");
+    localStorage.removeItem('token');
+    window.location.href = '/login';
+    return true; // Indica que houve erro
+  }
+  return false;
+};
 
 export const OpportunityService = {
-  // --- 1. BUSCA DE DADOS (API) ---
+  // 1. GET ALL (O que estava falhando no log)
   getAll: async () => {
     try {
       const response = await fetch(`${API_URL}/api/opportunities`, {
         headers: getAuthHeaders()
       });
 
-      if (response.status === 401 || response.status === 403) {
-         console.warn("Sessão expirada ou token inválido");
-      }
+      if (handleAuthError(response)) return []; // 🛡️ Bloqueio
 
       if (!response.ok) throw new Error('Falha na conexão com API');
       
@@ -310,6 +318,46 @@ export const OpportunityService = {
     } catch (error) {
         console.error("Erro Batch AI:", error);
         return null;
+    }
+  },
+  // --- 7. DADOS DE DASHBOARD ---
+  getFuelPrices: async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/fuel/current-prices`, { 
+        headers: getAuthHeaders() 
+      });
+      
+      if (handleAuthError(response)) return null; // 🛡️ Bloqueio
+      
+      if (!response.ok) return null;
+      return await response.json();
+    } catch (error) {
+      console.error("Erro Fuel:", error);
+      return null;
+    }
+  },
+  // --- 8. HISTÓRICO DE TENDÊNCIA (GRÁFICO DE LINHA) ---
+  getPriceTrend: async (product, city) => {
+    try {
+      // Constrói a URL com filtros opcionais
+      let url = `${API_URL}/api/analytics/trend`;
+      const params = new URLSearchParams();
+      if (product) params.append('product', product);
+      if (city) params.append('city', city);
+      
+      if (product || city) url += `?${params.toString()}`;
+
+      const response = await fetch(url, { 
+        headers: getAuthHeaders() 
+      });
+      
+      if (handleAuthError(response)) return null; // 🛡️ Bloqueio
+      
+      if (!response.ok) return null;
+      return await response.json();
+    } catch (error) {
+      console.error("Erro Trend:", error);
+      return null;
     }
   }
 };

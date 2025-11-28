@@ -1,63 +1,205 @@
 import requests
 import pandas as pd
-from datetime import datetime, timedelta
-from sqlalchemy import create_engine, text
+import logging
 import os
-from dotenv import load_dotenv # <--- Import novo
+from datetime import datetime
+from functools import lru_cache
+from sqlalchemy import create_engine, text
+from dotenv import load_dotenv
 
-# Carrega as variáveis do arquivo .env para a memória
+# Configuração de Logger
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("climate_intelligence")
+
+# Carrega variáveis
 load_dotenv()
-
-# Pega a variável do ambiente. Se não existir, retorna None
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Validação de segurança (opcional, mas recomendada)
-if not DATABASE_URL:
-    raise ValueError("❌ ERRO FATAL: A variável DATABASE_URL não foi encontrada. Verifique seu arquivo .env")
-engine = create_engine(DATABASE_URL)
+# Singleton do Banco
+_engine = None
 
-def get_advanced_agrometeo(lat, lng):
+def get_db_engine():
+    global _engine
+    if _engine is None:
+        if not DATABASE_URL:
+            # Tenta pegar a variável alternativa se a principal falhar
+            url = os.getenv("PYTHON_DB_URL")
+            if not url:
+                logger.warning("DATABASE_URL não encontrada no .env")
+                return None
+            _engine = create_engine(url)
+        else:
+            _engine = create_engine(DATABASE_URL)
+    return _engine
+
+class ClimateIntelligence:
     """
-    Busca dados complexos: Radiação Solar, Umidade do Solo, Evapotranspiração.
+    Módulo Neural de Clima 🧠🌩️
+    Responsável por buscar dados meteorológicos históricos e previsões.
     """
-    url = "https://api.open-meteo.com/v1/forecast"
-    params = {
-        "latitude": lat,
-        "longitude": lng,
-        "daily": ["temperature_2m_max", "precipitation_sum", "shortwave_radiation_sum"],
-        "hourly": "relative_humidity_2m",
-        "timezone": "America/Sao_Paulo",
-        "past_days": 7
-    }
     
-    try:
-        response = requests.get(url, params=params)
-        data = response.json()
-        
-        daily = data.get('daily', {})
-        hourly = data.get('hourly', {})
-        
-        avg_radiation = sum(daily['shortwave_radiation_sum']) / len(daily['shortwave_radiation_sum'])
-        total_rain = sum(daily['precipitation_sum'])
-        avg_humidity = sum(hourly['relative_humidity_2m']) / len(hourly['relative_humidity_2m'])
-        
-        return {
-            "radiation_mj": round(avg_radiation, 2),
-            "rain_mm": round(total_rain, 2),
-            "humidity_pct": round(avg_humidity, 1)
+    def __init__(self):
+        self.headers = {
+            'User-Agent': 'Agro-AI-Bot/1.0 (Climate Module)'
         }
-    except Exception as e:
-        print(f"⚠️ Erro na API Climática: {e}")
-        return None
+
+    def _validate_coords(self, lat, lng):
+        try:
+            lat, lng = float(lat), float(lng)
+            return -90 <= lat <= 90 and -180 <= lng <= 180
+        except (TypeError, ValueError):
+            return False
+
+    @lru_cache(maxsize=128)
+    def get_rain_history(self, lat, lng, month):
+        """
+        Busca histórico de chuva (média de 5 anos) para o mês específico.
+        Fonte: Open-Meteo Archive
+        """
+        if not self._validate_coords(lat, lng):
+            return 150.0
+
+        try:
+            current_year = datetime.now().year
+            start_date = f"{current_year - 6}-01-01"
+            end_date = f"{current_year - 1}-12-31"
+            
+            url = "https://archive-api.open-meteo.com/v1/archive"
+            params = {
+                'latitude': lat,
+                'longitude': lng,
+                'start_date': start_date,
+                'end_date': end_date,
+                'daily': 'precipitation_sum',
+                'timezone': 'America/Sao_Paulo'
+            }
+            
+            response = requests.get(url, params=params, headers=self.headers, timeout=5)
+            
+            if response.status_code != 200:
+                logger.warning(f"OpenMeteo Archive Offline ({response.status_code})")
+                return 150.0
+            
+            data = response.json()
+            if 'daily' not in data: return 150.0
+            
+            df = pd.DataFrame(data['daily'])
+            df['time'] = pd.to_datetime(df['time'])
+            
+            # Filtra apenas o mês desejado
+            month_data = df[df['time'].dt.month == month]
+            
+            if month_data.empty: return 150.0
+            
+            daily_avg = month_data['precipitation_sum'].mean()
+            return daily_avg * 30
+
+        except Exception as e:
+            logger.error(f"Erro Rain History: {e}")
+            return 150.0
+
+    @lru_cache(maxsize=128)
+    def get_solar_radiation(self, lat, lng, month):
+        """
+        Busca radiação solar média (MJ/m²) para secagem/fotossíntese.
+        Fonte: NASA POWER
+        """
+        if not self._validate_coords(lat, lng):
+            return 18.0
+
+        try:
+            url = "https://power.larc.nasa.gov/api/temporal/climatology/point"
+            params = {
+                'parameters': 'ALLSKY_SFC_SW_DWN',
+                'community': 'AG',
+                'longitude': lng,
+                'latitude': lat,
+                'format': 'JSON'
+            }
+            
+            response = requests.get(url, params=params, headers=self.headers, timeout=6)
+            
+            if response.status_code != 200:
+                return 18.0
+            
+            data = response.json()
+            properties = data.get('properties', {}).get('parameter', {}).get('ALLSKY_SFC_SW_DWN', {})
+            
+            month_keys = {1: 'JAN', 2: 'FEB', 3: 'MAR', 4: 'APR', 5: 'MAY', 6: 'JUN',
+                         7: 'JUL', 8: 'AUG', 9: 'SEP', 10: 'OCT', 11: 'NOV', 12: 'DEC'}
+            
+            raw_val = properties.get(month_keys.get(month), -1)
+            
+            if raw_val <= 0: return 18.0
+            
+            # Conversão kWh -> MJ
+            mj_val = raw_val
+            if raw_val < 10.0:
+                mj_val = raw_val * 3.6
+            
+            return mj_val
+
+        except Exception as e:
+            logger.error(f"Erro NASA Solar: {e}")
+            return 18.0
+
+    def get_advanced_agrometeo(self, lat, lng):
+        """
+        Busca previsão AGORA (7 dias): Radiação, Chuva, Umidade.
+        Usado pelo Robô de Tomate.
+        """
+        if not self._validate_coords(lat, lng):
+            return None
+
+        url = "https://api.open-meteo.com/v1/forecast"
+        params = {
+            "latitude": lat,
+            "longitude": lng,
+            "daily": ["temperature_2m_max", "precipitation_sum", "shortwave_radiation_sum"],
+            "hourly": "relative_humidity_2m",
+            "timezone": "America/Sao_Paulo",
+            "past_days": 2
+        }
+        
+        try:
+            response = requests.get(url, params=params, headers=self.headers, timeout=10)
+            if response.status_code != 200:
+                return None
+
+            data = response.json()
+            daily = data.get('daily', {})
+            hourly = data.get('hourly', {})
+            
+            rad_list = daily.get('shortwave_radiation_sum', [])
+            avg_radiation = sum(rad_list) / len(rad_list) if rad_list else 0
+            
+            rain_list = daily.get('precipitation_sum', [])
+            total_rain = sum(rain_list)
+            
+            hum_list = hourly.get('relative_humidity_2m', [])
+            avg_humidity = sum(hum_list) / len(hum_list) if hum_list else 0
+            
+            return {
+                "radiation_mj": round(avg_radiation, 2),
+                "rain_mm": round(total_rain, 2),
+                "humidity_pct": round(avg_humidity, 1)
+            }
+        except Exception as e:
+            logger.error(f"Erro Agrometeo: {e}")
+            return None
+
+# Instância Global
+climate_api = ClimateIntelligence()
+
+# ==============================================================================
+# LÓGICA DE NEGÓCIO (ROBÔ DE TOMATE)
+# ==============================================================================
 
 def calculate_tomato_risk(meteo_data):
-    """
-    Regras de Risco Agronômico para Tomate
-    """
+    """Regras Agronômicas para Tomate"""
     risk_score = 0
     reasons = []
 
-    # 1. Excesso de Chuva (Apodrecimento)
     if meteo_data['rain_mm'] > 80:
         risk_score += 0.4
         reasons.append("Excesso de Chuva (>80mm)")
@@ -65,12 +207,10 @@ def calculate_tomato_risk(meteo_data):
         risk_score += 0.2
         reasons.append("Chuva Moderada")
 
-    # 2. Alta Umidade (Fungos)
     if meteo_data['humidity_pct'] > 85:
         risk_score += 0.3
         reasons.append("Umidade Alta (Risco Fúngico)")
 
-    # 3. Baixa Radiação (Maturação)
     if meteo_data['radiation_mj'] < 15: 
         risk_score += 0.2
         reasons.append("Baixa Insolação")
@@ -78,38 +218,39 @@ def calculate_tomato_risk(meteo_data):
     return min(risk_score, 1.0), ", ".join(reasons)
 
 def update_market_prices():
-    print("🍅 INICIANDO INTELIGÊNCIA DE TOMATE (COM FAXINA AUTOMÁTICA)...")
+    """Função Cron Job: Atualiza preços baseado no clima atual."""
+    logger.info("🍅 INICIANDO INTELIGÊNCIA DE TOMATE...")
     
-    with engine.connect() as connection:
-        print("📡 Buscando cidades monitoradas no Banco de Dados...")
-        locations_query = text('SELECT id, city, state, lat, lng, "buyPrice", "sellPrice" FROM "Opportunity" WHERE product = \'Tomate\'')
-        result_locations = connection.execute(locations_query)
-        
-        cities_to_scan = result_locations.fetchall()
-        print(f"🗺️ Encontrados {len(cities_to_scan)} polos produtores.\n")
+    engine = get_db_engine()
+    if not engine:
+        logger.error("Abortando: Sem conexão com banco.")
+        return
 
-        try:
+    try:
+        with engine.connect() as connection:
+            locations_query = text("SELECT id, city, state, lat, lng, \"buyPrice\", \"sellPrice\" FROM \"Opportunity\" WHERE product = 'Tomate'")
+            cities_to_scan = connection.execute(locations_query).fetchall()
+            logger.info(f"🗺️ Encontrados {len(cities_to_scan)} polos produtores.")
+
             for row in cities_to_scan:
-                city = row.city
-                state = row.state
-                lat = row.lat
-                lng = row.lng
-                current_buy = float(row.buyPrice)
-                current_sell = float(row.sellPrice)
-                opp_id = row.id 
-
+                opp_id, city, state = row.id, row.city, row.state
+                
+                # Conversão segura para float
+                current_buy = float(row.buyPrice) if row.buyPrice is not None else 0.0
+                current_sell = float(row.sellPrice) if row.sellPrice is not None else 0.0
+                
                 current_margin = current_sell / current_buy if current_buy > 0 else 1.35
                 
-                print(f"📍 Analisando: {city} ({state})...")
+                logger.info(f"📍 Analisando: {city} ({state})...")
                 
-                data = get_advanced_agrometeo(lat, lng)
+                # Usa a classe para buscar dados
+                data = climate_api.get_advanced_agrometeo(row.lat, row.lng)
                 
                 if data:
                     risk, reasons = calculate_tomato_risk(data)
                     
                     base_ref_price = 4.00 
                     scarcity_multiplier = 1 + risk 
-                    
                     new_buy_price = round(base_ref_price * scarcity_multiplier, 2)
                     new_sell_price = round(new_buy_price * current_margin, 2)
                     
@@ -117,58 +258,36 @@ def update_market_prices():
                     if risk > 0.2: risk_level = 2
                     if risk > 0.5: risk_level = 3
 
-                    status_icon = "🟢" if risk == 0 else "🔴" if risk > 0.4 else "🟡"
-                    print(f"   {status_icon} Clima: {data['rain_mm']}mm chuva | {data['radiation_mj']}MJ sol")
-                    if reasons: print(f"   ⚠️ Alerta: {reasons}")
-                    print(f"   💰 Preço: R$ {new_buy_price} -> Venda: R$ {new_sell_price}")
-
-                    # 1. ATUALIZA OPORTUNIDADE
+                    # Atualiza Banco
                     update_query = text("""
                         UPDATE "Opportunity"
-                        SET "buyPrice" = :buy, 
-                            "sellPrice" = :sell,
-                            "riskLevel" = :risk_lvl,
-                            "climate" = :climate_desc,
-                            "description" = :desc
+                        SET "buyPrice" = :buy, "sellPrice" = :sell, "riskLevel" = :risk_lvl,
+                            "climate" = :climate_desc, "description" = :desc
                         WHERE id = :id
                     """)
                     
                     connection.execute(update_query, {
-                        "buy": new_buy_price,
-                        "sell": new_sell_price,
-                        "risk_lvl": risk_level,
+                        "buy": new_buy_price, "sell": new_sell_price, "risk_lvl": risk_level,
                         "climate_desc": f"Chuva: {data['rain_mm']}mm",
                         "desc": f"Risco Climático: {reasons}" if reasons else "Condições Favoráveis",
                         "id": opp_id
                     })
 
-                    # 2. GRAVA HISTÓRICO (Hoje)
+                    # Histórico
                     history_query = text("""
                         INSERT INTO "PriceHistory" ("opportunityId", "price", "createdAt")
                         VALUES (:opp_id, :price, NOW())
                     """)
-                    
-                    connection.execute(history_query, {
-                        "opp_id": opp_id,
-                        "price": new_buy_price
-                    })
+                    connection.execute(history_query, {"opp_id": opp_id, "price": new_buy_price})
             
-            # --- 3. O FAXINEIRO (RETENTION POLICY) ---
-            # Remove tudo que for mais velho que 6 meses (180 dias)
-            print("\n🧹 Executando limpeza de dados antigos...")
-            cleanup_query = text("""
-                DELETE FROM "PriceHistory" 
-                WHERE "createdAt" < NOW() - INTERVAL '180 days'
-            """)
-            result_clean = connection.execute(cleanup_query)
-            print(f"🗑️ Registros expirados removidos: {result_clean.rowcount}")
-
+            # Limpeza
+            cleanup_query = text("DELETE FROM \"PriceHistory\" WHERE \"createdAt\" < NOW() - INTERVAL '180 days'")
+            connection.execute(cleanup_query)
             connection.commit()
-            print("\n✅ CICLO COMPLETO: Atualização + Histórico + Limpeza!")
+            logger.info("✅ Ciclo de atualização concluído!")
             
-        except Exception as e:
-            connection.rollback()
-            print(f"❌ Erro crítico: {e}")
+    except Exception as e:
+        logger.error(f"❌ Erro crítico no loop: {e}")
 
 if __name__ == "__main__":
     update_market_prices()

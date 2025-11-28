@@ -150,6 +150,16 @@ app.post('/market/scan', verifyToken, async (req, res) => {
     res.status(500).json({ error: 'Erro ao processar radar de mercado.' });
   }
 });
+// 👇 ROTA NOVA: Proxy para buscar preços de combustível no Python
+app.get('/api/fuel/current-prices', verifyToken, async (req, res) => {
+  try {
+    const response = await axios.get(`${PYTHON_API_URL}/api/fuel/current-prices`);
+    res.json(response.data);
+  } catch (error) {
+    console.error("Erro Fuel:", error.message);
+    res.status(500).json({ error: 'Erro ao buscar preços de combustível' });
+  }
+});
 // 5. ROTA DE HISTÓRICO (Com Filtros Dinâmicos)
 app.get('/api/analytics/trend', verifyToken, async (req, res) => {
   try {
