@@ -230,34 +230,12 @@ LOGISTICS_CACHE = {
     'diesel_price': 6.10, # Valor inicial de segurança
     'last_update': datetime.now()
 }
-
-def update_fuel_prices():
-    """
-    ETL Job: Busca preço atualizado do Diesel S-10 (Média Brasil).
-    Roda em background para não travar o usuário.
-    """
-    print("⛽ Iniciando atualização do preço do Diesel...")
-    try:
-        # Tenta buscar de uma API de dados abertos (exemplo usando Caqti ou similar)
-        # Nota: Como APIs públicas mudam muito, aqui simula uma busca robusta
-        # Sugestão: Usar a API da 'Combustivel BR' ou Scraper da ANP
-        
-        # Aqui, vamos simular uma lógica de scraper que você pode evoluir
-        # url = "https://api.kanye.rest" # Placeholder para teste de conexão
-        
-        # Para produção real, recomendo assinar uma API barata ou fazer o scraper da tabela da ANP:
-        # https://preco.anp.gov.br/
-        
-        # Simulando uma variação de mercado baseada em dados reais aproximados
-        # (Em um projeto real, aqui entra o requests.get na API da Base dos Dados)
-        new_price = 6.25 # Imagine que isso veio do JSON da API
-        
-        LOGISTICS_CACHE['diesel_price'] = new_price
-        LOGISTICS_CACHE['last_update'] = datetime.now()
-        print(f"✅ Diesel Atualizado: R$ {new_price:.2f}/L")
-        
-    except Exception as e:
-        print(f"⚠️ Falha ao buscar Diesel: {e}. Mantendo valor antigo.")
+# Adicione isto junto com as classes SimulationRequest, ArbitrageRequest, etc.
+class MarketScanRequest(BaseModel):
+    product: str
+    origin_state: str
+    volume: float = 1000.0 # Opcional, padrão 1000 unidades
+    month: int = None
 
 # Agendamento do Job (Adicione isso no seu startup ou scheduler existente)
 def run_fuel_scheduler():
@@ -266,6 +244,7 @@ def run_fuel_scheduler():
         schedule.run_pending()
         time.sleep(3600)
 
+@lru_cache(maxsize=32)
 def get_prediction_model(product_name):
     try:
         # 1. Busca dados brutos
@@ -1612,7 +1591,86 @@ def get_fuel_price_history(state: str, days: int = 30):
         logger.error(f"Erro ao buscar histórico: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/market/scan")
+def scan_market_opportunities(data: MarketScanRequest):
+    logger.info(f"📡 Scan: {data.product} de {data.origin_state} (Mês: {data.month or 'Atual'})")
+    
+    # Lista de polos (Adicionei mais alguns para garantir)
+    potential_destinations = ['SP', 'RJ', 'MG', 'BA', 'GO', 'PE', 'RS', 'CE', 'SC', 'PR', 'MT', 'MS']
+    
+    # 🚨 CORREÇÃO 1: NÃO REMOVEMOS MAIS A ORIGEM
+    # Se quiser vender em GO sendo de GO, tudo bem!
+    
+    opportunities = []
+    
+    product_key = data.product.strip().capitalize()
+    specs = CROPS_SPECS.get(product_key, CROPS_SPECS['Default'])
+    unit_weight = specs.get('unit_weight_kg', 1.0)
+    
+    # Base de custo apenas para referência
+    base_cost = specs.get('base_cost_ha', 5000) / specs.get('base_productivity', 100)
+    
+    # 🚨 CORREÇÃO 2: USA O MÊS SELECIONADO OU O ATUAL
+    target_month = data.month if data.month else datetime.now().month
 
+    for dest in potential_destinations:
+        try:
+            # Preço para o Mês Correto
+            price_kg = get_predicted_market_price(data.product, dest, target_month)
+            
+            sell_price_unit = price_kg * unit_weight
+            gross_revenue = data.volume * sell_price_unit
+            
+            # Logística
+            distance = calculate_distance(data.origin_state, dest)
+            
+            # Se for local (distância curta), o custo é frete mínimo urbano
+            if distance < 100:
+                fuel_cost = 150.0 # Taxa fixa local estimada
+                diesel_ref = 6.10
+            else:
+                try:
+                    fuel_data = fuel_api.calculate_route_fuel_cost(data.origin_state, dest, distance)
+                    fuel_cost = fuel_data['total_fuel_cost']
+                    diesel_ref = fuel_data['dest_price']['price_per_liter']
+                except:
+                    fuel_cost = (distance / 3.5) * 6.20
+                    diesel_ref = 6.20
+            
+            maint_driver_cost = distance * (LOGISTICS_DATA['maintenance_per_km'] + LOGISTICS_DATA['driver_cost_per_km'])
+            
+            capacity = 1200 if product_key == 'Tomate' else 550
+            trips = math.ceil(data.volume / capacity)
+            total_logistics = (fuel_cost + maint_driver_cost) * trips
+            
+            total_op_cost = (base_cost * data.volume) + total_logistics
+            net_profit = gross_revenue - total_op_cost
+            roi = ((net_profit / total_op_cost) * 100) if total_op_cost > 0 else 0
+            
+            opportunities.append({
+                "destination": dest,
+                "distance_km": int(distance),
+                "sell_price": round(sell_price_unit, 2),
+                "logistics_cost": round(total_logistics, 2),
+                "net_profit": round(net_profit, 2),
+                "roi": round(roi, 1),
+                "diesel_ref": f"R$ {diesel_ref:.2f}"
+            })
+            
+        except Exception as e:
+            # Log discreto para não poluir, mas ajuda a debugar se vier vazio
+            logger.warning(f"Scan ignorou {dest}: {str(e)}")
+            continue
+
+    ranked_opportunities = sorted(opportunities, key=lambda x: x['net_profit'], reverse=True)
+    best = ranked_opportunities[0] if ranked_opportunities else None
+    
+    return {
+        "product": data.product,
+        "origin": data.origin_state,
+        "ranking": ranked_opportunities,
+        "best_opportunity": best
+    }
 # ============================================================================
 # PONTO DE ENTRADA E CONFIGURAÇÃO FINAL
 # ============================================================================

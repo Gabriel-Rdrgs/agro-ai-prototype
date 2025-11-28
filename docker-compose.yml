@@ -11,6 +11,8 @@ services:
       - ./ai-service/.env
     environment:
       - PORT=8000
+    volumes:
+      - ./ai-service:/app
     restart: always
 
   # Serviço Backend (Node)
@@ -23,11 +25,14 @@ services:
       - ./backend/.env
     environment:
       - PORT=3001
-      # No Docker, para falar com outro container, usamos o nome do serviço
-      - PYTHON_API_URL=http://ai-service:8000 
+      - PYTHON_API_URL=http://ai-service:8000
+    # O Pulo do Gato: Volumes para atualização em tempo real
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
     depends_on:
       - ai-service
     restart: always
-
-# O Frontend continua rodando localmente com 'npm start' ou na Vercel
-# pois ele é estático e não precisa necessariamente de container em dev.
+    # Comando para iniciar em modo dev (garanta que seu package.json tem esse script)
+    # Se não tiver, use: command: npm start
+    command: npm start

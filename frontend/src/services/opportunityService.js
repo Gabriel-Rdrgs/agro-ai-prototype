@@ -232,14 +232,13 @@ export const OpportunityService = {
         console.error("❌ Falha na IA:", error);
         return null; 
     }
-  },
-  
- // --- 5. SIMULADOR DE ARBITRAGEM (IA COMPLETA) ---
+  },  
+// --- 5. SIMULADOR DE ARBITRAGEM (IA COMPLETA) ---
   calculateArbitrage: async (payload) => {
     try {
-      // payload espera: { product, origin_state, destination_state, planting_month, area_ha }
+      // O SEGREDO ESTÁ AQUI: method: 'POST'
       const response = await fetch(`${API_URL}/calc/arbitrage`, {
-        method: 'POST',
+        method: 'POST', // <--- Se faltar isto, ele vira GET e dá 404
         headers: {
           ...getAuthHeaders(),
           'Content-Type': 'application/json'
@@ -247,10 +246,41 @@ export const OpportunityService = {
         body: JSON.stringify(payload)
       });
 
+      // 🛡️ BLOCO DE SEGURANÇA (Logout se token expirou)
+      if (response.status === 403 || response.status === 401) {
+        alert("Sua sessão expirou. Por favor, faça login novamente.");
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+        return null;
+      }
+
       if (!response.ok) throw new Error('Erro ao calcular Arbitragem');
+      
       return await response.json();
     } catch (error) {
       console.error("Erro calc arbitragem:", error);
+      return null;
+    }
+  },
+  // --- 6. RADAR DE OPORTUNIDADES (NOVO) ---
+  scanMarket: async (product, originState, volume = 1000, month = null) => {
+    try {
+      // Envia o mês no payload
+      const payload = { product, origin_state: originState, volume, month };
+      
+      const response = await fetch(`${API_URL}/market/scan`, {
+        method: 'POST',
+        headers: {
+          ...getAuthHeaders(),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) throw new Error('Erro ao escanear mercado');
+      
+      return await response.json();
+    } catch (error) {
+      console.error("Erro no Radar de Mercado:", error);
       return null;
     }
   },

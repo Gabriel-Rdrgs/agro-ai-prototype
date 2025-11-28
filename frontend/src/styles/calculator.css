@@ -188,7 +188,103 @@
   padding: 20px;
   height: 350px;
 }
+/* --- ADICIONAR NO FINAL DE frontend/src/styles/calculator.css --- */
 
+/* Painel de Oportunidades (Top 5) */
+.top-opportunities-panel {
+  background: var(--bg-card);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.top-opportunities-header {
+  background: rgba(255, 255, 255, 0.03); /* Levemente mais claro que o fundo */
+  padding: 12px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.top-opportunities-header h4 {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 700;
+}
+
+.top-opportunities-header span {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.opportunities-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.opportunities-table th {
+  text-align: left;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  padding: 12px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.opportunities-table td {
+  padding: 12px 20px;
+  color: var(--text-primary); /* Texto claro agora! */
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 0.9rem;
+}
+
+.opportunities-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Destaque para o vencedor */
+.row-best {
+  background: rgba(16, 185, 129, 0.08); /* Verde muito sutil */
+  border-left: 3px solid #10b981;
+}
+
+.badge-best {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  margin-left: 10px;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+/* Botão Simular */
+.btn-simulate {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--text-muted);
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-simulate:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: rgba(0, 217, 255, 0.1);
+}
 @media (max-width: 768px) {
   .calculator-grid { grid-template-columns: 1fr; }
   .metrics-grid { grid-template-columns: 1fr; }

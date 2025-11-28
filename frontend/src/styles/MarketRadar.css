@@ -1,0 +1,121 @@
+/* frontend/src/styles/MarketRadar.css */
+
+.radar-container {
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 10px;
+}
+
+.radar-header h2 {
+  color: #0f172a;
+  margin-bottom: 5px;
+}
+
+.radar-filters {
+  display: flex;
+  gap: 15px;
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group label {
+  font-size: 0.85rem;
+  font-weight: bold;
+  color: #64748b;
+  margin-bottom: 5px;
+}
+
+.form-group select, .form-group input {
+  padding: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  min-width: 150px;
+}
+
+.scan-btn {
+  background: #00d9ff;
+  color: #0f172a;
+  border: none;
+  padding: 10px 25px;
+  border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s;
+  height: 42px;
+}
+
+.scan-btn:hover {
+  background: #00b8d9;
+  transform: translateY(-1px);
+}
+
+/* Tabela e Resultados */
+.best-choice-card {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  color: white;
+  padding: 20px;
+  border-radius: 8px;
+  margin: 20px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.highlight-roi {
+  background: #16a34a;
+  padding: 5px 10px;
+  border-radius: 20px;
+  font-weight: bold;
+  margin-left: 15px;
+}
+
+.radar-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.radar-table th {
+  background: #f1f5f9;
+  padding: 12px;
+  text-align: left;
+  font-size: 0.85rem;
+  color: #475569;
+}
+
+.radar-table td {
+  padding: 12px;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.9rem;
+}
+
+.row-winner {
+  background-color: #f0fdf4; /* Verde bem clarinho */
+  border-left: 4px solid #16a34a;
+}
+
+.text-red { color: #ef4444; }
+.text-green { color: #16a34a; font-weight: bold; }
+.text-small { font-size: 0.8rem; color: #94a3b8; }
+
+.roi-badge {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: bold;
+}
+
+.roi-high { background: #dcfce7; color: #166534; }
+.roi-low { background: #fee2e2; color: #991b1b; }

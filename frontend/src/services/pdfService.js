@@ -323,12 +323,59 @@ if (scenarioData.result.details?.fuel_breakdown) {
     doc.save('Dashboard_Agro_AI.pdf');
   },
     // --- RELATÓRIO 3: ROI ARBITRAGEM (RoiCalculator) ---
-  generateRoiReport: (roiData, userName = 'Produtor') => {
+generateRoiReport: (apiData, userName = 'Produtor') => {
+    // ---------------------------------------------------------------------------
+    // 🛡️ ADAPTER SÊNIOR: Padroniza os dados antes de gerar o relatório
+    // ---------------------------------------------------------------------------
+    // Aqui transformamos a resposta da API (Python) ou Local na estrutura que o seu PDF espera
+    const roiData = {
+        product: apiData.product || apiData.product_name || '-',
+        
+        // 1. Análise & Rotas
+        analysis: apiData.analysis || {
+            origin: apiData.originState,
+            destination: apiData.destState,
+            distance_km: apiData.details?.distanceKm
+        },
+
+        // 2. Produção
+        production: apiData.production || {
+            productivity_ha: apiData.productivity,
+            total_volume: apiData.volume
+        },
+        // O Python manda no root, o Local manda no details. Garantimos um número.
+        total_production_cost: apiData.total_production_cost ?? apiData.production?.cost_total ?? 0,
+
+        // 3. Logística (O Pulo do Gato para o Combustível)
+        logistics: {
+            total_logistics_cost: apiData.logistics?.total_logistics_cost ?? apiData.details?.freightCost ?? 0,
+            fuel_breakdown: apiData.logistics?.fuel_breakdown || {
+                // Fallback inteligente se não vier detalhado
+                origin_price: { state: apiData.originState || 'Origem', price_per_liter: apiData.logistics?.diesel_price_ref ?? 0 },
+                dest_price: { state: apiData.destState || 'Destino', price_per_liter: apiData.logistics?.diesel_price_ref ?? 0 },
+                fuel_liters: apiData.logistics?.liters_consumed ?? 0,
+                total_fuel_cost: apiData.logistics?.fuel_cost ?? 0,
+                data_coleta: new Date().toLocaleString()
+            }
+        },
+
+        // 4. Lucratividade (Mapeamento Crítico)
+        // O seu código usa 'profitability', mas a API manda 'market' e 'financial'
+        profitability: {
+            gross_revenue: apiData.market?.gross_revenue ?? apiData.grossRevenue ?? 0,
+            net_profit: apiData.financial?.net_profit ?? apiData.profit ?? 0,
+            roi_percent: apiData.financial?.roi ?? apiData.roi ?? 0
+        },
+        
+        // Custo total geral
+        total_cost: apiData.financial?.total_cost ?? apiData.totalCost ?? 0
+    };
+    // ---------------------------------------------------------------------------
     const doc = new jsPDF('p', 'mm', 'a4');
     
-    // Cores da marca (mesmo padrão)
-    const primaryColor = [0, 217, 255]; // #00d9ff
-    const darkBg = [15, 23, 42]; // #0f172a
+    // Cores da marca
+    const primaryColor = [0, 217, 255]; 
+    const darkBg = [15, 23, 42]; 
     
     // --- CABEÇALHO ---
     doc.setFillColor(...darkBg);
@@ -363,12 +410,12 @@ if (scenarioData.result.details?.fuel_breakdown) {
     doc.setFont('helvetica', 'normal');
     
     const analysis = roiData.analysis || {};
-    doc.text(`Produto: ${roiData.product || '-'}`, 14, yPos);
+    doc.text(`Produto: ${roiData.product}`, 14, yPos);
     doc.text(`Origem: ${analysis.origin || '-'}`, 100, yPos);
     
     yPos += 7;
     doc.text(`Destino: ${analysis.destination || '-'}`, 14, yPos);
-    doc.text(`Distância: ${analysis.distance_km ? analysis.distance_km.toFixed(1) + ' km' : '-' }`, 100, yPos);
+    doc.text(`Distância: ${analysis.distance_km ? Number(analysis.distance_km).toFixed(1) + ' km' : '-' }`, 100, yPos);
     
     yPos += 10;
     
@@ -382,20 +429,20 @@ if (scenarioData.result.details?.fuel_breakdown) {
     doc.setFont('helvetica', 'normal');
     
     const production = roiData.production || {};
-    doc.text(`Produtividade: ${production.productivity_ha ? production.productivity_ha.toFixed(1) + ' un/ha' : '-' }`, 14, yPos);
-    doc.text(`Volume Total: ${production.total_volume ? production.total_volume.toFixed(1) + ' un' : '-' }`, 100, yPos);
+    doc.text(`Produtividade: ${production.productivity_ha ? Number(production.productivity_ha).toFixed(1) + ' un/ha' : '-' }`, 14, yPos);
+    doc.text(`Volume Total: ${production.total_volume ? Number(production.total_volume).toFixed(1) + ' un' : '-' }`, 100, yPos);
     
     yPos += 7;
     if (roiData.total_production_cost !== undefined) {
       doc.text(
-        `Custo Total Produção: R$ ${roiData.total_production_cost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+        `Custo Total Produção: R$ ${Number(roiData.total_production_cost).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
         14,
         yPos
       );
       yPos += 10;
     }
     
-    // 3. Logística + Combustível REAL
+    // 3. Logística + Combustível
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
     doc.text('3. Logística & Combustível', 14, yPos);
@@ -409,12 +456,12 @@ if (scenarioData.result.details?.fuel_breakdown) {
     
     if (fuel.origin_price) {
       doc.text(
-        `Diesel Origem (${fuel.origin_price.state}): R$ ${fuel.origin_price.price_per_liter.toFixed(2)}/L`,
+        `Diesel Origem (${fuel.origin_price.state || 'Origem'}): R$ ${Number(fuel.origin_price.price_per_liter).toFixed(2)}/L`,
         14,
         yPos
       );
       doc.text(
-        `Diesel Destino (${fuel.dest_price.state}): R$ ${fuel.dest_price.price_per_liter.toFixed(2)}/L`,
+        `Diesel Destino (${fuel.dest_price.state || 'Destino'}): R$ ${Number(fuel.dest_price.price_per_liter).toFixed(2)}/L`,
         110,
         yPos
       );
@@ -422,19 +469,19 @@ if (scenarioData.result.details?.fuel_breakdown) {
     }
     
     doc.text(
-      `Litros Diesel: ${fuel.fuel_liters ? fuel.fuel_liters.toFixed(1) + ' L' : '-'}`,
+      `Litros Diesel: ${fuel.fuel_liters ? Number(fuel.fuel_liters).toFixed(1) + ' L' : '-'}`,
       14,
       yPos
     );
     doc.text(
-      `Custo Combustível: R$ ${fuel.total_fuel_cost ? fuel.total_fuel_cost.toLocaleString('pt-BR') : '-'}`,
+      `Custo Combustível: R$ ${fuel.total_fuel_cost ? Number(fuel.total_fuel_cost).toLocaleString('pt-BR') : '-'}`,
       110,
       yPos
     );
     yPos += 7;
     
     doc.text(
-      `Custo Total Logística: R$ ${logistics.total_logistics_cost ? logistics.total_logistics_cost.toLocaleString('pt-BR') : '-'}`,
+      `Custo Total Logística: R$ ${logistics.total_logistics_cost ? Number(logistics.total_logistics_cost).toLocaleString('pt-BR') : '-'}`,
       14,
       yPos
     );
@@ -456,13 +503,14 @@ if (scenarioData.result.details?.fuel_breakdown) {
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
     
-    const profitability = roiData.profitability || {};
+    // Aqui usamos o objeto traduzido lá em cima
+    const profitability = roiData.profitability; 
     
     const tableData = [
-      ['Receita Bruta', `R$ ${profitability.gross_revenue ? profitability.gross_revenue.toLocaleString('pt-BR') : '-'}`],
-      ['Custo Total', `R$ ${roiData.total_cost ? roiData.total_cost.toLocaleString('pt-BR') : '-'}`],
-      ['Lucro Líquido', `R$ ${profitability.net_profit ? profitability.net_profit.toLocaleString('pt-BR') : '-'}`],
-      ['ROI', `${profitability.roi_percent ? profitability.roi_percent.toFixed(2) + '%' : '-'}`]
+      ['Receita Bruta', `R$ ${profitability.gross_revenue.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`],
+      ['Custo Total', `R$ ${roiData.total_cost.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`],
+      ['Lucro Líquido', `R$ ${profitability.net_profit.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`],
+      ['ROI', `${profitability.roi_percent.toFixed(2)}%`]
     ];
     
     autoTable(doc, {
@@ -482,22 +530,20 @@ if (scenarioData.result.details?.fuel_breakdown) {
     doc.setFont('helvetica', 'bold');
     const roi = profitability.roi_percent || 0;
     let recommendation = '';
-if (roi > 25) {
-  recommendation = 'RECOMENDAÇÃO: ALTAMENTE VIÁVEL ✓';
-  doc.setTextColor(16, 185, 129); // Verde
-} else if (roi > 10) {
-  recommendation = 'RECOMENDAÇÃO: VIÁVEL COM ATENÇÃO';
-  doc.setTextColor(245, 158, 11); // Laranja
-} else {
-  recommendation = 'RECOMENDAÇÃO: NÃO RECOMENDADO';
-  doc.setTextColor(239, 68, 68); // Vermelho
-}
+    
+    if (roi > 25) {
+      recommendation = 'RECOMENDAÇÃO: ALTAMENTE VIÁVEL ✓';
+      doc.setTextColor(16, 185, 129); // Verde
+    } else if (roi > 10) {
+      recommendation = 'RECOMENDAÇÃO: VIÁVEL COM ATENÇÃO';
+      doc.setTextColor(245, 158, 11); // Laranja
+    } else {
+      recommendation = 'RECOMENDAÇÃO: NÃO RECOMENDADO';
+      doc.setTextColor(239, 68, 68); // Vermelho
+    }
 
-doc.setFontSize(12);
-doc.setFont('helvetica', 'bold');
-doc.text(recommendation, 14, yPos);
-doc.setTextColor(0, 0, 0); // Reset cor
-
+    doc.text(recommendation, 14, yPos);
+    doc.setTextColor(0, 0, 0); // Reset cor
     
     // Rodapé
     const pageHeight = doc.internal.pageSize.height;
@@ -505,7 +551,6 @@ doc.setTextColor(0, 0, 0); // Reset cor
     doc.setTextColor(150, 150, 150);
     doc.text('AgroArbitrage AI © 2025 - Análise Automatizada.', 105, pageHeight - 10, { align: 'center' });
     
-    doc.save(`ROI_${roiData.product || 'Arbitragem'}_${today.replace(/\//g, '-')}.pdf`);
-  }
-
+    doc.save(`ROI_${roiData.product || 'Analise'}_${today.replace(/\//g, '-')}.pdf`);
+}
 };

@@ -6,6 +6,7 @@ import { OpportunityService } from './services/opportunityService';
 import RoiCalculator from './components/Calculator/RoiCalculator';
 import Login from './components/Auth/Login';
 import WeatherDashboard from './components/Weather/WeatherDashboard';
+import MarketRadar from './components/Market/MarketRadar';
 
 function App() {
   // --- 1. ESTADOS GLOBAIS ---

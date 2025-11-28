@@ -132,6 +132,7 @@ app.post('/calc/production', verifyToken, async (req, res) => {
 // backend/server.js
 app.post('/calc/arbitrage', verifyToken, async (req, res) => {
   try {
+    // Repassa o pedido para o Python (IA)
     const response = await axios.post(`${PYTHON_API_URL}/calc/arbitrage`, req.body);
     res.json(response.data);
   } catch (error) {
@@ -139,7 +140,16 @@ app.post('/calc/arbitrage', verifyToken, async (req, res) => {
     res.status(500).json({ error: 'Erro no cálculo de arbitragem.' });
   }
 });
-
+app.post('/market/scan', verifyToken, async (req, res) => {
+  try {
+    // Repassa o pedido para o serviço Python
+    const response = await axios.post(`${PYTHON_API_URL}/market/scan`, req.body);
+    res.json(response.data);
+  } catch (error) {
+    console.error("Erro no Radar de Mercado:", error.message);
+    res.status(500).json({ error: 'Erro ao processar radar de mercado.' });
+  }
+});
 // 5. ROTA DE HISTÓRICO (Com Filtros Dinâmicos)
 app.get('/api/analytics/trend', verifyToken, async (req, res) => {
   try {
