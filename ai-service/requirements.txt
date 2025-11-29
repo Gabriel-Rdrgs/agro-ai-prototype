@@ -1,15 +1,48 @@
-fastapi
-uvicorn
-pydantic
-python-dotenv
-requests
-pandas
-numpy
-scikit-learn
-sqlalchemy
-psycopg2-binary
-httpx
-schedule
-lxml
-html5lib
-beautifulsoup4
+# requirements.txt
+# Dependências do Agro-AI Brain v6.0
+
+# ========================================
+# CORE
+# ========================================
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+python-dotenv==1.0.0
+
+# ========================================
+# BANCO DE DADOS
+# ========================================
+sqlalchemy==2.0.25
+psycopg2-binary==2.9.9
+pandas==2.2.0
+
+# ========================================
+# MACHINE LEARNING
+# ========================================
+numpy==1.26.3
+scikit-learn==1.4.0
+
+# ========================================
+# HTTP / WEB SCRAPING
+# ========================================
+requests==2.31.0
+urllib3==2.1.0
+httpx==0.26.0
+
+# ========================================
+# SCHEDULING (para ETL)
+# ========================================
+schedule==1.2.0
+
+# ========================================
+# UTILITÁRIOS
+# ========================================
+python-multipart==0.0.6
+psutil==5.9.8  # Para system info
+
+# ========================================
+# DESENVOLVIMENTO
+# ========================================
+pytest==7.4.4
+pytest-asyncio==0.23.3
