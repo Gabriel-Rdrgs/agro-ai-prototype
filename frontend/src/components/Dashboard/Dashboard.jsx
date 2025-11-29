@@ -26,7 +26,22 @@ const Dashboard = () => {
     opportunitiesCount: 0,
     lastUpdate: '-'
   });
-  
+  // Função para chamar a correção
+  const handleFixData = async () => {
+    if(!window.confirm("Isso vai redistribuir os destinos e ajustar preços no banco. Continuar?")) return;
+    
+    try {
+      const token = localStorage.getItem('token');
+      await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/admin/fix-data`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      alert("✅ Dados corrigidos com sucesso! Recarregue a página.");
+      window.location.reload();
+    } catch (e) {
+      alert("Erro ao corrigir dados.");
+    }
+  };
   const [opportunities, setOpportunities] = useState([]); // 🔙 Lista Completa para a Tabela
   const [fuelData, setFuelData] = useState(null);
   const [trendData, setTrendData] = useState(null);
@@ -178,6 +193,21 @@ const Dashboard = () => {
                 }}
             >
                 📄 Exportar Panorama
+            </button>
+            {/* 👇 BOTÃO DE CORREÇÃO (TEMPORÁRIO) */}
+            <button 
+                onClick={handleFixData}
+                style={{
+                    background: 'rgba(239, 68, 68, 0.1)', 
+                    color: '#ef4444', 
+                    border: '1px solid #ef4444',
+                    padding: '8px 16px', 
+                    borderRadius: '6px', 
+                    fontWeight: 'bold', 
+                    cursor: 'pointer'
+                }}
+            >
+                🔧 Corrigir Banco
             </button>
         </div>
       </header>

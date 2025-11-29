@@ -32,49 +32,73 @@ const StorageAdvisor = ({ opportunity, forecast }) => {
 
   useEffect(() => {
     if (opportunity) {
+      console.log("🔍 Debug Opportunity:", {
+  product: opportunity.product,
+  buyPrice: opportunity.buyPrice,
+  sellPrice: opportunity.sellPrice
+});
+
       fetchAnalysis();
     }
   }, [opportunity, forecast]);
 
-  const fetchAnalysis = async () => {
-    setLoading(true);
-    try {
-      const dailyRain = forecast ? forecast.map(d => d.rain) : [];
-      const dailyTempMax = forecast ? forecast.map(d => d.tempMax) : [];
-      const dailyTempMin = forecast ? forecast.map(d => d.tempMin) : [];
-      const dailySun = forecast ? forecast.map(d => d.sun) : [];
+  // frontend/src/components/Weather/StorageAdvisor.jsx (LINHAS 50-100)
 
-      // --- CORREÇÃO DE COORDENADAS ---
-      // Tenta pegar lat/lng da raiz OU do array position (fallback)
-      let lat = opportunity.lat;
-      let lng = opportunity.lng;
+const fetchAnalysis = async () => {
+  setLoading(true);
+  try {
+    const dailyRain = forecast ? forecast.map(d => d.rain) : [];
+    const dailyTempMax = forecast ? forecast.map(d => d.tempMax) : [];
+    const dailyTempMin = forecast ? forecast.map(d => d.tempMin) : [];
+    const dailySun = forecast ? forecast.map(d => d.sun) : [];
 
-      if (!lat && opportunity.position && opportunity.position.length === 2) {
-          lat = opportunity.position[0];
-          lng = opportunity.position[1];
-      }
-      
-      console.log("📍 Enviando para IA:", { product: opportunity.product, state: opportunity.state, lat, lng });
+    let lat = opportunity.lat;
+    let lng = opportunity.lng;
 
-      const data = await OpportunityService.getStorageAnalysis(
-        opportunity.product,
-        opportunity.state,
-        opportunity.buyPrice,
-        opportunity.riskLevel,
-        dailyRain,
-        dailyTempMax,
-        dailySun,
-        dailyTempMin,
-        lat, // <--- Agora usamos as variáveis tratadas
-        lng
-      );
-      setAnalysis(data);
-    } catch (error) {
-      console.error("Erro ao buscar análise:", error);
-    } finally {
-      setLoading(false);
+    if (!lat && opportunity.position && opportunity.position.length === 2) {
+        lat = opportunity.position[0];
+        lng = opportunity.position[1];
     }
-  };
+    
+    // 🆕 DETECTA E NORMALIZA O PREÇO PARA KG
+    let buyPricePerKg = opportunity.buyPrice;
+    
+    // Se for Tomate e preço > 15, é Caixa (20kg) → converte para kg
+    if (opportunity.product === 'Tomate' && buyPricePerKg > 15) {
+        buyPricePerKg = buyPricePerKg / 20;
+        console.log(`🔄 Convertendo Tomate de Caixa para Kg: R$ ${opportunity.buyPrice} → R$ ${buyPricePerKg.toFixed(2)}/kg`);
+    }
+    // Se for Soja/Milho e preço > 10, é Saca (60kg) → converte para kg
+    else if (['Soja', 'Milho'].includes(opportunity.product) && buyPricePerKg > 10) {
+        buyPricePerKg = buyPricePerKg / 60;
+        console.log(`🔄 Convertendo ${opportunity.product} de Saca para Kg: R$ ${opportunity.buyPrice} → R$ ${buyPricePerKg.toFixed(2)}/kg`);
+    }
+    
+    console.log("📍 Enviando para IA:", { product: opportunity.product, state: opportunity.state, buyPricePerKg, lat, lng });
+
+    const data = await OpportunityService.getStorageAnalysis(
+      opportunity.product,
+      opportunity.state,
+      buyPricePerKg, // 👈 AGORA SEMPRE EM KG
+      opportunity.riskLevel,
+      dailyRain,
+      dailyTempMax,
+      dailySun,
+      dailyTempMin,
+      lat,
+      lng
+    );
+    
+    // 🆕 GUARDA O PREÇO EM KG NO STATE PARA USAR NO GRÁFICO
+    setAnalysis({...data, buyPricePerKg});
+    
+  } catch (error) {
+    console.error("Erro ao buscar análise:", error);
+  } finally {
+    setLoading(false);
+  }
+};
+
   
   if (!opportunity) return null;
 
@@ -88,31 +112,35 @@ const StorageAdvisor = ({ opportunity, forecast }) => {
     return 'status-yellow';
   };
 
-  // Configuração do Gráfico (Estilo Enterprise)
-  const chartData = analysis ? {
-    labels: analysis.chart_data.labels,
-    datasets: [
-      {
-        label: 'Preço Projetado (R$)',
-        data: analysis.chart_data.prices,
-        borderColor: '#10B981', // Verde Esmeralda
-        backgroundColor: 'rgba(16, 185, 129, 0.1)', // Fundo suave
-        tension: 0.4, // Curva suave
-        fill: true,
-        pointRadius: 3,
-        pointHoverRadius: 6,
-      },
-      {
-        label: 'Custo Acumulado (R$)',
-        data: analysis.chart_data.costs.map(c => c + opportunity.buyPrice),
-        borderColor: '#EF4444', // Vermelho
-        borderDash: [5, 5],
-        tension: 0.1,
-        pointRadius: 0,
-        fill: false
-      }
-    ]
-  } : null;
+
+// --- LÓGICA DE NORMALIZAÇÃO DE DADOS PARA O GRÁFICO ---
+  // frontend/src/components/Weather/StorageAdvisor.jsx (LINHAS 110-140)
+
+const chartData = analysis ? {
+  labels: analysis.chart_data.labels,
+  datasets: [
+    {
+      label: 'Preço Projetado (R$/kg)',
+      data: analysis.chart_data.prices,
+      borderColor: '#10B981',
+      backgroundColor: 'rgba(16, 185, 129, 0.1)',
+      tension: 0.4,
+      fill: true,
+      pointRadius: 3,
+      pointHoverRadius: 6,
+    },
+    {
+      label: 'Custo Acumulado (R$/kg)',
+      // ✅ SOMA: Preço de Compra (em kg) + Custos de Armazenagem
+      data: analysis.chart_data.costs.map(c => c + analysis.buyPricePerKg),
+      borderColor: '#EF4444',
+      borderDash: [5, 5],
+      tension: 0.1,
+      pointRadius: 0,
+      fill: false
+    }
+  ]
+} : null;
 
   const chartOptions = {
     responsive: true,

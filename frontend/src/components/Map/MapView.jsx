@@ -530,7 +530,20 @@ return (
 
                     <div style={{marginBottom:'12px'}}>
                       <div style={{display:'flex',justifyContent:'space-between',marginBottom:'8px',padding:'6px',background:`${theme.colors.background}99`,borderRadius:'4px'}}><span style={{fontSize:'12px',fontWeight:'600',color:theme.colors.textPrimary}}>💰 Compra:</span><span style={{fontSize:'12px',fontWeight:'bold',color:'#22c55e'}}>{formatPrice(opp.buyPrice)}/kg</span></div>
-                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:'8px',padding:'6px',background:`${theme.colors.background}99`,borderRadius:'4px'}}><span style={{fontSize:'12px',fontWeight:'600',color:theme.colors.textPrimary}}>💵 Venda:</span><span style={{fontSize:'12px',fontWeight:'bold',color:theme.colors.accent}}>{formatPrice(opp.sellPrice)}/kg</span></div>
+                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:'8px',padding:'6px',background:`${theme.colors.background}99`,borderRadius:'4px'}}>
+                        <span style={{fontSize:'12px',fontWeight:'600',color:theme.colors.textPrimary}}>💵 Venda:</span>
+                        <div style={{textAlign: 'right'}}>
+                          <span style={{fontSize:'12px',fontWeight:'bold',color:theme.colors.accent}}>
+                            {formatPrice(opp.sellPrice)}/kg
+                          </span>
+                          {/* 👇 O AVISO NOVO APARECE AQUI 👇 */}
+                          {timeHorizon > 0 && (
+                            <span style={{display: 'block', fontSize: '9px', color: '#00d9ff', fontStyle: 'italic', marginTop: '2px'}}>
+                              🤖 Projetado (+{timeHorizon}d)
+                            </span>
+                          )}
+                        </div>
+                      </div>
                       <div style={{display:'flex',justifyContent:'space-between',marginBottom:'8px',padding:'6px',background:`${theme.colors.background}99`,borderRadius:'4px'}}><span style={{fontSize:'12px',fontWeight:'600',color:theme.colors.textPrimary}}>🚛 Destino:</span><span style={{fontSize:'12px',color:theme.colors.textMuted}}>{opp.sellLocation}</span></div>
                     </div>
 

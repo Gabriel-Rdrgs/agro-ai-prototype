@@ -200,7 +200,18 @@ app.post('/api/ai/batch', verifyToken, async (req, res) => {
     res.status(500).json({ error: 'Erro ao processar lote' });
   }
 });
-
+// 👇 ROTA DE ADMINISTRAÇÃO (FIX DADOS)
+app.post('/api/admin/fix-data', verifyToken, async (req, res) => {
+  try {
+    console.log("🔧 Iniciando correção de dados...");
+    // Chama o Python
+    const response = await axios.post(`${PYTHON_API_URL}/admin/fix-market-data`);
+    res.json(response.data);
+  } catch (error) {
+    console.error("Erro Fix Data:", error.message);
+    res.status(500).json({ error: 'Erro ao corrigir dados.' });
+  }
+});
 // ============================================
 // 📈 ROTAS DE CEASA
 // ============================================

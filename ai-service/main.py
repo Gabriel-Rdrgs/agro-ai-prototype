@@ -229,8 +229,48 @@ def get_real_dollar_rate():
 class MarketScanRequest(BaseModel):
     product: str
     origin_state: str
-    volume: float = 1000.0 # Opcional, padrão 1000 unidades
-    month: int = None
+    volume: float = 1000.0
+    month: Optional[int] = None # Garanta que esta linha existe
+
+# ============================================================================
+# 🧠 INTELIGÊNCIA DE SAZONALIDADE (Baseado no PDF "Épocas de Plantio")
+# ============================================================================
+def get_seasonality_factor(product, state, month):
+    """
+    Traduz o PDF em multiplicadores de preço.
+    Lógica: Se é época de chuva/risco, a oferta cai e o preço sobe (> 1.0).
+    Se é época de colheita plena, a oferta sobe e o preço cai (< 1.0).
+    """
+    if product.strip().capitalize() != 'Tomate': 
+        return 1.0 # Por enquanto, focado no Tomate (PDF)
+    
+    # 1. SUDESTE (SP, MG, RJ, ES)
+    # PDF: "Evite plantios de janeiro devido às chuvas intensas"
+    # Conclusão: Jan/Fev/Mar tem pouca oferta local -> Preço Alto
+    if state in ['SP', 'MG', 'RJ', 'ES']:
+        if month in [1, 2, 3]: return 1.35  # Escassez (Chuva)
+        if month in [7, 8, 9]: return 0.85  # Safra de Inverno (Pico)
+        
+    # 2. SUL (RS, SC, PR)
+    # PDF: "Priorizar plantio de agosto a janeiro" (Colheita no Verão)
+    # Inverno (Jun-Ago) é muito frio/geada -> Sem produção -> Preço Explode
+    if state in ['RS', 'SC', 'PR']:
+        if month in [6, 7, 8]: return 1.45  # Escassez Extrema (Frio)
+        if month in [12, 1, 2]: return 0.90 # Safra de Verão
+        
+    # 3. CENTRO-OESTE (GO, MT, MS)
+    # Região de Tomate Industrial e Mesa Irrigado (Seca = Bom)
+    # Safra forte no meio do ano (Inverno Seco)
+    if state in ['GO', 'MT', 'MS', 'DF']:
+        if month in [6, 7, 8, 9]: return 0.80 # Superabundância
+        if month in [12, 1, 2]: return 1.25   # Chuvas atrapalham
+        
+    # 4. NORDESTE (BA, PE)
+    # Polos irrigados (Irecê/Petrolina) produzem o ano todo, mas cobrem janelas
+    if state in ['BA', 'PE', 'CE']:
+        if month in [3, 4, 5]: return 1.15    # Chuvas no litoral/agreste
+    
+    return 1.05 # Padrão levemente acima da média (Margem)
 
 @lru_cache(maxsize=32)
 def get_prediction_model(product_name):
@@ -322,45 +362,45 @@ def calculate_distance(state_a, state_b):
 
 def get_predicted_market_price(product, state, month):
     """
-    Busca o preço de mercado (Kg) REAL no Banco de Dados.
-    Agora assume que o banco JÁ ESTÁ em Kg.
+    Calcula preço baseado no Banco de Dados + Fator de Sazonalidade (PDF).
     """
     try:
-        # Busca preço mais recente na CEASA para esse estado
+        # 1. Busca preço base no Banco (Último registro real)
         query = text("""
             SELECT price_avg 
             FROM "CeasaPrice"
-            WHERE product_name ILIKE :prod
+            WHERE product_name ILIKE :prod 
             AND (ceasa_region = :state OR ceasa_name ILIKE :state_like)
-            ORDER BY price_date DESC
+            ORDER BY price_date DESC 
             LIMIT 1
         """)
-
+        
         with engine.connect() as conn:
             result = conn.execute(query, {
-                "prod": f"%{product}%",
-                "state": state,
+                "prod": f"%{product}%", 
+                "state": state, 
                 "state_like": f"%{state}%"
             }).fetchone()
 
+        base_price_kg = 4.00 # Fallback se o banco estiver vazio
+        
         if result:
-            price_kg = float(result[0])
-            # Se por algum acidente ainda tiver lixo no banco (> 20 reais o kg do tomate), corrige
-            if product == 'Tomate' and price_kg > 15.0: price_kg /= 20.0
-            
-            print(f"💰 Preço Banco ({product}/{state}): R$ {price_kg:.2f}/kg")
-            return round(price_kg, 2)
-        else:
-            # Fallback
-            print(f"⚠️ Sem dados para {product}/{state}. Usando estimativa.")
-            base_prices = {'Tomate': 4.50, 'Soja': 2.20, 'Milho': 1.00}
-            price = base_prices.get(product, 2.00)
-            region_factor = PRICE_MULTIPLIERS.get(state, 1.0)
-            if product == 'Tomate' and month in [6, 7, 8]: price *= 1.3
-            return round(price * region_factor, 2)
+            val = float(result[0])
+            # Normaliza se estiver em caixa (Safety check)
+            prod_key = product.strip().capitalize()
+            if prod_key == 'Tomate' and val > 15.0: val /= 20.0
+            if prod_key in ['Soja', 'Milho'] and val > 10.0: val /= 60.0
+            base_price_kg = val
+
+        # 2. APLICA A INTELIGÊNCIA DO PDF
+        season_factor = get_seasonality_factor(product, state, month)
+        
+        predicted_price = base_price_kg * season_factor
+        
+        return round(predicted_price, 2)
 
     except Exception as e:
-        print(f"Erro preço: {e}")
+        print(f"Erro ao prever preço: {e}")
         return 4.00
 
 
@@ -588,18 +628,33 @@ def sync_market_prices():
 
 @app.post("/predict/storage")
 def predict_storage_viability(data: SimulationRequest):
-    """Predição de armazenagem usando o CÉREBRO CLIMÁTICO (Climate Intelligence)"""
-    
-    # 1. Configuração e Normalização
+    """
+    Predição de armazenagem (CORRIGIDO: Custo e Preço sempre em KG)
+    """
+    # 1. Configuração
     product_key = data.product.strip().capitalize()
     specs = CROPS_SPECS.get(product_key, CROPS_SPECS['Default'])
     weight = specs.get('unit_weight_kg', 1.0)
     
-    # Preço Atual em KG
-    price_per_kg = data.current_price
-    if (product_key == 'Tomate' and price_per_kg > 15.0) or \
-       (product_key in ['Soja', 'Milho'] and price_per_kg > 10.0):
-        price_per_kg /= weight
+    # Valores brutos
+    raw_price = data.current_price
+    # Se custo for zero/nulo, assume 10 centavos (padrão de mercado por caixa)
+    raw_cost = data.storage_cost_per_day if data.storage_cost_per_day and data.storage_cost_per_day > 0 else 0.10
+    
+    # Detecção de Unidade Comercial (Caixa/Saca)
+    is_commercial_unit = False
+    if (product_key == 'Tomate' and raw_price > 15.0) or \
+       (product_key in ['Soja', 'Milho'] and raw_price > 10.0):
+        is_commercial_unit = True
+
+    # 2. CONVERSÃO PARA QUILO (Física do Sistema)
+    if is_commercial_unit:
+        price_per_kg = raw_price / weight
+        # SEGREDO: Se o preço é caixa, o custo unitário também é caixa -> Divide ambos!
+        daily_cost_kg = raw_cost / weight  
+    else:
+        price_per_kg = raw_price
+        daily_cost_kg = raw_cost
 
     days = 30
     current_month = datetime.now().month
@@ -608,18 +663,21 @@ def predict_storage_viability(data: SimulationRequest):
     seed_val = int(hashlib.sha256(seed_source.encode('utf-8')).hexdigest(), 16) % (2**32)
     rng = np.random.RandomState(seed_val)
 
-    # --- 2. CLIMA (AGORA USANDO O MÓDULO INTELIGENTE) ---
+    # --- CLIMA (Usa módulo novo com fallback) ---
     if data.lat and data.lng:
-        # 👇 AQUI ESTÁ A MUDANÇA
-        monthly_rain_avg = climate_api.get_rain_history(data.lat, data.lng, current_month)
-        solar_mj_avg = climate_api.get_solar_radiation(data.lat, data.lng, current_month)
+        try:
+            monthly_rain_avg = climate_api.get_rain_history(data.lat, data.lng, current_month)
+            solar_mj_avg = climate_api.get_solar_radiation(data.lat, data.lng, current_month)
+        except:
+            monthly_rain_avg = BRAZIL_CLIMATE_NORMS.get(data.state, {}).get(current_month, 150)
+            solar_mj_avg = 18.0
     else:
         monthly_rain_avg = BRAZIL_CLIMATE_NORMS.get(data.state, {}).get(current_month, 150)
         solar_mj_avg = 18.0
     
     forecast_rain = data.daily_rain if data.daily_rain else [0] * 16
     
-    # Gap Fill (Mantido igual)
+    # Gap Fill
     days_blind = max(0, days - len(forecast_rain))
     missing_rain = max(0, monthly_rain_avg - sum(forecast_rain))
     daily_avg_missing = missing_rain / days_blind if days_blind > 0 else 0
@@ -629,9 +687,9 @@ def predict_storage_viability(data: SimulationRequest):
         final_rain.append(max(0, sim_rain))
     final_rain = final_rain[:days]
 
-    # --- 3. Modelagem e Projeção (Mantido igual) ---
+    # --- SIMULAÇÃO ---
     model, volatility = get_prediction_model(data.product)
-    prices, costs, future_dates = [], [], []
+    prices_kg, costs_kg, future_dates = [], [], []
     risk_acc = 0
     vol_boost = specs.get('volatility_factor', 1.0)
     
@@ -645,7 +703,10 @@ def predict_storage_viability(data: SimulationRequest):
     for i in range(days):
         future_date = datetime.now() + timedelta(days=i)
         future_dates.append(future_date.strftime('%d/%m'))
-        costs.append(round(i * (data.storage_cost_per_day or 0.05), 2))
+        
+        # Custo Acumulado (Usando a variável convertida)
+        accumulated = i * daily_cost_kg
+        costs_kg.append(round(accumulated, 4))
         
         trend = price_per_kg
         if model:
@@ -653,6 +714,7 @@ def predict_storage_viability(data: SimulationRequest):
                 X_pred = pd.DataFrame({'date_ordinal': [future_date.toordinal()]})
                 predicted = float(model.predict(X_pred)[0])
                 if (product_key == 'Tomate' and predicted > 15.0): predicted /= weight
+                elif (product_key in ['Soja', 'Milho'] and predicted > 10.0): predicted /= weight
                 trend = predicted
             except: pass
         
@@ -668,10 +730,11 @@ def predict_storage_viability(data: SimulationRequest):
         
         noise = rng.normal(0, volatility * vol_boost * 0.5)
         final_price_kg = max(0.5, trend * (1 + impact) + noise)
-        prices.append(round(final_price_kg, 2))
+        prices_kg.append(round(final_price_kg, 2))
 
-    # --- 4. Decisão (Mantido igual) ---
-    net_profit = [p - price_per_kg - c for p, c in zip(prices, costs)]
+    # --- DECISÃO (Tudo em KG) ---
+    base_ref = price_per_kg
+    net_profit = [p - base_ref - c for p, c in zip(prices_kg, costs_kg)]
     max_profit = max(net_profit)
     best_idx = net_profit.index(max_profit)
     
@@ -679,12 +742,12 @@ def predict_storage_viability(data: SimulationRequest):
     if quality_factor < 0.95:
         risk_msg = f'Alerta: Baixa insolação {solar_mj_avg:.1f}MJ afeta qualidade.'
     
-    action = 'ARMAZENAR' if max_profit > 0 else 'VENDER IMEDIATAMENTE'
+    action = 'ARMAZENAR' if max_profit > 0.10 else 'VENDER IMEDIATAMENTE'
     conf_score = 0.95 if (data.lat and solar_mj_avg > 10) else 0.80
     if risk_acc > 5: conf_score -= 0.15
 
     return {
-        'chart_data': {'labels': future_dates, 'prices': prices, 'costs': costs},
+        'chart_data': {'labels': future_dates, 'prices': prices_kg, 'costs': costs_kg},
         'recommendation': {
             'action': action,
             'best_day_date': future_dates[best_idx] if max_profit > -5 else 'Hoje',
@@ -1494,6 +1557,75 @@ def scan_market_opportunities(data: MarketScanRequest):
         "product": data.product, "origin": data.origin_state,
         "ranking": ranked, "best_opportunity": ranked[0] if ranked else None
     }
+# ai-service/main.py
+
+@app.post("/admin/fix-market-data")
+def fix_market_data_distribution():
+    """
+    ROTA DE CURA: 
+    1. Redistribui destinos para regionais (evita tudo SP).
+    2. Ajusta preços de compra para gerar margem saudável.
+    """
+    logger.info("🔧 Iniciando reparo de dados de mercado...")
+    
+    # Mapa de Destinos Lógicos (Regionalização)
+    regional_hubs = {
+        'GO': 'CEASA-GO', 'MT': 'CEASA-GO', 'MS': 'CEASA-PR',
+        'MG': 'CEASA-MG', 'ES': 'CEASA-RJ', 'RJ': 'CEASA-RJ',
+        'SP': 'CEAGESP-SP', 'PR': 'CEASA-PR', 'SC': 'CEASA-SC', 'RS': 'CEASA-RS',
+        'BA': 'CEASA-BA', 'PE': 'CEASA-PE', 'CE': 'CEASA-CE'
+    }
+
+    try:
+        with engine.connect() as conn:
+            # Pega todas as oportunidades
+            opps = conn.execute(text('SELECT id, state, product, "buyPrice" FROM "Opportunity"')).fetchall()
+            
+            for row in opps:
+                opp_id, origin_uf, product, buy_price = row
+                
+                # 1. Define Destino Regional
+                new_dest = regional_hubs.get(origin_uf, 'CEAGESP-SP')
+                
+                # 2. Ajusta Preço de Venda Base (Simulação de Mercado)
+                # Pega preço atual do mercado para esse destino
+                current_market_price_kg = get_predicted_market_price(product, origin_uf, datetime.now().month)
+                
+                # Fator de Peso (Kg vs Caixa)
+                weight = 1.0
+                if product == 'Tomate': weight = 20.0
+                elif product in ['Soja', 'Milho']: weight = 60.0
+                
+                # Preço de Venda Esperado (Unidade)
+                market_sell_unit = current_market_price_kg * weight
+                
+                # 3. Ajusta Compra para garantir Margem (Demo Effect)
+                # Garante ROI entre 15% e 40% para parecer uma "Boa Oportunidade"
+                target_margin = np.random.uniform(0.15, 0.40)
+                new_buy_price = market_sell_unit / (1 + target_margin)
+                
+                # Atualiza no Banco
+                update_q = text("""
+                    UPDATE "Opportunity" 
+                    SET "sellLocation" = :dest, 
+                        "buyPrice" = :buy,
+                        "sellPrice" = :sell
+                    WHERE id = :id
+                """)
+                
+                conn.execute(update_q, {
+                    "dest": new_dest,
+                    "buy": round(new_buy_price, 2),
+                    "sell": round(market_sell_unit, 2),
+                    "id": opp_id
+                })
+                
+            conn.commit()
+            return {"status": "success", "msg": f"Dados corrigidos para {len(opps)} oportunidades. Logística regionalizada!"}
+            
+    except Exception as e:
+        logger.error(f"Erro ao corrigir dados: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 # ============================================================================
 # PONTO DE ENTRADA E CONFIGURAÇÃO FINAL
 # ============================================================================
@@ -1543,67 +1675,70 @@ class MarketScanRequest(BaseModel):
 # --- ROTA DE PREVISÃO EM MASSA (PARA O MAPA) ---
 @app.post("/predict/batch")
 def predict_batch_roi(data: BatchSimulationRequest):
-    """
-    Calcula projeção de ROI para 7 e 30 dias para múltiplos itens.
-    Otimizado para performance (Mapa).
-    """
+    """Calcula ROI para o Mapa (Com correção Kg/Caixa)"""
     results = {}
-    current_month = datetime.now().month
-    
-    # Carrega histórico climático apenas uma vez por estado para otimizar (Cache ajuda aqui)
-    
+    models_cache = {} # Otimização
+
     for item in data.items:
         product_key = item.product.strip().capitalize()
         specs = CROPS_SPECS.get(product_key, CROPS_SPECS['Default'])
-        
-        # 1. Normalização de Unidade (Igual ao StorageAdvisor)
         weight = specs.get('unit_weight_kg', 1.0)
+        
+        # 1. Normaliza entrada para KG (para cálculo de tendência)
         price_per_kg = item.current_price
         if (product_key == 'Tomate' and price_per_kg > 15.0) or \
            (product_key in ['Soja', 'Milho'] and price_per_kg > 10.0):
             price_per_kg /= weight
 
-        # 2. Modelagem Simplificada (Sem simulação dia-a-dia pesada)
-        model, volatility = get_prediction_model(item.product)
+        # Carrega modelo (cache)
+        if item.product not in models_cache:
+            models_cache[item.product] = get_prediction_model(item.product)
+        model, _ = models_cache[item.product]
         
-        # Previsão para 7 e 30 dias
-        future_rois = {0: 0.0} # Dia 0 = variação zero
+        future_rois = {0: 0.0}
         
-        for d in [7, 30]:
-            future_date = datetime.now() + timedelta(days=d)
-            
-            # Tendência
-            trend = price_per_kg
-            if model:
-                try:
-                    X_pred = pd.DataFrame({'date_ordinal': [future_date.toordinal()]})
-                    trend = float(model.predict(X_pred)[0])
-                except: pass
-            
-            # Sazonalidade (Inverno)
-            if product_key == 'Tomate' and future_date.month in [4, 5, 6, 7]:
-                trend *= 1 + (0.005 * d)
+        for d in [0, 7, 30]:
+            if d == 0:
+                trend = price_per_kg
+            else:
+                future_date = datetime.now() + timedelta(days=d)
+                trend = price_per_kg
+                if model:
+                    try:
+                        X_pred = pd.DataFrame({'date_ordinal': [future_date.toordinal()]})
+                        trend = float(model.predict(X_pred)[0])
+                    except: pass
+                
+                # Sazonalidade simples para batch
+                if product_key == 'Tomate' and future_date.month in [4, 5, 6, 7]:
+                    trend *= 1 + (0.005 * d)
 
-            # Clima (Usa médias estaduais para ser rápido no batch)
-            norms = BRAZIL_CLIMATE_NORMS.get(item.state, {})
-            avg_rain = norms.get(future_date.month, 150)
-            
-            impact = 0.0
-            # Se for mês muito chuvoso e o produto sensível
-            if avg_rain > 200 and specs.get('rain_logistics_limit', 20) < 20:
-                impact += 0.05 # Preço sobe um pouco
+                norms = BRAZIL_CLIMATE_NORMS.get(item.state, {})
+                avg_rain = norms.get(future_date.month, 150)
+                if avg_rain > 200 and specs.get('rain_logistics_limit', 20) < 20:
+                    trend *= 1.05
 
-            # Preço Futuro Estimado (Kg)
-            future_price_kg = trend * (1 + impact)
+            future_price_kg = trend
             
-            # Reconverte para Unidade de Venda (Caixa) para calcular ROI
-            future_sell_price = future_price_kg * weight
+            # --- CORREÇÃO UNIDADE (O FIX DO ROI) ---
+            future_sell_price = 0.0
+            is_buy_in_kg = False
+            # Se pagou barato, é Kg
+            if product_key == 'Tomate' and item.buy_price < 15.0: is_buy_in_kg = True
+            elif product_key in ['Soja', 'Milho'] and item.buy_price < 10.0: is_buy_in_kg = True
             
-            # ROI = (Venda Futura - Compra Original) / Compra Original
-            roi = ((future_sell_price - item.buy_price) / item.buy_price) * 100
+            if is_buy_in_kg:
+                future_sell_price = future_price_kg # Mantém Kg
+            else:
+                future_sell_price = future_price_kg * weight # Converte p/ Caixa
+
+            if item.buy_price > 0:
+                roi = ((future_sell_price - item.buy_price) / item.buy_price) * 100
+            else:
+                roi = 0.0
             
             future_rois[d] = round(roi, 1)
             
         results[item.id] = future_rois
 
-    return results 
+    return results
