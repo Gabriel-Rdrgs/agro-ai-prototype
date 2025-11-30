@@ -1,7 +1,7 @@
 # ai-service/Dockerfile
 
 # 1. Imagem base leve do Python
-FROM python:3.10-slim
+FROM python:3.12-slim
 
 # 2. Define pasta de trabalho dentro do container
 WORKDIR /app

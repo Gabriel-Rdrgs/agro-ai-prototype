@@ -27,7 +27,7 @@ def get_database_url() -> str:
     # Normaliza postgres:// → postgresql://
     if url.startswith('postgres://'):
         url = url.replace('postgres://', 'postgresql://', 1)
-    
+    url = url.replace('?pgbouncer=true', '').replace('&pgbouncer=true', '')
     return url
 
 

@@ -79,16 +79,16 @@ async def lifespan(app: FastAPI):
     logger.info(f"💾 Cache TTL: {settings.cache_ttl_seconds}s")
     
     # Carrega serviços
+    # Carrega serviços (SEM try/except para mostrar o erro real no console)
     logger.info("🧠 Carregando serviços de inteligência...")
-    try:
-        from services.market_intelligence import market_intelligence
-        from services.storage_advisor import storage_advisor
-        from services.climate.intelligence import climate_api
-        from services.fuel_pricing import fuel_api
+    
+    # Se houver erro aqui, o container vai parar e mostrar a linha exata do problema
+    from services.market_intelligence import market_intelligence
+    from services.storage_advisor import storage_advisor
+    from services.climate.intelligence import climate_api
+    from services.fuel_pricing import fuel_api
         
-        logger.info("✅ Todos os serviços carregados")
-    except Exception as e:
-        logger.error(f"❌ Erro ao carregar serviços: {e}", exc_info=True)
+    logger.info("✅ Todos os serviços carregados com sucesso!")
     
     logger.info("="*60)
     logger.info("✅ APLICAÇÃO PRONTA PARA RECEBER REQUISIÇÕES")

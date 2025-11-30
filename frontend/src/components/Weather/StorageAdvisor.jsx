@@ -1,3 +1,4 @@
+// frontend/src/components/Weather/StorageAdvisor.jsx
 import React, { useState, useEffect } from 'react';
 import { OpportunityService } from '../../services/opportunityService';
 import {
@@ -12,7 +13,7 @@ import {
   Filler
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import '../../styles/StorageAdvisor.css'; // Importando o CSS novo
+import '../../styles/StorageAdvisor.css';
 
 // Registra componentes do Chart.js
 ChartJS.register(
@@ -29,188 +30,155 @@ ChartJS.register(
 const StorageAdvisor = ({ opportunity, forecast }) => {
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (opportunity) {
-      console.log("🔍 Debug Opportunity:", {
-  product: opportunity.product,
-  buyPrice: opportunity.buyPrice,
-  sellPrice: opportunity.sellPrice
-});
-
+    // Validação robusta antes de chamar a API
+    if (opportunity && forecast && forecast.length > 0) {
       fetchAnalysis();
     }
   }, [opportunity, forecast]);
 
-  // frontend/src/components/Weather/StorageAdvisor.jsx (LINHAS 50-100)
+  const fetchAnalysis = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Prepara dados do clima (map segurando falhas)
+      const dailyRain = forecast.map(d => d.rain || 0);
+      const dailyTempMax = forecast.map(d => d.tempMax || 25);
+      const dailyTempMin = forecast.map(d => d.tempMin || 18);
+      const dailySun = forecast.map(d => d.sun || 0);
 
-const fetchAnalysis = async () => {
-  setLoading(true);
-  try {
-    const dailyRain = forecast ? forecast.map(d => d.rain) : [];
-    const dailyTempMax = forecast ? forecast.map(d => d.tempMax) : [];
-    const dailyTempMin = forecast ? forecast.map(d => d.tempMin) : [];
-    const dailySun = forecast ? forecast.map(d => d.sun) : [];
+      // Chama o serviço
+      const result = await OpportunityService.getStorageAnalysis(
+        opportunity.product,
+        opportunity.state,
+        opportunity.sellPrice,
+        opportunity.riskLevel || 1,
+        dailyRain,
+        dailyTempMax,
+        dailySun,
+        dailyTempMin,
+        opportunity.lat,
+        opportunity.lng
+      );
 
-    let lat = opportunity.lat;
-    let lng = opportunity.lng;
-
-    if (!lat && opportunity.position && opportunity.position.length === 2) {
-        lat = opportunity.position[0];
-        lng = opportunity.position[1];
+      if (result) {
+        setAnalysis(result);
+      } else {
+        throw new Error("Dados de análise vazios");
+      }
+    } catch (err) {
+      console.error("❌ Erro no Advisor:", err);
+      setError("Não foi possível conectar à Inteligência Artificial.");
+    } finally {
+      setLoading(false);
     }
-    
-    // 🆕 DETECTA E NORMALIZA O PREÇO PARA KG
-    let buyPricePerKg = opportunity.buyPrice;
-    
-    // Se for Tomate e preço > 15, é Caixa (20kg) → converte para kg
-    if (opportunity.product === 'Tomate' && buyPricePerKg > 15) {
-        buyPricePerKg = buyPricePerKg / 20;
-        console.log(`🔄 Convertendo Tomate de Caixa para Kg: R$ ${opportunity.buyPrice} → R$ ${buyPricePerKg.toFixed(2)}/kg`);
-    }
-    // Se for Soja/Milho e preço > 10, é Saca (60kg) → converte para kg
-    else if (['Soja', 'Milho'].includes(opportunity.product) && buyPricePerKg > 10) {
-        buyPricePerKg = buyPricePerKg / 60;
-        console.log(`🔄 Convertendo ${opportunity.product} de Saca para Kg: R$ ${opportunity.buyPrice} → R$ ${buyPricePerKg.toFixed(2)}/kg`);
-    }
-    
-    console.log("📍 Enviando para IA:", { product: opportunity.product, state: opportunity.state, buyPricePerKg, lat, lng });
-
-    const data = await OpportunityService.getStorageAnalysis(
-      opportunity.product,
-      opportunity.state,
-      buyPricePerKg, // 👈 AGORA SEMPRE EM KG
-      opportunity.riskLevel,
-      dailyRain,
-      dailyTempMax,
-      dailySun,
-      dailyTempMin,
-      lat,
-      lng
-    );
-    
-    // 🆕 GUARDA O PREÇO EM KG NO STATE PARA USAR NO GRÁFICO
-    setAnalysis({...data, buyPricePerKg});
-    
-  } catch (error) {
-    console.error("Erro ao buscar análise:", error);
-  } finally {
-    setLoading(false);
-  }
-};
-
-  
-  if (!opportunity) return null;
-
-  // --- Helpers de Visual ---
-
-  const getStatusColor = () => {
-    if (!analysis) return '';
-    const action = analysis.recommendation.action.toUpperCase();
-    if (action.includes('ARMAZENAR')) return 'status-green';
-    if (action.includes('VENDER') && !action.includes('PARCIAL')) return 'status-red';
-    return 'status-yellow';
   };
 
-
-// --- LÓGICA DE NORMALIZAÇÃO DE DADOS PARA O GRÁFICO ---
-  // frontend/src/components/Weather/StorageAdvisor.jsx (LINHAS 110-140)
-
-const chartData = analysis ? {
-  labels: analysis.chart_data.labels,
-  datasets: [
-    {
-      label: 'Preço Projetado (R$/kg)',
-      data: analysis.chart_data.prices,
-      borderColor: '#10B981',
-      backgroundColor: 'rgba(16, 185, 129, 0.1)',
-      tension: 0.4,
-      fill: true,
-      pointRadius: 3,
-      pointHoverRadius: 6,
-    },
-    {
-      label: 'Custo Acumulado (R$/kg)',
-      // ✅ SOMA: Preço de Compra (em kg) + Custos de Armazenagem
-      data: analysis.chart_data.costs.map(c => c + analysis.buyPricePerKg),
-      borderColor: '#EF4444',
-      borderDash: [5, 5],
-      tension: 0.1,
-      pointRadius: 0,
-      fill: false
-    }
-  ]
-} : null;
+  // --- PREPARAÇÃO DO GRÁFICO (COM SEGURANÇA) ---
+  // Só montamos o objeto data se analysis e labels existirem
+  const chartData = (analysis && analysis.labels) ? {
+    labels: analysis.labels,
+    datasets: [
+      {
+        label: 'Preço Previsto (R$/kg)',
+        data: analysis.prices,
+        borderColor: '#27ae60',
+        backgroundColor: 'rgba(39, 174, 96, 0.1)',
+        tension: 0.4,
+        fill: true,
+        pointRadius: 3,
+        pointHoverRadius: 5
+      },
+      {
+        label: 'Custo Acumulado',
+        data: analysis.costs,
+        borderColor: '#e74c3c',
+        borderDash: [5, 5],
+        tension: 0.1,
+        fill: false,
+        pointRadius: 0
+      }
+    ]
+  } : null;
 
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: { 
-        position: 'top', 
-        align: 'end',
-        labels: { color: '#94a3b8' } // Cor do texto da legenda (cinza claro)
-      },
-      tooltip: { 
-        mode: 'index', 
+      legend: { position: 'top' },
+      tooltip: {
+        mode: 'index',
         intersect: false,
-        backgroundColor: '#15192c', // Fundo do tooltip escuro
-        titleColor: '#ffffff',      // Texto branco
-        bodyColor: '#94a3b8',       // Texto cinza
-        borderColor: '#00d9ff',     // Borda Cyan
-        borderWidth: 1
-      },
+        callbacks: {
+          label: (ctx) => `${ctx.dataset.label}: R$ ${Number(ctx.raw).toFixed(2)}`
+        }
+      }
+    },
+    interaction: {
+      mode: 'nearest',
+      axis: 'x',
+      intersect: false
     },
     scales: {
-      y: { 
-        grid: { color: 'rgba(255, 255, 255, 0.05)' }, // Linhas da grade bem sutis
-        ticks: { 
-          color: '#94a3b8', // Cor dos números
-          callback: (value) => `R$ ${value}` 
-        }
+      y: {
+        beginAtZero: false,
+        grid: { color: '#f0f0f0' }
       },
-      x: { 
-        grid: { display: false },
-        ticks: { color: '#94a3b8' } // Cor das datas
+      x: {
+        grid: { display: false }
       }
     }
   };
-  
+
+  // --- RENDERIZAÇÃO ---
   return (
-    <div className="advisor-container">
+    <div className="storage-advisor-container">
       <div className="advisor-header">
-        <h2>🧠 Inteligência de Mercado (IA)</h2>
-        <p>Análise preditiva para <strong>{opportunity.product}</strong> considerando custos e clima.</p>
+        <h4>🧠 Inteligência de Armazenagem (IA)</h4>
+        
+        {/* Badge de Recomendação (Só exibe se existir) */}
+        {analysis && analysis.recommendation && (
+          <div className={`recommendation-badge ${analysis.recommendation.action?.includes('VENDER') ? 'sell' : 'store'}`}>
+            {analysis.recommendation.action?.replace(/_/g, ' ')}
+          </div>
+        )}
       </div>
 
       <div className="advisor-content">
-        {loading ? (
-          <div className="loading-state">
-            <div className="spinner"></div>
-            <span>Consultando redes neurais...</span>
+        {/* 1. Loading */}
+        {loading && (
+          <div className="loading-state" style={{padding: '20px', textAlign: 'center'}}>
+            <div className="spinner-border text-success" role="status"></div>
+            <p className="mt-2 text-muted">Simulando 30 dias de mercado e clima...</p>
           </div>
-        ) : !analysis ? (
-          <div className="error-state">
-            ⚠️ Dados insuficientes para gerar projeção.
-          </div>
-        ) : (
-          <>
-            {/* 1. Card de Decisão Principal */}
-            <div className={`decision-card ${getStatusColor()}`}>
-              <div className="decision-label">RECOMENDAÇÃO ESTRATÉGICA</div>
-              <div className="decision-action">{analysis.recommendation.action}</div>
-              <div className="decision-reason">
-                "{analysis.recommendation.risk_event}"
-              </div>
-            </div>
+        )}
 
-            {/* 2. Grid de Métricas */}
-            <div className="metrics-row">
-              {/* Lucro */}
+        {/* 2. Erro */}
+        {!loading && error && (
+          <div className="alert alert-danger">
+            <i className="fas fa-exclamation-triangle"></i> {error}
+            <button className="btn btn-link btn-sm ms-2" onClick={fetchAnalysis}>Tentar novamente</button>
+          </div>
+        )}
+
+        {/* 3. Empty State (Se não houver dados e não estiver carregando) */}
+        {!loading && !error && !analysis && (
+          <div className="empty-state text-muted text-center p-4">
+            Aguardando seleção de oportunidade...
+          </div>
+        )}
+
+        {/* 4. DADOS COMPLETOS (Seu Layout Original) */}
+        {!loading && !error && analysis && analysis.recommendation && (
+          <>
+            <div className="metrics-grid">
+              {/* Lucro Projetado */}
               <div className="metric-box">
                 <label>Lucro Projetado</label>
-                <span className={analysis.recommendation.projected_profit > 0 ? 'text-green' : 'text-red'}>
-                  R$ {analysis.recommendation.projected_profit}
+                <span className={analysis.recommendation.estimated_profit > 0 ? 'text-green' : 'text-red'}>
+                  R$ {analysis.recommendation.estimated_profit?.toFixed(2)}
                 </span>
                 <small>por unidade</small>
               </div>
@@ -219,7 +187,7 @@ const chartData = analysis ? {
               <div className="metric-box">
                 <label>Melhor Momento</label>
                 <span className="text-dark">
-                  {analysis.recommendation.best_day_date}
+                  Dia {analysis.recommendation.best_day}
                 </span>
                 <small>Pico de preço</small>
               </div>
@@ -229,21 +197,33 @@ const chartData = analysis ? {
                 <label>Nível de Confiança</label>
                 <div className="confidence-wrapper">
                   <span className="confidence-value">
-                    {Math.round(analysis.recommendation.confidence_score * 100)}%
+                    {Math.round(analysis.recommendation.confidence * 100)}%
                   </span>
-                  <div className="progress-bar">
+                  <div className="progress-bar-custom">
                     <div 
                       className="progress-fill" 
-                      style={{width: `${analysis.recommendation.confidence_score * 100}%`}}
+                      style={{
+                        width: `${analysis.recommendation.confidence * 100}%`,
+                        backgroundColor: analysis.recommendation.confidence > 0.8 ? '#27ae60' : '#f1c40f',
+                        height: '6px',
+                        borderRadius: '3px',
+                        transition: 'width 1s ease'
+                      }}
                     ></div>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* 3. Gráfico */}
-            <div className="chart-wrapper">
-              <Line data={chartData} options={chartOptions} />
+            {/* Gráfico (Só renderiza se chartData existir) */}
+            <div className="chart-wrapper mt-4" style={{ height: '300px', position: 'relative' }}>
+              {chartData && <Line data={chartData} options={chartOptions} />}
+            </div>
+            
+            <div className="advisor-footer mt-3 text-end">
+              <small className="text-muted" style={{fontSize: '0.75rem'}}>
+                *Considera deterioração biológica e custos operacionais
+              </small>
             </div>
           </>
         )}

@@ -1,4 +1,3 @@
-# services/storage_advisor.py
 """
 Serviço de recomendação de armazenagem com IA.
 Implementa função custo do document-1.pdf.
@@ -9,7 +8,7 @@ CORREÇÕES CRÍTICAS APLICADAS:
 - Normalização de unidades: sempre em KG
 - Preço acumulado = Compra + Custos de armazenagem
 """
-
+import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import hashlib

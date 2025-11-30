@@ -25,8 +25,8 @@ model Opportunity {
   lng          Float
 
   // Dados Financeiros
-  buyPrice     Float    // Preço Compra
-  sellPrice    Float    // Preço Venda
+  buyPrice     Decimal  @db.Decimal(10, 2)
+  sellPrice    Decimal  @db.Decimal(10, 2)
   
   // Dados Destino
   sellLocation String   // Ex: CEAGESP - SP
@@ -142,4 +142,17 @@ model CeasaSyncLog {
   
   @@index([source])
   @@index([sync_timestamp])
+}
+// Adicione isso no final do arquivo schema.prisma
+
+model FuelPrice {
+  id              Int      @id @default(autoincrement())
+  state_code      String   // Ex: "SP"
+  price_per_liter Float
+  data_coleta     DateTime
+  fonte           String?
+  created_at      DateTime @default(now())
+
+  // IMPORTANTE: Mapeia para o nome exato que o Python usa
+  @@map("fuel_prices")
 }

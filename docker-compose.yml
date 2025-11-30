@@ -7,9 +7,13 @@ services:
     container_name: agro_brain
     ports:
       - "8000:8000"
+    # Força o carregamento do .env
     env_file:
       - ./ai-service/.env
     environment:
+      # Garante que o Python veja o Supabase e não o SQLite
+      - DATABASE_URL=${DATABASE_URL} 
+      - DIRECT_URL=${DIRECT_URL}
       - PORT=8000
     volumes:
       - ./ai-service:/app
@@ -25,14 +29,12 @@ services:
       - ./backend/.env
     environment:
       - PORT=3001
+      - DATABASE_URL=${DATABASE_URL}
       - PYTHON_API_URL=http://ai-service:8000
-    # O Pulo do Gato: Volumes para atualização em tempo real
+      - JWT_SECRET=sua_chave_secreta_super_segura
     volumes:
       - ./backend:/app
       - /app/node_modules
     depends_on:
       - ai-service
-    restart: always
-    # Comando para iniciar em modo dev (garanta que seu package.json tem esse script)
-    # Se não tiver, use: command: npm start
     command: npm start

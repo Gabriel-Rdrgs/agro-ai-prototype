@@ -1,12 +1,13 @@
 # config/settings.py
 """
 Configurações da aplicação via Pydantic Settings.
-VERSÃO CORRIGIDA com todas as variáveis do .env
+VERSÃO BLINDADA: Corrige conflito de namespace e limpa URL do banco.
 """
 
 import os
 from typing import Optional
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
 from dotenv import load_dotenv
 
 # Carrega .env
@@ -15,7 +16,6 @@ load_dotenv()
 class Settings(BaseSettings):
     """
     Configurações da aplicação.
-    Extrai variáveis do .env com validação Pydantic.
     """
     
     # ========================================
@@ -33,6 +33,16 @@ class Settings(BaseSettings):
     # ========================================
     database_url: str = os.getenv('DATABASE_URL', 'sqlite:///./agro_test.db')
     
+    # 👇 O TRUQUE DE MESTRE: Validador que limpa a URL para o Python
+    @field_validator('database_url')
+    @classmethod
+    def clean_database_url(cls, v: str) -> str:
+        if v:
+            # O Python (SQLAlchemy) odeia o parâmetro pgbouncer, mas o Prisma precisa dele.
+            # Aqui nós removemos silenciosamente apenas para o Python.
+            return v.replace('?pgbouncer=true', '').replace('&pgbouncer=true', '')
+        return v
+
     # ========================================
     # APIs
     # ========================================
@@ -44,6 +54,7 @@ class Settings(BaseSettings):
     # ========================================
     # ML/AI
     # ========================================
+    # O Pydantic reclamava deste nome começando com 'model_'
     model_retention_days: int = 180
     min_confidence: float = 0.5
     max_records: int = 10000
@@ -61,11 +72,13 @@ class Settings(BaseSettings):
     port: int = 8000
     host: str = "0.0.0.0"
     
-    # Configura o Pydantic para ACEITAR extras
-    model_config = {
-        "extra": "allow",  # ← CHAVE: permite variáveis extras
-        "env_file": ".env"
-    }
+    # Configurações do Pydantic (Resolve o Warning)
+    model_config = SettingsConfigDict(
+        extra='allow',
+        env_file='.env',
+        # 👇 Isso silencia o aviso sobre "model_retention_days"
+        protected_namespaces=('settings_',)
+    )
 
 
 # Singleton das configurações
