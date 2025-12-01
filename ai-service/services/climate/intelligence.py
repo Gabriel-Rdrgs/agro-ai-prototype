@@ -269,6 +269,56 @@ class ClimateIntelligence:
             logger.error(f"❌ Erro Agrometeo: {e}")
             return None
 
+    @lru_cache(maxsize=128)
+    def get_accumulated_rain_recent(self, lat: float, lng: float, days_back: int = 120) -> float:
+        """
+        Busca o volume REAL de chuva acumulada nos últimos X dias.
+        Usado para determinar se a safra foi úmida ou seca.
+        """
+        if not self._validate_coords(lat, lng):
+            return 500.0 # Fallback neutro
+            
+        cache_key = f"acc_rain_{lat}_{lng}_{days_back}"
+        cached = self.cache.get(cache_key)
+        if cached: return cached
+
+        try:
+            # Define datas: De (Hoje - 120 dias) até (Ontem)
+            end_date = (datetime.now() - pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+            start_date = (datetime.now() - pd.Timedelta(days=days_back)).strftime('%Y-%m-%d')
+            
+            url = "https://archive-api.open-meteo.com/v1/archive"
+            params = {
+                'latitude': lat,
+                'longitude': lng,
+                'start_date': start_date,
+                'end_date': end_date,
+                'daily': 'precipitation_sum',
+                'timezone': 'America/Sao_Paulo'
+            }
+            
+            response = requests.get(url, params=params, headers=self.headers, timeout=10)
+            if response.status_code != 200:
+                logger.warning(f"⚠️ Falha ao buscar chuva acumulada: {response.status_code}")
+                return 500.0 # Retorna valor ideal para não travar
+            
+            data = response.json()
+            daily_rain = data.get('daily', {}).get('precipitation_sum', [])
+            
+            if not daily_rain: return 500.0
+            
+            # Soma tudo (ex: [0, 10, 5, 0...] -> 540mm)
+            total_rain = sum(filter(None, daily_rain))
+            
+            self.cache.set(cache_key, total_rain)
+            logger.info(f"🌧️ Chuva acumulada ({days_back}d) em {lat},{lng}: {total_rain:.1f}mm")
+            
+            return round(total_rain, 1)
+
+        except Exception as e:
+            logger.error(f"❌ Erro fetch rain history: {e}")
+            return 500.0    
+
 
 # ========================================
 # INSTÂNCIA GLOBAL

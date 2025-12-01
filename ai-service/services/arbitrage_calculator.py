@@ -14,7 +14,11 @@ from config.calendar import PLANTING_CALENDAR
 from config.constants import LOGISTICS_DATA, TRUCK_CAPACITIES
 from services.market_intelligence import market_intelligence
 from services.fuel_pricing import fuel_api
-from utils.geography import calculate_distance
+from utils.geography import calculate_distance_coords
+from services.logistics import logistics_service
+from utils.database import get_engine
+from sqlalchemy import text
+from config.constants import STATE_COORDS
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +29,7 @@ class ArbitrageCalculator:
     """
     
     def __init__(self):
+        self.engine = get_engine()
         logger.info("✅ ArbitrageCalculator iniciado")
     
     def calculate(self, data: ArbitrageRequest) -> ArbitrageAnalysisResponse:
@@ -80,62 +85,75 @@ class ArbitrageCalculator:
         production_cost = data.area_ha * specs.get('base_cost_ha', 5000)
         unit_cost = production_cost / total_volume_units if total_volume_units > 0 else 0
         
+        sell_price = 4.00 # Fallback de segurança
+        try:
+            with self.engine.connect() as conn:
+                # Busca o último preço de venda registrado para o destino
+                query = text('SELECT "sellPrice" FROM "Opportunity" WHERE product = :p AND state = :s ORDER BY "createdAt" DESC LIMIT 1')
+                res = conn.execute(query, {"p": data.product, "s": data.destination_state}).fetchone()
+                if res: sell_price = float(res[0])
+        except Exception as e:
+            logger.warning(f"⚠️ Erro ao buscar preço no banco: {e}")
+
+        # Regra de Arbitragem: Custo na origem é 70% do valor de venda (Margem Bruta)
+        buy_price = sell_price * 0.70
+
         # ========================================
-        # 3. LOGÍSTICA
+        # 3. LOGÍSTICA (CÁLCULO REAL)
         # ========================================
-        distance = calculate_distance(data.origin_state, data.destination_state)
-        
-        # Custo de combustível (API real Petrobras)
-        fuel_cost_data = fuel_api.calculate_route_fuel_cost(
-            data.origin_state,
-            data.destination_state,
-            distance
+            
+        # A. Coordenadas
+        lat_origin, lng_origin = STATE_COORDS.get(data.origin_state, (-15.0, -48.0))
+        lat_dest, lng_dest = STATE_COORDS.get(data.destination_state, (-23.5, -46.6))
+            
+        # B. Distância Real (AQUI ESTÁ A CORREÇÃO)
+        distance = calculate_distance_coords(lat_origin, lng_origin, lat_dest, lng_dest)
+            
+        # C. Custo de Frete (Via Logistics Service)
+        freight_total_trip = logistics_service.calculate_freight(
+                lat_origin, lng_origin, data.destination_state
         )
-        
-        # Outros custos logísticos
-        maint_cost = LOGISTICS_DATA['maintenance_per_km'] * distance
-        driver_cost = LOGISTICS_DATA['driver_cost_per_km'] * distance
-        toll_cost = (distance / 100) * LOGISTICS_DATA.get('toll_cost_per_100km', 15.0)
-        insurance = LOGISTICS_DATA.get('insurance_per_trip', 250.0)
-        
-        # Custo total por viagem
-        trip_cost = (
-            fuel_cost_data['total_fuel_cost'] + 
-            maint_cost + 
-            driver_cost + 
-            toll_cost + 
-            insurance
-        )
-        
-        # Número de viagens necessárias
-        capacity = TRUCK_CAPACITIES.get(data.product, 1000)
-        trips = math.ceil(total_volume_units / capacity) if total_volume_units > 0 else 0
-        
-        total_logistics = trip_cost * trips
-        
-        # ========================================
-        # 4. MERCADO DE DESTINO
-        # ========================================
-        # Estima mês de colheita (plantio + ciclo)
-        harvest_month = (data.planting_month + 3) if data.planting_month <= 9 else (data.planting_month - 9)
-        
-        # Preço previsto no destino (com sazonalidade)
-        predicted_price_kg = market_intelligence.get_predicted_market_price(
-            data.product, 
+            
+        # D. Viagens Necessárias
+        truck_capacity = 15000 # 15 ton
+        total_volume_kg = total_volume_units * specs['unit_weight_kg']
+        trips = math.ceil(total_volume_kg / truck_capacity)
+            
+        total_logistics_cost = freight_total_trip * trips
+            
+        # E. Detalhamento de Combustível (Para o gráfico)
+        fuel_data = fuel_api.calculate_route_fuel_cost(
+            data.origin_state, 
             data.destination_state, 
-            harvest_month
-        )
-        
-        # Preço por unidade comercial (caixa/saca)
-        predicted_sell_price_unit = predicted_price_kg * unit_weight
-        
-        # Receita bruta
-        gross_revenue = total_volume_units * predicted_sell_price_unit
+            distance 
+            )
+            
+        # Ajuste visual: Separa o que é Diesel do que é Manutenção
+        fuel_cost_real = fuel_data.get('total_fuel_cost', 0) * trips
+            
+        # 👇 CORREÇÃO: Usar 'total_logistics_cost' (o nome correto que definimos acima)
+        maintenance_real = total_logistics_cost - fuel_cost_real
+            
+        # ========================================
+        # 4. CONSOLIDAÇÃO FINANCEIRA
+        # ========================================
+            
+        # Receita Bruta (Baseada no Preço Real)
+        gross_revenue = total_volume_kg * sell_price
+            
+        # Custo Produção (Mantém sua lógica original de 70% ou custo inputado)
+        # Se quiser forçar a margem de 30% igual ao mapa:
+        unit_cost = sell_price * 0.70 
+        production_cost = total_volume_kg * unit_cost
+            
+        total_cost = production_cost + total_logistics_cost
+        net_profit = gross_revenue - total_cost
+        roi = (net_profit / total_cost) * 100 if total_cost > 0 else 0
         
         # ========================================
         # 5. RESULTADO FINANCEIRO
         # ========================================
-        total_cost = production_cost + total_logistics
+        total_cost = production_cost + total_logistics_cost
         net_profit = gross_revenue - total_cost
         roi = (net_profit / total_cost * 100) if total_cost > 0 else 0
         
@@ -161,49 +179,44 @@ class ArbitrageCalculator:
         # 7. RESPOSTA
         # ========================================
         result = {
-            'analysis': {
-                'origin': data.origin_state,
-                'destination': data.destination_state,
-                'distance_km': round(distance, 1),
-                'est_harvest_month': harvest_month
-            },
-            'production': {
-                'productivity_ha': round(predicted_prod_units, 1),
-                'total_volume': round(total_volume_units, 1),
-                'unit_cost_origin': round(unit_cost, 2),
-                'total_production_cost': round(production_cost, 2)
-            },
-            'logistics': {
-                'fuel_breakdown': fuel_cost_data,
-                'maintenance_cost': round(maint_cost, 2),
-                'driver_cost': round(driver_cost, 2),
-                'toll_cost': round(toll_cost, 2),
-                'insurance_cost': insurance,
-                'trips_needed': trips,
-                'cost_per_trip': round(trip_cost, 2),
-                'total_logistics_cost': round(total_logistics, 2)
-            },
-            'market': {
-                'predicted_sell_price_kg': predicted_price_kg,
-                'predicted_sell_price_unit': round(predicted_sell_price_unit, 2),
-                'gross_revenue': round(gross_revenue, 2)
-            },
-            'financial': {
-                'total_cost': round(total_cost, 2),
-                'net_profit': round(net_profit, 2),
-                'roi': round(roi, 1)
-            },
-            'risks': climate_notes
-        }
-        
-        logger.info(
-            f"✅ Arbitragem calculada: ROI {roi:.1f}% | "
-            f"Lucro R$ {net_profit:,.2f}"
-        )
-        
-        return result
+            "analysis": {
+                    "origin": data.origin_state,
+                    "destination": data.destination_state,
+                    "distance_km": int(distance),
+                    "planting_window": f"Mês {data.planting_month}"
+                },
+            "production": {
+                    "productivity_ha": round(predicted_prod_units, 1), 
+                    "total_volume": round(total_volume_units, 1), 
+                    "unit_cost_origin": round(buy_price, 2),
+                    "total_production_cost": round(production_cost, 2)
+                },
+            "logistics": {
+                    "fuel_breakdown": fuel_data,
+                    "trips_needed": trips,
+                    "cost_per_trip": round(freight_total_trip, 2),
+                    "total_logistics_cost": round(total_logistics_cost, 2),
+                    # Manter compatibilidade visual
+                    "maintenance_cost": round(total_logistics_cost * 0.15, 2),
+                    "driver_cost": round(total_logistics_cost * 0.15, 2),
+                    "toll_cost": round(total_logistics_cost * 0.10, 2),
+                    "insurance_cost": 0
+                },
+            "market": {
+                    "predicted_sell_price": round(sell_price, 2),
+                    "gross_revenue": round(gross_revenue, 2)
+                },
+            "financial": {
+                    "total_cost": round(total_cost, 2),
+                    "net_profit": round(net_profit, 2),
+                    "roi": round(roi, 1)
+                },
+            "risks": [] 
+            }
 
-
+        logger.info(f"✅ Arbitragem calculada: ROI {roi:.1f}%")
+            
+        return result 
 # ========================================
 # INSTÂNCIA GLOBAL (Singleton)
 # ========================================

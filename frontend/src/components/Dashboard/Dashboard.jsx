@@ -63,18 +63,33 @@ const Dashboard = () => {
         const sortedOpps = [...opps].sort((a, b) => b.roi - a.roi);
         setOpportunities(sortedOpps);
 
-        // 2. Processa Combustível
+        // 2. Processa Combustível (CORRIGIDO)
         let dieselVal = 0;
         let chartLabels = [];
         let chartValues = [];
 
-        if (fuel && fuel.data && fuel.data.precos) {
-            const dieselRaw = fuel.data.precos.diesel.br || fuel.data.precos.diesel.sp;
+        // Verifica se 'fuel' existe e se tem 'precos' (sem o .data no meio)
+        if (fuel && fuel.precos && fuel.precos.diesel) {
+            
+            // Pega média BR ou SP
+            const dieselRaw = fuel.precos.diesel.br || fuel.precos.diesel.sp;
             dieselVal = parseFloat(dieselRaw.replace(',', '.'));
             
             const states = ['SP', 'MT', 'GO', 'BA', 'RS'];
             chartLabels = states;
             chartValues = states.map(uf => {
+                // Acessa direto fuel.precos.diesel
+                const val = fuel.precos.diesel[uf.toLowerCase()] || '0';
+                return parseFloat(val.replace(',', '.'));
+            });
+        } 
+        // Fallback caso a estrutura venha diferente (ex: axios wrapper)
+        else if (fuel && fuel.data && fuel.data.precos) {
+             const dieselRaw = fuel.data.precos.diesel.br;
+             dieselVal = parseFloat(dieselRaw.replace(',', '.'));
+             const states = ['SP', 'MT', 'GO', 'BA', 'RS'];
+             chartLabels = states;
+             chartValues = states.map(uf => {
                 const val = fuel.data.precos.diesel[uf.toLowerCase()] || '0';
                 return parseFloat(val.replace(',', '.'));
             });

@@ -269,3 +269,25 @@ def health_check():
         },
         'timestamp': datetime.now().isoformat()
     }
+# Adicione isso no final do arquivo routers/admin.py
+
+@router.post('/fix-market-data')
+def fix_market_data():
+    """
+    🔧 Rota de correção solicitada pelo Dashboard.
+    Redireciona para o ETL de preços.
+    """
+    try:
+        logger.info("🔧 Correção de dados solicitada. Rodando ETL...")
+        # Reutiliza a lógica do ETL
+        from services.data_sync.market_scraper import market_scraper
+        result = market_scraper.run_etl()
+        
+        return {
+            "status": "success", 
+            "message": "Correção aplicada (ETL rodado)",
+            "details": result
+        }
+    except Exception as e:
+        logger.error(f"❌ Erro na correção: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

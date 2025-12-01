@@ -17,8 +17,13 @@ Correções aplicadas (baseadas em PDFs científicos):
 
 import sys
 import logging
+import time
+import schedule
+import scripts.run_etl
+from threading import Thread
 from datetime import datetime
 from contextlib import asynccontextmanager
+
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -48,7 +53,22 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 settings = get_settings()
 
-
+# =======================================
+# ⚙️ ENGINE DO SCHEDULER (O Coração)
+# =======================================
+def run_scheduler_loop():
+    """
+    Função que roda em loop infinito numa thread separada
+    para verificar se há tarefas agendadas (ETL, Robôs).
+    """
+    logger.info("⏰ Thread do Scheduler iniciada e aguardando tarefas...")
+    while True:
+        try:
+            schedule.run_pending()
+            time.sleep(1) # Evita uso de 100% da CPU
+        except Exception as e:
+            logger.error(f"❌ Erro fatal no Scheduler Loop: {e}")
+            time.sleep(5)
 # ========================================
 # LIFESPAN (Startup/Shutdown Events)
 # ========================================
@@ -93,6 +113,10 @@ async def lifespan(app: FastAPI):
     logger.info("="*60)
     logger.info("✅ APLICAÇÃO PRONTA PARA RECEBER REQUISIÇÕES")
     logger.info("="*60)
+
+    scheduler_thread = Thread(target=run_scheduler_loop, daemon=True) # <<<<
+    scheduler_thread.start()                                          # <<<<
+    logger.info("✅ Background Jobs ativados.")                       # <<<<
     
     yield  # Aplicação roda aqui
     

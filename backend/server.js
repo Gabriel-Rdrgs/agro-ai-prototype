@@ -164,43 +164,154 @@ app.get('/api/analytics/trend', verifyToken, async (req, res) => {
 // 🧠 ROTAS DE INTELIGÊNCIA ARTIFICIAL (PYTHON BRIDGE)
 // ============================================
 
-// 1. Armazenagem (Storage Advisor)
+// 1. Armazenagem (Storage Advisor) - BLINDADO CONTRA ERRO 422
 app.post('/api/ai/storage', verifyToken, async (req, res) => {
   try {
-    // Log para debug
-    console.log(`📤 Enviando para IA (Storage): ${req.body.product}`);
+    // 1. Extração e Tratamento Prévio (Evita enviar NaN para o Python)
+    let currentPrice = parseFloat(req.body.current_price);
+    let buyPrice = parseFloat(req.body.buy_price);
+    let accRain = parseFloat(req.body.accumulated_rainfall);
     
-    // Rota correta no Python: /predict/storage
-    const response = await axios.post(`${PYTHON_API_URL}/predict/storage`, req.body);
-    res.json(response.data);
+    // Fallback de Segurança: Se buyPrice for NaN ou 0, assume 60% do valor de venda
+    if (isNaN(buyPrice) || buyPrice <= 0) {
+        console.log("ℹ️ Sem preço de compra definido. Iniciando simulação no 0 a 0.");
+        buyPrice = currentPrice; // Começa junto, sem lucro nem prejuízo
+    }
+
+    // Fallback de Segurança: Se chuva for NaN, assume ideal (500mm)
+    if (isNaN(accRain)) {
+        accRain = 500;
+    }
+
+    // 2. Montagem do Payload Seguro
+    const payload = {
+      product: req.body.product,
+      state: req.body.state || 'SP',
+      lat: req.body.lat ? parseFloat(req.body.lat) : 0,
+      lng: req.body.lng ? parseFloat(req.body.lng) : 0,
+      
+      current_price: currentPrice,
+      buy_price: buyPrice,                 // Agora garantido que é número
+      accumulated_rainfall: accRain,       // Agora garantido que é número
+      
+      planting_date: req.body.planting_date || null, // Opcional, pode ser null
+      
+      storage_cost_per_day: parseFloat(req.body.storage_cost_per_day || 0.03),
+      risk_factor: parseFloat(req.body.risk_factor || 1.0),
+      
+      // Arrays vazios se não vier nada
+      daily_rain: req.body.daily_rain || [],
+      daily_temp_max: req.body.daily_temp_max || [],
+      daily_temp_min: req.body.daily_temp_min || [],
+      daily_sun: req.body.daily_sun || []
+    };
+
+    console.log(`📤 [Node -> Python] Storage Request: Rain=${payload.accumulated_rainfall}mm, Buy=R$${payload.buy_price.toFixed(2)}`);
+    
+    const response = await axios.post(`${PYTHON_API_URL}/predict/storage`, payload);
+    const pyData = response.data;
+    
+    // 3. Tradução para o Frontend
+    const formattedData = {
+        ...pyData.chart_data, 
+        recommendation: {
+            action: pyData.recommendation.action,
+            best_day: pyData.recommendation.best_day_date, 
+            estimated_profit: pyData.recommendation.projected_profit,
+            confidence: pyData.recommendation.confidence_score,
+            risk_event: pyData.recommendation.risk_event
+        }
+    };
+
+    res.json(formattedData);
+
   } catch (error) {
-    console.error("❌ Erro IA Storage:", error.message);
-    res.status(500).json({ error: 'Erro ao processar inteligência de armazenagem' });
+    // LOG DE ERRO MELHORADO: Mostra o motivo exato da recusa do Python
+    if (error.response && error.response.data) {
+        console.error("❌ Erro 422 Python (Detalhes):", JSON.stringify(error.response.data, null, 2));
+    } else {
+        console.error("❌ Erro Node Storage:", error.message);
+    }
+    res.status(500).json({ error: 'Erro de comunicação com Inteligência' });
   }
 });
 
-// 2. Processamento em Lote (Mapa) - A ROTA QUE FALTAVA
+// 2. Processamento em Lote (Mapa/Slider)
 app.post('/api/ai/batch', verifyToken, async (req, res) => {
   try {
-    // Rota correta no Python: /predict/batch
-    // Timeout maior (10s) pois processa múltiplos itens
-    const response = await axios.post(`${PYTHON_API_URL}/predict/batch`, req.body, { timeout: 10000 });
+    if (!req.body.items || !Array.isArray(req.body.items)) return res.json({});
+
+    const sanitizedItems = req.body.items.map(item => ({
+        id: parseInt(item.id),
+        product: item.product,
+        state: item.state || 'SP',
+        current_price: parseFloat(item.sellPrice || item.current_price || 0), 
+        buy_price: parseFloat(item.buyPrice || item.buy_price || 0)
+    }));
+
+    const response = await axios.post(`${PYTHON_API_URL}/predict/batch`, { items: sanitizedItems }, { timeout: 15000 });
     res.json(response.data);
+
   } catch (error) {
-    console.error("❌ Erro IA Batch:", error.message);
-    res.status(500).json({ error: 'Erro ao processar lote na IA' });
+    console.error("❌ Erro Batch:", error.message);
+    res.status(500).json({ error: 'Erro no processamento em lote' });
   }
 });
 
-// 3. Preços de Combustível (Fuel)
+// 3. Preços de Combustível GERAL (Para Dashboard principal)
 app.get('/api/fuel/current-prices', verifyToken, async (req, res) => {
   try {
-    // Rota correta no Python: /predict/fuel
     const response = await axios.get(`${PYTHON_API_URL}/predict/fuel`);
+    // O Dashboard espera array ou objeto, mandamos direto
     res.json(response.data);
   } catch (error) {
-    console.error("❌ Erro IA Fuel:", error.message);
-    res.status(500).json({ error: 'Erro ao buscar preços de combustível' });
+    console.error("❌ Erro Fuel Geral:", error.message);
+    res.json([]); 
+  }
+});
+
+// 4. Preço de Combustível POR ESTADO (A Rota que faltava para FuelPriceDisplay.jsx)
+app.get('/api/fuel/price/:state', verifyToken, async (req, res) => {
+  try {
+    const state = req.params.state.toLowerCase();
+    
+    // 1. Buscamos TODOS os dados do Python (é mais seguro que tentar adivinhar endpoint específico)
+    const response = await axios.get(`${PYTHON_API_URL}/predict/fuel`);
+    const data = response.data;
+    
+    // 2. Filtramos no Node.js
+    // Baseado no seu fuel_pricing.py, a estrutura é data.precos.diesel[uf]
+    let priceStr = '0.00';
+    let dataColeta = new Date().toISOString();
+    
+    if (data.precos && data.precos.diesel) {
+        // Tenta pegar do estado, se não tiver, pega média BR
+        priceStr = data.precos.diesel[state] || data.precos.diesel['br'] || '6.00';
+        dataColeta = data.data_coleta;
+    }
+
+    // 3. Convertendo string "6,25" para float 6.25
+    const price = parseFloat(priceStr.replace(',', '.'));
+
+    // 4. Retornamos no formato exato que FuelPriceDisplay.jsx exige: response.data.data
+    res.json({
+        data: {
+            state: state.toUpperCase(),
+            price_per_liter: price,
+            data_coleta: dataColeta
+        }
+    });
+
+  } catch (error) {
+    console.error(`❌ Erro Fuel State (${req.params.state}):`, error.message);
+    // Retorna fallback para não quebrar a tela
+    res.json({
+        data: {
+            state: req.params.state.toUpperCase(),
+            price_per_liter: 0.00,
+            data_coleta: 'N/A'
+        }
+    });
   }
 });
 
@@ -229,7 +340,7 @@ app.post('/calc/arbitrage', verifyToken, async (req, res) => {
 // 6. Radar de Mercado
 app.post('/market/scan', verifyToken, async (req, res) => {
   try {
-    const response = await axios.post(`${PYTHON_API_URL}/market/scan`, req.body);
+    const response = await axios.post(`${PYTHON_API_URL}/predict/market/scan`, req.body);
     res.json(response.data);
   } catch (error) {
     console.error("Erro Ponte Radar:", error.message);

@@ -80,3 +80,23 @@ def get_state_coordinates(state_code: str) -> Tuple[float, float]:
         Tupla (latitude, longitude)
     """
     return STATE_COORDS.get(state_code.upper(), (-15.78, -47.93))  # Default: Brasília
+
+def calculate_distance_coords(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """
+    Calcula distância entre duas coordenadas (Haversine + Sinuosidade).
+    """
+    try:
+        R = 6371  # Raio da Terra em km
+        
+        dlat = math.radians(lat2 - lat1)
+        dlon = math.radians(lon2 - lon1)
+        
+        a = (math.sin(dlat / 2) ** 2 +
+             math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2)
+        
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+        
+        # Fator 1.35 de sinuosidade (estradas não são retas)
+        return R * c * 1.35
+    except Exception:
+        return 0.0

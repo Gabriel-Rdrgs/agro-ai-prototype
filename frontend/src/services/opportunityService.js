@@ -89,6 +89,7 @@ export const OpportunityService = {
       return [];
     }
   },
+  
 
   getById: async (id) => {
     const all = await OpportunityService.getAll();
@@ -202,7 +203,7 @@ export const OpportunityService = {
 
  // --- 4. IA MULTIVARIÁVEL (ARMAZENAMENTO) ---
  // --- 4. IA MULTIVARIÁVEL (AGORA COM GPS REAL) ---
-  getStorageAnalysis: async (product, state, currentPrice = 4.00, riskLevel = 1, dailyRain = [], dailyTempMax = [], dailySun = [], dailyTempMin = [], lat = null, lng = null) => {
+  getStorageAnalysis: async (product, state, currentPrice, buyPrice, riskLevel = 1, dailyRain = [], dailyTempMax = [], dailySun = [], dailyTempMin = [], lat = null, lng = null, accumulatedRain = 500) => {
     try {
         const riskMap = { 1: 0.1, 2: 0.5, 3: 0.9 };
         const riskFactor = riskMap[riskLevel] || 0.1;
@@ -210,11 +211,11 @@ export const OpportunityService = {
         const payload = {
             product: product,
             state: state || 'SP',
-            // 👇 AQUI ESTAVA FALTANDO! 👇
-            lat: lat, 
-            lng: lng, 
-            // --------------------------
+            lat: lat,
+            lng: lng,
             current_price: Number(currentPrice),
+            buy_price: Number(buyPrice),
+            accumulated_rainfall: Number(accumulatedRain), // 👈 Enviando para o Backend
             storage_cost_per_day: 0.05,
             risk_factor: riskFactor,
             daily_rain: dailyRain,

@@ -32,12 +32,16 @@ const StorageAdvisor = ({ opportunity, forecast }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+
   useEffect(() => {
-    // Validação robusta antes de chamar a API
     if (opportunity && forecast && forecast.length > 0) {
-      fetchAnalysis();
+      // Debounce: Espera 500ms após parar de mexer no slider para chamar a API
+      const timer = setTimeout(() => {
+          fetchAnalysis();
+      }, 500);
+      return () => clearTimeout(timer);
     }
-  }, [opportunity, forecast]);
+  }, [opportunity, forecast]); 
 
   const fetchAnalysis = async () => {
     setLoading(true);
@@ -54,13 +58,14 @@ const StorageAdvisor = ({ opportunity, forecast }) => {
         opportunity.product,
         opportunity.state,
         opportunity.sellPrice,
+        opportunity.buyPrice,
         opportunity.riskLevel || 1,
         dailyRain,
         dailyTempMax,
         dailySun,
         dailyTempMin,
         opportunity.lat,
-        opportunity.lng
+        opportunity.lng,
       );
 
       if (result) {
@@ -82,23 +87,33 @@ const StorageAdvisor = ({ opportunity, forecast }) => {
     labels: analysis.labels,
     datasets: [
       {
-        label: 'Preço Previsto (R$/kg)',
+        label: 'Preço Previsto',
         data: analysis.prices,
-        borderColor: '#27ae60',
-        backgroundColor: 'rgba(39, 174, 96, 0.1)',
+        // Estilo Neon Verde
+        borderColor: '#22c55e', 
+        backgroundColor: (context) => {
+          const ctx = context.chart.ctx;
+          const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+          gradient.addColorStop(0, 'rgba(34, 197, 94, 0.4)'); 
+          gradient.addColorStop(1, 'rgba(34, 197, 94, 0.0)');
+          return gradient;
+        },
         tension: 0.4,
         fill: true,
-        pointRadius: 3,
-        pointHoverRadius: 5
+        pointRadius: 0, // Limpo (sem bolinhas)
+        pointHoverRadius: 6,
+        borderWidth: 3
       },
       {
-        label: 'Custo Acumulado',
+        label: 'Ponto de Equilíbrio (Custo)',
         data: analysis.costs,
-        borderColor: '#e74c3c',
-        borderDash: [5, 5],
-        tension: 0.1,
-        fill: false,
-        pointRadius: 0
+        // Estilo Alerta Vermelho Pontilhado
+        borderColor: '#ef4444', 
+        backgroundColor: 'transparent',
+        borderDash: [5, 5], // Linha tracejada
+        tension: 0.4,
+        pointRadius: 0,
+        borderWidth: 2
       }
     ]
   } : null;
@@ -107,28 +122,38 @@ const StorageAdvisor = ({ opportunity, forecast }) => {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: { position: 'top' },
+      legend: { 
+        position: 'top',
+        labels: { color: '#94a3b8', font: { size: 12 } } // Texto cinza claro
+      },
       tooltip: {
         mode: 'index',
         intersect: false,
+        backgroundColor: 'rgba(15, 23, 42, 0.95)', // Tooltip escuro
+        titleColor: '#f8fafc',
+        bodyColor: '#cbd5e1',
+        borderColor: '#334155',
+        borderWidth: 1,
         callbacks: {
           label: (ctx) => `${ctx.dataset.label}: R$ ${Number(ctx.raw).toFixed(2)}`
         }
+      }
+    },
+    scales: {
+      y: {
+        grid: { color: '#334155' }, // Grade escura
+        ticks: { color: '#94a3b8' },
+        beginAtZero: false // IMPORTANTE: Permite o gráfico focar na variação de preço
+      },
+      x: {
+        grid: { display: false }, // Remove grade vertical
+        ticks: { color: '#94a3b8', maxTicksLimit: 6 }
       }
     },
     interaction: {
       mode: 'nearest',
       axis: 'x',
       intersect: false
-    },
-    scales: {
-      y: {
-        beginAtZero: false,
-        grid: { color: '#f0f0f0' }
-      },
-      x: {
-        grid: { display: false }
-      }
     }
   };
 
@@ -145,7 +170,6 @@ const StorageAdvisor = ({ opportunity, forecast }) => {
           </div>
         )}
       </div>
-
       <div className="advisor-content">
         {/* 1. Loading */}
         {loading && (
@@ -173,6 +197,16 @@ const StorageAdvisor = ({ opportunity, forecast }) => {
         {/* 4. DADOS COMPLETOS (Seu Layout Original) */}
         {!loading && !error && analysis && analysis.recommendation && (
           <>
+          {analysis.recommendation.risk_event && (
+                <div style={{
+                    marginBottom: '10px', padding: '8px', borderRadius: '4px', fontSize: '12px',
+                    background: analysis.recommendation.risk_event.includes('Favorável') ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                    color: analysis.recommendation.risk_event.includes('Favorável') ? '#86efac' : '#fca5a5',
+                    border: `1px solid ${analysis.recommendation.risk_event.includes('Favorável') ? '#22c55e' : '#ef4444'}`
+                }}>
+                    📢 <strong>Análise:</strong> {analysis.recommendation.risk_event}
+                </div>
+            )}
             <div className="metrics-grid">
               {/* Lucro Projetado */}
               <div className="metric-box">
