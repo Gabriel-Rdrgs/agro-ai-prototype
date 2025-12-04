@@ -114,9 +114,10 @@ async def lifespan(app: FastAPI):
     logger.info("✅ APLICAÇÃO PRONTA PARA RECEBER REQUISIÇÕES")
     logger.info("="*60)
 
-    scheduler_thread = Thread(target=run_scheduler_loop, daemon=True) # <<<<
-    scheduler_thread.start()                                          # <<<<
-    logger.info("✅ Background Jobs ativados.")                       # <<<<
+    scheduler_thread = Thread(target=run_scheduler_loop, daemon=True)
+    scheduler_thread.start()
+    # TODO: Extrair para um worker separado (Celery/Redis) antes de escalar horizontalmente.                                          
+    logger.info("✅ Background Jobs ativados.")                      
     
     yield  # Aplicação roda aqui
     

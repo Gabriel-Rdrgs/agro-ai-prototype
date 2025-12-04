@@ -26,14 +26,20 @@ const WeatherDashboard = ({ opportunities = [] }) => {
 
   const selectedOpp = opportunities.find(o => o.id === parseInt(selectedOppId));
 
-  useEffect(() => {
+useEffect(() => {
     if (selectedOpp) {
       setLoading(true);
-      OpportunityService.getForecast(selectedOpp.lat, selectedOpp.lng)
-        .then(data => {
-          setForecast(data);
-          setLoading(false);
-        });
+      // CORREÇÃO: Coordenadas vêm de 'coords'
+      const lat = selectedOpp.coords?.lat;
+      const lng = selectedOpp.coords?.lng;
+      
+      if (lat && lng) {
+          OpportunityService.getForecast(lat, lng)
+            .then(data => {
+              setForecast(data);
+              setLoading(false);
+            });
+      }
     }
   }, [selectedOpp]);
 
@@ -54,12 +60,12 @@ const WeatherDashboard = ({ opportunities = [] }) => {
         backgroundColor: 'rgba(0, 217, 255, 0.6)', yAxisID: 'y1'
       });
     }
-    /*if (metrics.soil) {
+    if (metrics.soil) {
       sets.push({
-        type: 'line', label: 'Umidade Solo (%)', data: forecast.map(d => d.soil * 100),
+        type: 'line', label: 'Umidade Solo (m³/m³)', data: forecast.map(d => d.soil), // Removi a multiplicação por 100 para ser tecnicamente preciso (fração volumétrica) ou mantenha *100 se preferir porcentagem
         borderColor: '#8d4f2b', borderDash: [5,5], borderWidth: 2, yAxisID: 'y', pointRadius: 0
       });
-    }*/
+    }
     if (metrics.sun) {
       sets.push({
         type: 'line', label: 'Radiação Solar (MJ)', data: forecast.map(d => d.sun),
@@ -113,7 +119,10 @@ const WeatherDashboard = ({ opportunities = [] }) => {
                 style={{ padding: '6px', borderRadius: '6px', background: '#15192c', color: '#00d9ff', border: '1px solid #334155', fontWeight: 'bold' }}
                 >
                 {opportunities.map(op => (
-                    <option key={op.id} value={op.id}>{op.product} | {op.city} - {op.state}</option>
+                    <option key={op.id} value={op.id}>
+        {/* CORREÇÃO: City e State vêm de 'origin' */}
+        {op.product} | {op.origin?.city} - {op.origin?.state}
+    </option>
                 ))}
                 </select>
                 <span style={{ fontSize: '12px', color: '#64748b' }}>• Previsão 16 Dias (GFS)</span>
@@ -140,21 +149,34 @@ const WeatherDashboard = ({ opportunities = [] }) => {
           
           {/* CARDS LATERAIS DE RESUMO */}
           <div style={{ flex: '1 1 200px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-             {/* Card Chuva */}
+             
+             {/* Card Chuva (Agora com dados reais de precipitação) */}
              <div style={{ background: '#15192c', padding: '15px', borderRadius: '12px', borderLeft: '4px solid #00d9ff' }}>
-                <small style={{ color: '#94a3b8', textTransform: 'uppercase' }}>Chuva Acumulada (16d)</small>
+                <small style={{ color: '#94a3b8', textTransform: 'uppercase' }}>Precipitação (16d)</small>
                 <div style={{ fontSize: '24px', color: '#fff', fontWeight: 'bold' }}>
-                    {forecast.reduce((acc, d) => acc + d.rain, 0).toFixed(1)} mm
+                    {forecast.reduce((acc, d) => acc + (d.rain || 0), 0).toFixed(1)} mm
                 </div>
              </div>
-             {/* Card Solo */}
+
+             {/* Card Solo (Agora conectado ao backend) */}
              <div style={{ background: '#15192c', padding: '15px', borderRadius: '12px', borderLeft: '4px solid #8d4f2b' }}>
-                <small style={{ color: '#94a3b8', textTransform: 'uppercase' }}>Umidade Solo (Média)</small>
+                <small style={{ color: '#94a3b8', textTransform: 'uppercase' }}>Umidade Solo (Méd)</small>
                 <div style={{ fontSize: '24px', color: '#fff', fontWeight: 'bold' }}>
-                    {(forecast.reduce((acc, d) => acc + d.soil, 0) / forecast.length * 100).toFixed(0)}%
+                    {/* Exibindo em % para facilitar leitura */}
+                    {((forecast.reduce((acc, d) => acc + (d.soil || 0), 0) / forecast.length) * 100).toFixed(0)}%
                 </div>
-                <small style={{ color: '#8d4f2b' }}>{forecast[0].soil > 0.4 ? 'Solo Encharcado' : 'Solo Firme'}</small>
+                <small style={{ color: '#8d4f2b' }}>{forecast[0].soil > 0.4 ? 'Solo Úmido' : 'Solo Seco'}</small>
              </div>
+
+             {/* ☀️ O RETORNO DO CARD DE RADIAÇÃO */}
+             <div style={{ background: '#15192c', padding: '15px', borderRadius: '12px', borderLeft: '4px solid #facc15' }}>
+                <small style={{ color: '#94a3b8', textTransform: 'uppercase' }}>Radiação Solar (Méd)</small>
+                <div style={{ fontSize: '24px', color: '#fff', fontWeight: 'bold' }}>
+                    {(forecast.reduce((acc, d) => acc + (d.sun || 0), 0) / forecast.length).toFixed(1)} MJ
+                </div>
+                <small style={{ color: '#facc15' }}>Energia acumulada</small>
+             </div>
+
           </div>
         </div>
       ) : (

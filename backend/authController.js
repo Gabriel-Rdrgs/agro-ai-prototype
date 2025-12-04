@@ -24,7 +24,8 @@ function generateAccessToken(user) {
 }
 
 exports.register = async (req, res) => {
-  const { name, email, password, role } = req.body;
+  // 1. REMOVEMOS 'role' da extração. Se o hacker mandar, a gente ignora.
+  const { name, email, password } = req.body; 
 
   try {
     const existingUser = await prisma.user.findUnique({ where: { email } });
@@ -32,14 +33,18 @@ exports.register = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // 2. FORÇAMOS o cargo 'analyst'. Segurança "Hardcoded".
     const user = await prisma.user.create({
       data: {
         name,
         email,
         password: hashedPassword,
-        role: role || 'analyst'
+        role: 'analyst' // <--- AQUI ESTÁ A TRAVA DE SEGURANÇA 🔒
       }
     });
+
+    // Opcional: Log de Auditoria
+    // if (logAction) await logAction(user.id, 'REGISTER', 'Novo usuário registrado via Web'); 
 
     const { password: _, ...userWithoutPassword } = user;
     res.status(201).json({ message: 'Usuário criado!', user: userWithoutPassword });

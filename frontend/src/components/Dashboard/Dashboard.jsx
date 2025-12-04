@@ -47,7 +47,7 @@ const Dashboard = () => {
   const [trendData, setTrendData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+ useEffect(() => {
     const fetchData = async () => {
       try {
         const [opps, fuel, trend] = await Promise.all([
@@ -56,34 +56,40 @@ const Dashboard = () => {
           OpportunityService.getPriceTrend()
         ]);
 
-        // 1. Processa Estatísticas e Lista
-        const dollarRate = opps.length > 0 ? opps[0].dollarRate : 5.50;
+        // 1. Tratamento Seguro da Lista
+        const safeOpps = Array.isArray(opps) ? opps : [];
+
+        // --- CORREÇÃO AQUI: Dólar Real ---
+        // O backend agora manda 'dollarRate' dentro de cada oportunidade.
+        // Se a lista tiver itens, pegamos o valor de lá. Se não, fallback 5.80.
+        const dollarRate = safeOpps.length > 0 && safeOpps[0].dollarRate 
+            ? safeOpps[0].dollarRate 
+            : 5.80;
         
-        // Ordena oportunidades por ROI (do maior para o menor) para a tabela
-        const sortedOpps = [...opps].sort((a, b) => b.roi - a.roi);
+        // Ordenação (Lendo do lugar certo: financials.roi)
+        const sortedOpps = [...safeOpps].sort((a, b) => {
+            const roiA = a.financials?.roi || 0;
+            const roiB = b.financials?.roi || 0;
+            return roiB - roiA;
+        });
         setOpportunities(sortedOpps);
 
-        // 2. Processa Combustível (CORRIGIDO)
+        // 2. Processa Combustível (MANTIDO SEU CÓDIGO)
         let dieselVal = 0;
         let chartLabels = [];
         let chartValues = [];
 
-        // Verifica se 'fuel' existe e se tem 'precos' (sem o .data no meio)
         if (fuel && fuel.precos && fuel.precos.diesel) {
-            
-            // Pega média BR ou SP
             const dieselRaw = fuel.precos.diesel.br || fuel.precos.diesel.sp;
             dieselVal = parseFloat(dieselRaw.replace(',', '.'));
             
             const states = ['SP', 'MT', 'GO', 'BA', 'RS'];
             chartLabels = states;
             chartValues = states.map(uf => {
-                // Acessa direto fuel.precos.diesel
                 const val = fuel.precos.diesel[uf.toLowerCase()] || '0';
                 return parseFloat(val.replace(',', '.'));
             });
         } 
-        // Fallback caso a estrutura venha diferente (ex: axios wrapper)
         else if (fuel && fuel.data && fuel.data.precos) {
              const dieselRaw = fuel.data.precos.diesel.br;
              dieselVal = parseFloat(dieselRaw.replace(',', '.'));
@@ -95,16 +101,17 @@ const Dashboard = () => {
             });
         }
 
+        // Atualiza Stats (Usa o dollarRate dinâmico capturado acima)
         setStats({
-            dollar: dollarRate,
-            dieselAvg: dieselVal,
-            opportunitiesCount: opps.length,
+            dollar: dollarRate, 
+            dieselAvg: dieselVal || 0,
+            opportunitiesCount: safeOpps.length,
             lastUpdate: new Date().toLocaleTimeString()
         });
 
         setFuelData({ labels: chartLabels, values: chartValues });
 
-        // 3. Processa Gráfico de Tendência
+        // 3. Processa Gráfico de Tendência (MANTIDO)
         if (trend && trend.labels) {
             setTrendData({
                 labels: trend.labels,
@@ -294,30 +301,61 @@ const Dashboard = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {opportunities.slice(0, 8).map((op, idx) => (
-                            <tr key={idx} style={{borderBottom: '1px solid rgba(255,255,255,0.05)', color: 'var(--text-primary)'}}>
-                                <td style={{padding: '12px', fontWeight: 'bold'}}>{op.product}</td>
-                                <td style={{padding: '12px'}}>{op.city} - {op.state}</td>
-                                <td style={{padding: '12px'}}>{op.sellLocation}</td>
-                                <td style={{padding: '12px'}}>R$ {op.buyPrice.toFixed(2)}</td>
-                                <td style={{padding: '12px'}}>R$ {op.sellPrice.toFixed(2)}</td>
-                                <td style={{padding: '12px', color: (op.sellPrice - op.buyPrice) > 0 ? '#10b981' : '#ef4444'}}>
-                                    R$ {((op.sellPrice - op.buyPrice) * 1000).toLocaleString()} {/* Est. p/ 1000 un */}
-                                </td>
-                                <td style={{padding: '12px'}}>
-                                    <span style={{
-                                        background: op.roi > 20 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)',
-                                        color: op.roi > 20 ? '#10b981' : '#f59e0b',
-                                        padding: '4px 8px',
-                                        borderRadius: '4px',
-                                        fontWeight: 'bold',
-                                        fontSize: '0.8rem'
-                                    }}>
-                                        {op.roi}%
-                                    </span>
-                                </td>
-                            </tr>
-                        ))}
+                       {opportunities.map((op) => {
+    // 1. EXTRAÇÃO SEGURA: Previne erros se vier algo nulo
+    const financial = op.financials || {};
+    const origin = op.origin || {};
+    const dest = op.destination || {};
+    const details = op.details || {};
+
+    // Valores com fallback para evitar o crash do .toFixed
+    const buyPrice = financial.buyPrice || 0;
+    const sellPrice = financial.sellPrice || 0;
+    const roi = financial.roi || 0;
+    
+    // Cálculo de lucro estimado (Baseado em 1000kg/1ton)
+    const estimatedProfit = (sellPrice - buyPrice) * 1000;
+
+    return (
+        <tr key={op.id} style={{borderBottom: '1px solid #f1f5f9'}}>
+            <td style={{padding: '12px'}}>
+                <div style={{fontWeight: '500', color: '#1e293b'}}>
+                    {op.product}
+                    {/* Ícone de IA se otimizado */}
+                    {details.isOptimized && <span title="Otimizado por IA" style={{fontSize:'0.8em', marginLeft:'4px'}}>🤖</span>}
+                </div>
+                <div style={{fontSize: '0.8rem', color: '#64748b'}}>
+                    📍 {origin.city || 'N/A'}, {origin.state || ''}
+                </div>
+            </td>
+            
+            <td style={{padding: '12px', fontSize:'0.9rem'}}>
+                🚛 {dest.name || op.sellLocation || 'N/A'}
+            </td>
+            
+            {/* AQUI ESTAVA O ERRO: Agora usamos as variáveis seguras */}
+            <td style={{padding: '12px'}}>R$ {buyPrice.toFixed(2)}</td>
+            <td style={{padding: '12px'}}>R$ {sellPrice.toFixed(2)}</td>
+            
+            <td style={{padding: '12px', fontWeight: 'bold', color: estimatedProfit > 0 ? '#10b981' : '#ef4444'}}>
+                R$ {estimatedProfit.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+            </td>
+            
+            <td style={{padding: '12px'}}>
+                <span style={{
+                    background: roi > 20 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                    color: roi > 20 ? '#10b981' : '#f59e0b',
+                    padding: '4px 8px',
+                    borderRadius: '4px',
+                    fontWeight: 'bold',
+                    fontSize: '0.8rem'
+                }}>
+                    {roi}%
+                </span>
+            </td>
+        </tr>
+    );
+})}
                         {opportunities.length === 0 && (
                             <tr>
                                 <td colSpan="7" style={{padding: '20px', textAlign: 'center', color: '#64748b'}}>

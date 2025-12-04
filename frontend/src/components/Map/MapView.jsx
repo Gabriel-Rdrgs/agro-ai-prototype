@@ -61,6 +61,7 @@ const MapView = React.forwardRef((props, ref) => {
   const [mapBounds, setMapBounds] = useState(null);
   
   const [activeMarkerId, setActiveMarkerId] = useState(null);
+  
   const [selectedOpportunity, setSelectedOpportunity] = useState(null);
   const [selectedState, setSelectedState] = useState(null);
   const [legendVisible, setLegendVisible] = useState(false); 
@@ -76,54 +77,84 @@ const MapView = React.forwardRef((props, ref) => {
 
   // Estado para guardar as previsões reais da IA (Batch)
   const [aiPredictions, setAiPredictions] = useState({});
-  // --- CARREGA PREVISÕES DA IA (NOVO) ---
+
+  // Carrega previsões
   useEffect(() => {
     if (opportunities.length > 0) {
         const fetchPredictions = async () => {
-            console.log("🤖 Mapa: Buscando previsões da IA para o slider...");
-            // Chama o serviço que bate na rota /api/ai/batch
-            const preds = await OpportunityService.getBatchPredictions(opportunities);
-            if (preds) {
-                setAiPredictions(preds);
+            try {
+                // Chama o serviço atualizado
+                const preds = await OpportunityService.calculateBatchAI(opportunities);
+                if (preds) setAiPredictions(preds);
+            } catch (err) {
+                console.error("Erro buscando previsões:", err);
             }
         };
         fetchPredictions();
     }
   }, [opportunities]);
 
-  // Simula a mudança de ROI e ajusta o Preço de Venda para ser consistente
- // --- LÓGICA DO SLIDER (CONECTADA À IA) ---
+  // --- LÓGICA DO SLIDER (CONECTADA À IA) ---
   const getSimulatedOpportunities = () => {
+    // 1. Se o slider estiver em 0 (Hoje), retorna os dados originais sem mexer
     if (timeHorizon === 0) return opportunities;
 
+    // 2. Mapeia cada oportunidade para aplicar a simulação
     return opportunities.map(opp => {
-        // Tenta pegar a previsão da IA para este ID
-        const prediction = aiPredictions[opp.id];
-        
-        let newRoi = opp.roi;
-        let newSellPrice = opp.sellPrice;
+        let prediction = null;
+
+        // CORREÇÃO CRÍTICA: Detecta se aiPredictions é Array (Lista) ou Objeto
+        // O Python costuma retornar lista, o que quebrava o acesso direto [id]
+        if (Array.isArray(aiPredictions)) {
+             prediction = aiPredictions.find(p => p.id === opp.id);
+        } else {
+             prediction = aiPredictions[opp.id];
+        }
+
+        // Clona os dados para não alterar o original
+        let newFinancials = { ...(opp.financials || {}) };
+        let newDetails = { ...(opp.details || {}) };
 
         if (prediction) {
-            // A IA retorna chaves '7' e '30'
-            // Se o slider estiver em 7, pega o 7. Se for > 7 (ex: 14, 30), pega o 30.
-            const horizonKey = timeHorizon <= 7 ? 7 : 30;
-            const predictedRoi = prediction[horizonKey];
+            // LÓGICA DE SNAP:
+            // O slider tem 30 passos, mas a IA só tem 2 cenários (d7 e d30).
+            // Se slider <= 10 dias -> Usa previsão de 7 dias (Curto Prazo)
+            // Se slider > 10 dias -> Usa previsão de 30 dias (Médio Prazo)
+            const targetKey = timeHorizon <= 10 ? 'd7' : 'd30';
             
-            if (predictedRoi !== undefined) {
-                newRoi = predictedRoi;
-                
-                // Recalcula o Preço de Venda para bater com o ROI da IA
-                // Fórmula: Venda = Compra * (1 + ROI/100)
-                newSellPrice = opp.buyPrice * (1 + newRoi / 100);
+            // Tenta buscar 'd7' ou '7' (para garantir compatibilidade)
+            const predData = prediction[targetKey] || prediction[targetKey.replace('d', '')];
+
+            // Se encontrou dados de previsão...
+            if (predData) {
+                // Extrai o ROI (pode vir como objeto {roi: 20} ou número direto 20)
+                const predictedRoi = typeof predData === 'object' ? predData.roi : predData;
+
+                if (predictedRoi !== undefined && predictedRoi !== null) {
+                    // 1. Atualiza o ROI na simulação
+                    newFinancials.roi = parseFloat(predictedRoi);
+
+                    // 2. Recalcula o Preço de Venda Estimado
+                    // Fórmula: Venda = Custo * (1 + ROI/100)
+                    const buyPrice = newFinancials.buyPrice || 0;
+                    if (buyPrice > 0) {
+                        newFinancials.sellPrice = buyPrice * (1 + newFinancials.roi / 100);
+                    }
+
+                    // 3. Marca visualmente como "Projeção"
+                    newDetails.isOptimized = true; 
+                    
+                    // 4. Ajuste Visual de Risco (Se o ROI cair muito no futuro, alerta risco)
+                    if (newFinancials.roi < 0) newDetails.riskLevel = 3;
+                }
             }
         }
 
+        // Retorna a oportunidade com os dados financeiros simulados
         return {
             ...opp,
-            roi: Math.round(newRoi),
-            sellPrice: newSellPrice, // Atualiza o valor no Card/Popup
-            // Se o ROI cair para negativo, marca como risco alto
-            riskLevel: newRoi < 0 ? 3 : opp.riskLevel
+            financials: newFinancials,
+            details: newDetails
         };
     });
   };
@@ -504,39 +535,54 @@ return (
                 fillOpacity: 0.2
             }}
           >
-            {currentOpportunities.map((opp) => (
+           {currentOpportunities.map((opp) => (
               <Marker
                 key={opp.id}
-                position={opp.position}
-                icon={createRiskIcon(opp.roi, opp.riskLevel)}
+                // 1. CORREÇÃO: Coordenadas em 'coords'
+                position={[opp.coords?.lat || 0, opp.coords?.lng || 0]}
+                
+                // 2. CORREÇÃO: Risco e ROI nos novos endereços
+                icon={createRiskIcon(opp.financials?.roi || 0, opp.details?.riskLevel || 1)}
+                
                 eventHandlers={{
-                  // Mantemos apenas o clique para selecionar
                   click: () => { handleSelection(opp); }
-                  // Removemos o popupclose para evitar que o zoom feche o card
                 }}
               >
                 <Popup maxWidth={350} minWidth={250} autoPanPadding={[50, 50]}>
                   <div style={{padding:'8px',fontFamily:theme.font,background:`${theme.colors.background}F2`,color:theme.colors.textPrimary,borderRadius:'12px',boxShadow:theme.colors.cardGlow}}>
+                    
                     <div style={{borderBottom:`2px solid ${theme.colors.accent}`,paddingBottom:'10px',marginBottom:'12px'}}>
-                      <h3 style={{margin:'0 0 5px 0',color:theme.colors.accent,fontSize:'16px',fontWeight:'bold',letterSpacing:'1.5px'}}>{opp.product}</h3>
-                      <p style={{margin:'0',fontSize:'13px',color:theme.colors.textMuted}}>📍 {opp.city}, {opp.state}</p>
+                      <h3 style={{margin:'0 0 5px 0',color:theme.colors.accent,fontSize:'16px',fontWeight:'bold',letterSpacing:'1.5px'}}>
+                          {opp.product}
+                          {/* Flag de IA */}
+                          {opp.details?.isOptimized && <span title="Otimizado por IA" style={{fontSize:'0.8em'}}> 🤖</span>}
+                      </h3>
+                      {/* 3. CORREÇÃO: Origem */}
+                      <p style={{margin:'0',fontSize:'13px',color:theme.colors.textMuted}}>📍 {opp.origin?.city}, {opp.origin?.state}</p>
                     </div>
 
-                    <div style={{background:opp.roi>=100?'#dcfce7':opp.roi>=50?'#fef3c7':'#fee2e2',padding:'8px 12px',borderRadius:'6px',marginBottom:'12px',textAlign:'center'}}>
-                      <span style={{fontSize:'20px',fontWeight:'bold',color:opp.roi>=100?'#15803d':opp.roi>=50?'#b45309':'#dc2626'}}>
-                        🎯 {opp.roi}% ROI
+                    {/* 4. CORREÇÃO: ROI */}
+                    <div style={{background:(opp.financials?.roi || 0)>=100?'#dcfce7':(opp.financials?.roi || 0)>=50?'#fef3c7':'#fee2e2',padding:'8px 12px',borderRadius:'6px',marginBottom:'12px',textAlign:'center'}}>
+                      <span style={{fontSize:'20px',fontWeight:'bold',color:(opp.financials?.roi || 0)>=100?'#15803d':(opp.financials?.roi || 0)>=50?'#b45309':'#dc2626'}}>
+                        🎯 {(opp.financials?.roi || 0).toFixed(1)}% ROI
                       </span>
                     </div>
 
                     <div style={{marginBottom:'12px'}}>
-                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:'8px',padding:'6px',background:`${theme.colors.background}99`,borderRadius:'4px'}}><span style={{fontSize:'12px',fontWeight:'600',color:theme.colors.textPrimary}}>💰 Compra:</span><span style={{fontSize:'12px',fontWeight:'bold',color:'#22c55e'}}>{formatPrice(opp.buyPrice)}/kg</span></div>
+                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:'8px',padding:'6px',background:`${theme.colors.background}99`,borderRadius:'4px'}}>
+                          <span style={{fontSize:'12px',fontWeight:'600',color:theme.colors.textPrimary}}>💰 Compra:</span>
+                          {/* 5. CORREÇÃO: Preço Compra */}
+                          <span style={{fontSize:'12px',fontWeight:'bold',color:'#22c55e'}}>{formatPrice(opp.financials?.buyPrice)}/kg</span>
+                      </div>
+                      
                       <div style={{display:'flex',justifyContent:'space-between',marginBottom:'8px',padding:'6px',background:`${theme.colors.background}99`,borderRadius:'4px'}}>
                         <span style={{fontSize:'12px',fontWeight:'600',color:theme.colors.textPrimary}}>💵 Venda:</span>
                         <div style={{textAlign: 'right'}}>
                           <span style={{fontSize:'12px',fontWeight:'bold',color:theme.colors.accent}}>
-                            {formatPrice(opp.sellPrice)}/kg
+                            {/* 6. CORREÇÃO: Preço Venda */}
+                            {formatPrice(opp.financials?.sellPrice)}/kg
                           </span>
-                          {/* 👇 O AVISO NOVO APARECE AQUI 👇 */}
+                          {/* Lógica do Slider mantida */}
                           {timeHorizon > 0 && (
                             <span style={{display: 'block', fontSize: '9px', color: '#00d9ff', fontStyle: 'italic', marginTop: '2px'}}>
                               🤖 Projetado (+{timeHorizon}d)
@@ -544,26 +590,37 @@ return (
                           )}
                         </div>
                       </div>
-                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:'8px',padding:'6px',background:`${theme.colors.background}99`,borderRadius:'4px'}}><span style={{fontSize:'12px',fontWeight:'600',color:theme.colors.textPrimary}}>🚛 Destino:</span><span style={{fontSize:'12px',color:theme.colors.textMuted}}>{opp.sellLocation}</span></div>
+                      
+                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:'8px',padding:'6px',background:`${theme.colors.background}99`,borderRadius:'4px'}}>
+                          <span style={{fontSize:'12px',fontWeight:'600',color:theme.colors.textPrimary}}>🚛 Destino:</span>
+                          {/* 7. CORREÇÃO: Destino */}
+                          <span style={{fontSize:'12px',color:theme.colors.textMuted}}>{opp.destination?.name}</span>
+                      </div>
                     </div>
 
-                <div style={{ padding: '8px', background: opp.riskLevel === 1 ? '#22c55e20' : opp.riskLevel === 2 ? `${theme.colors.secondary}20` : '#fee2e2', borderLeft: `4px solid ${opp.riskLevel === 1 ? '#22c55e' : opp.riskLevel === 2 ? theme.colors.secondary : '#dc2626'}`, borderRadius: '4px', marginBottom: '10px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: '600', color: theme.colors.textPrimary }}>⚠️ Risco: {opp.risk}</span>
-                </div>
+                    {/* 8. CORREÇÃO: Risco */}
+                    <div style={{ padding: '8px', background: (opp.details?.riskLevel || 1) === 1 ? '#22c55e20' : (opp.details?.riskLevel || 1) === 2 ? `${theme.colors.secondary}20` : '#fee2e2', borderLeft: `4px solid ${(opp.details?.riskLevel || 1) === 1 ? '#22c55e' : (opp.details?.riskLevel || 1) === 2 ? theme.colors.secondary : '#dc2626'}`, borderRadius: '4px', marginBottom: '10px' }}>
+                      <span style={{ fontSize: '12px', fontWeight: '600', color: theme.colors.textPrimary }}>⚠️ Risco: {opp.details?.riskLevel || 1}</span>
+                    </div>
 
-                {/* 🚀 CLIMA EM TEMPO REAL */}
-                <div style={{ padding: '8px', background: '#eff6ff', borderRadius: '4px', marginBottom: '10px' }}>
-                  <span style={{ fontSize: '12px', color: '#1e40af' }}>
-                    {/* Se já temos weatherData para ESTE item, mostra. Se não, mostra o mock ou 'Carregando...' */}
-                    {selectedOpportunity && selectedOpportunity.id === opp.id && weatherData 
-                        ? `${getWeatherDesc(weatherData.code).icon} ${weatherData.temp}°C • ${getWeatherDesc(weatherData.code).text}`
-                        : `🌤️ ${opp.climate || 'Análise Climática'}` 
-                    }
-                  </span>
-                </div>
+                    {/* Clima mantido (não mudou pois usa selectedOpportunity) */}
+                    <div style={{ padding: '8px', background: '#eff6ff', borderRadius: '4px', marginBottom: '10px' }}>
+                      <span style={{ fontSize: '12px', color: '#1e40af' }}>
+                        {selectedOpportunity && selectedOpportunity.id === opp.id && weatherData 
+                            ? `${getWeatherDesc(weatherData.code).icon} ${weatherData.temp}°C • ${getWeatherDesc(weatherData.code).text}`
+                            : `🌤️ Análise Climática` 
+                        }
+                      </span>
+                    </div>
 
-                    <div style={{fontSize:'11px',color:theme.colors.textMuted,lineHeight:'1.4',marginTop:'10px',padding:'8px',background:`${theme.colors.background}99`,borderRadius:'4px'}}>{opp.description}</div>
-                    <div style={{marginTop:'12px',paddingTop:'10px',borderTop:`1px solid ${theme.colors.textMuted}`,display:'flex',justifyContent:'space-between',fontSize:'11px',color:theme.colors.textMuted}}><span>📂 {opp.category}</span><span>📅 {opp.season}</span></div>
+                    {/* 9. CORREÇÃO: Detalhes */}
+                    <div style={{fontSize:'11px',color:theme.colors.textMuted,lineHeight:'1.4',marginTop:'10px',padding:'8px',background:`${theme.colors.background}99`,borderRadius:'4px'}}>
+                        {opp.description || opp.product}
+                    </div>
+                    <div style={{marginTop:'12px',paddingTop:'10px',borderTop:`1px solid ${theme.colors.textMuted}`,display:'flex',justifyContent:'space-between',fontSize:'11px',color:theme.colors.textMuted}}>
+                        <span>📂 {opp.details?.volume}</span>
+                        <span>📅 {opp.details?.season}</span>
+                    </div>
                   </div>
                 </Popup>
               </Marker>

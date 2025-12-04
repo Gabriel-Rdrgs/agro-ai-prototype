@@ -29,9 +29,16 @@ model Opportunity {
   sellPrice    Decimal  @db.Decimal(10, 2)
   
   // Dados Destino
-  sellLocation String   // Ex: CEAGESP - SP
+  sellLocation String
   destLat      Float?
   destLng      Float?
+
+  // --- (Inteligência Persistida) ---
+  roi          Float?   @default(0)
+  freight      Decimal? @db.Decimal(10, 2)
+  bestRoute    Boolean  @default(false)
+
+
 
   // Detalhes
   volume       String   // Ex: "500 cx"

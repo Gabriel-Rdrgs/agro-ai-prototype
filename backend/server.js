@@ -33,11 +33,19 @@ if (!JWT_SECRET) {
 
 // 5. MIDDLEWARES
 app.use(cors({
-  origin: '*', // Permite conexões de qualquer origem (útil para dev/mobile)
+  origin: '*', 
   credentials: true
 }));
+app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
-
+// --- 🕵️‍♂️ MIDDLEWARE DE DEBUG (RAIO-X) ---
+app.use((req, res, next) => {
+  console.log(`\n📨 [DEBUG] Requisição recebida: ${req.method} ${req.url}`);
+  console.log('🔑 Headers Content-Type:', req.headers['content-type']);
+  console.log('📦 Body Recebido:', req.body);
+  console.log('--------------------------------------------------');
+  next();
+});
 // ============================================
 // 🛠️ FUNÇÕES AUXILIARES (HELPER FUNCTIONS)
 // ============================================
@@ -53,14 +61,38 @@ async function getDollarRate() {
   }
 }
 
-// Busca Dados Climáticos (OpenMeteo)
-async function getWeather(lat, lng) {
+// --- FUNÇÃO ATUALIZADA: Busca Previsão Completa (Solo + Chuva Real) ---
+async function getWeatherFull(lat, lng) {
   try {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true&timezone=America/Sao_Paulo`;
+    // 1. URL ATUALIZADA:
+    // - Trocamos 'rain_sum' por 'precipitation_sum' (Chuva total)
+    // - Adicionamos 'soil_moisture_0_to_10cm_mean' (Umidade do Solo)
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,shortwave_radiation_sum,soil_moisture_0_to_10cm_mean&current_weather=true&timezone=America%2FSao_Paulo`;
+    
     const response = await axios.get(url);
-    return response.data.current_weather;
+    const daily = response.data.daily;
+    const current = response.data.current_weather;
+
+    // 2. Mapeamento para o Frontend
+    const forecastList = daily.time.map((time, index) => ({
+      date: time,
+      tempMax: daily.temperature_2m_max[index],
+      tempMin: daily.temperature_2m_min[index],
+      rain: daily.precipitation_sum[index], // Agora inclui pancadas!
+      sun: daily.shortwave_radiation_sum[index],
+      soil: daily.soil_moisture_0_to_10cm_mean[index] // Novo dado!
+    }));
+
+    return {
+        forecast: forecastList,
+        current: {
+            temp: current.temperature,
+            code: current.weathercode,
+            wind: current.windspeed
+        }
+    };
   } catch (error) {
-    console.error(`Erro clima (lat:${lat}, lng:${lng}):`, error.message);
+    console.error("Erro OpenMeteo:", error.message);
     return null;
   }
 }
@@ -78,49 +110,94 @@ if (authController) {
 // 📊 ROTAS DE NEGÓCIO (DADOS)
 // ============================================
 
-// 1. Listar Oportunidades (Com conversão de moeda)
+// 1. Listar Oportunidades (Com Dólar em Tempo Real)
 app.get('/api/opportunities', verifyToken, async (req, res) => {
   try {
-    const opportunities = await prisma.opportunity.findMany({
-      orderBy: { createdAt: 'desc' }
+    // Busca Oportunidades e Dólar em paralelo
+    const [opportunities, dollarRate] = await Promise.all([
+        prisma.opportunity.findMany({ orderBy: { createdAt: 'desc' } }),
+        getDollarRate() // Função que já existe no seu arquivo
+    ]);
+    
+    console.log(`💵 Dólar Atual: R$ ${dollarRate}`);
+
+const formattedOpportunities = opportunities.map(opp => {
+      let buyPrice = parseFloat(opp.buyPrice);
+      let sellPrice = parseFloat(opp.sellPrice);
+      
+      // --- CORREÇÃO DE UNIDADE (Defesa em Camada) ---
+      // Se o preço do "quilo" for maior que R$ 20,00, com certeza é Caixa de 20kg ou 25kg.
+      // Normalizamos dividindo por 20 para padronizar tudo em Kg.
+      if (buyPrice > 20) buyPrice /= 20;
+      if (sellPrice > 20) sellPrice /= 20;
+
+      // Fallback Inteligente de ROI
+      let roi = opp.roi ? parseFloat(opp.roi) : 0;
+      let freight = opp.freight ? parseFloat(opp.freight) : 0;
+
+      if (roi === 0 && buyPrice > 0) {
+          // Estimativa se não tiver ROI gravado
+          const estimatedCost = buyPrice * 1.2;
+          const profit = sellPrice - estimatedCost;
+          roi = (profit / estimatedCost) * 100;
+          freight = buyPrice * 0.15;
+      }
+
+      return {
+        id: opp.id,
+        product: opp.product,
+        dollarRate: dollarRate, 
+        
+        origin: { 
+            city: opp.city, 
+            state: opp.state 
+        },
+        
+        destination: { 
+            name: opp.sellLocation, 
+            state: opp.sellLocation && opp.sellLocation.includes('-') 
+                   ? opp.sellLocation.split('-').pop().trim() 
+                   : 'BR'
+        },
+        
+        financials: {
+            buyPrice: parseFloat(buyPrice.toFixed(2)),   // Agora normalizado
+            sellPrice: parseFloat(sellPrice.toFixed(2)), // Agora normalizado
+            freight: parseFloat(freight.toFixed(2)),
+            roi: parseFloat(roi.toFixed(1)),
+            currency: "BRL"
+        },
+        
+        coords: { 
+            lat: parseFloat(opp.lat), 
+            lng: parseFloat(opp.lng) 
+        },
+        
+        details: {
+            volume: opp.volume,
+            riskLevel: opp.riskLevel,
+            season: opp.season,
+            isOptimized: opp.bestRoute 
+        }
+      };
     });
     
-    const dollarRate = await getDollarRate();
-    
-    // Enriquecimento dos dados
-    const enrichedOpportunities = opportunities.map(opp => ({
-      ...opp,
-      // Garante que Decimals virem Numbers para o Frontend
-      buyPrice: parseFloat(opp.buyPrice),
-      sellPrice: parseFloat(opp.sellPrice),
-      lat: parseFloat(opp.lat),
-      lng: parseFloat(opp.lng),
-      destLat: opp.destLat ? parseFloat(opp.destLat) : null,
-      destLng: opp.destLng ? parseFloat(opp.destLng) : null,
-      // Cálculo em Dólar
-      priceUsd: parseFloat((parseFloat(opp.sellPrice) / dollarRate).toFixed(2)),
-      dollarRate: dollarRate,
-    }));
-    
-    res.json(enrichedOpportunities);
+    res.json(formattedOpportunities);
   } catch (error) {
-    console.error("❌ Erro ao buscar oportunidades:", error);
-    res.status(500).json({ error: 'Erro interno ao buscar oportunidades' });
+    console.error("❌ Erro opportunities:", error);
+    res.status(500).json({ error: 'Erro interno' });
   }
 });
 
-// 2. Dados Climáticos (Proxy)
+// --- ROTA ATUALIZADA ---
 app.get('/api/weather', verifyToken, async (req, res) => {
   const { lat, lng } = req.query;
   if (!lat || !lng) return res.status(400).json({ error: 'Lat/Lng obrigatórios' });
   
-  const weatherData = await getWeather(lat, lng);
-  if (weatherData) {
-    res.json({
-      temp: weatherData.temperature,
-      code: weatherData.weathercode,
-      wind: weatherData.windspeed
-    });
+  const data = await getWeatherFull(lat, lng);
+  
+  if (data) {
+    res.json(data); // Retorna { forecast: [...], current: {...} }
   } else {
     res.status(500).json({ error: 'Dados climáticos indisponíveis' });
   }
@@ -160,101 +237,95 @@ app.get('/api/analytics/trend', verifyToken, async (req, res) => {
   }
 });
 
-// ============================================
-// 🧠 ROTAS DE INTELIGÊNCIA ARTIFICIAL (PYTHON BRIDGE)
-// ============================================
-
-// 1. Armazenagem (Storage Advisor) - BLINDADO CONTRA ERRO 422
+// 1. Armazenagem (Storage Advisor) - VERSÃO BLINDADA DEFINITIVA
 app.post('/api/ai/storage', verifyToken, async (req, res) => {
   try {
-    // 1. Extração e Tratamento Prévio (Evita enviar NaN para o Python)
-    let currentPrice = parseFloat(req.body.current_price);
-    let buyPrice = parseFloat(req.body.buy_price);
-    let accRain = parseFloat(req.body.accumulated_rainfall);
-    
-    // Fallback de Segurança: Se buyPrice for NaN ou 0, assume 60% do valor de venda
-    if (isNaN(buyPrice) || buyPrice <= 0) {
-        console.log("ℹ️ Sem preço de compra definido. Iniciando simulação no 0 a 0.");
-        buyPrice = currentPrice; // Começa junto, sem lucro nem prejuízo
-    }
-
-    // Fallback de Segurança: Se chuva for NaN, assume ideal (500mm)
-    if (isNaN(accRain)) {
-        accRain = 500;
-    }
-
-    // 2. Montagem do Payload Seguro
-    const payload = {
-      product: req.body.product,
-      state: req.body.state || 'SP',
-      lat: req.body.lat ? parseFloat(req.body.lat) : 0,
-      lng: req.body.lng ? parseFloat(req.body.lng) : 0,
-      
-      current_price: currentPrice,
-      buy_price: buyPrice,                 // Agora garantido que é número
-      accumulated_rainfall: accRain,       // Agora garantido que é número
-      
-      planting_date: req.body.planting_date || null, // Opcional, pode ser null
-      
-      storage_cost_per_day: parseFloat(req.body.storage_cost_per_day || 0.03),
-      risk_factor: parseFloat(req.body.risk_factor || 1.0),
-      
-      // Arrays vazios se não vier nada
-      daily_rain: req.body.daily_rain || [],
-      daily_temp_max: req.body.daily_temp_max || [],
-      daily_temp_min: req.body.daily_temp_min || [],
-      daily_sun: req.body.daily_sun || []
+    // HIGIENIZAÇÃO: Garante que nada chegue nulo no Python
+    const safePayload = {
+        product: req.body.product || 'Tomate',
+        state: req.body.state || 'SP',
+        
+        // Numéricos: Se falhar conversão, usa 0
+        current_price: parseFloat(req.body.current_price) || 0,
+        buy_price: parseFloat(req.body.buy_price) || 0,
+        accumulated_rainfall: parseFloat(req.body.accumulated_rainfall) || 0,
+        
+        // Coordenadas
+        lat: parseFloat(req.body.lat) || 0,
+        lng: parseFloat(req.body.lng) || 0,
+        
+        // Opcionais com Default
+        planting_date: req.body.planting_date || null,
+        storage_cost_per_day: parseFloat(req.body.storage_cost_per_day) || 0.03,
+        risk_factor: parseFloat(req.body.risk_factor) || 1.0,
+        
+        // Arrays vazios se faltarem
+        daily_rain: Array.isArray(req.body.daily_rain) ? req.body.daily_rain : [],
+        daily_temp_max: Array.isArray(req.body.daily_temp_max) ? req.body.daily_temp_max : [],
+        daily_temp_min: Array.isArray(req.body.daily_temp_min) ? req.body.daily_temp_min : [],
+        daily_sun: Array.isArray(req.body.daily_sun) ? req.body.daily_sun : []
     };
 
-    console.log(`📤 [Node -> Python] Storage Request: Rain=${payload.accumulated_rainfall}mm, Buy=R$${payload.buy_price.toFixed(2)}`);
+    console.log(`📤 [Node -> Python] Storage: ${safePayload.product} | R$${safePayload.current_price}`);
+    const response = await axios.post(`${PYTHON_API_URL}/predict/storage`, safePayload);
     
-    const response = await axios.post(`${PYTHON_API_URL}/predict/storage`, payload);
-    const pyData = response.data;
-    
-    // 3. Tradução para o Frontend
+    // Tratamento da resposta para evitar erro no Front
+    const pyData = response.data || {};
     const formattedData = {
-        ...pyData.chart_data, 
-        recommendation: {
-            action: pyData.recommendation.action,
-            best_day: pyData.recommendation.best_day_date, 
-            estimated_profit: pyData.recommendation.projected_profit,
-            confidence: pyData.recommendation.confidence_score,
-            risk_event: pyData.recommendation.risk_event
-        }
+        ...(pyData.chart_data || {}),
+        recommendation: pyData.recommendation || {}
     };
 
     res.json(formattedData);
 
   } catch (error) {
-    // LOG DE ERRO MELHORADO: Mostra o motivo exato da recusa do Python
-    if (error.response && error.response.data) {
-        console.error("❌ Erro 422 Python (Detalhes):", JSON.stringify(error.response.data, null, 2));
-    } else {
-        console.error("❌ Erro Node Storage:", error.message);
-    }
-    res.status(500).json({ error: 'Erro de comunicação com Inteligência' });
+    const errorDetail = error.response?.data?.detail || error.message;
+    console.error("❌ Erro Node Storage:", JSON.stringify(errorDetail));
+    // Retorna 500 mas com JSON válido para o front não crashar feio
+    res.status(500).json({ error: 'Erro IA', details: errorDetail });
   }
 });
 
-// 2. Processamento em Lote (Mapa/Slider)
+// 2. Processamento em Lote (Batch) - VERSÃO DEBUG X9 🕵️‍♂️
 app.post('/api/ai/batch', verifyToken, async (req, res) => {
   try {
-    if (!req.body.items || !Array.isArray(req.body.items)) return res.json({});
+    if (!req.body.items || !Array.isArray(req.body.items)) {
+        return res.status(400).json({ error: "Payload inválido: 'items' obrigatório" });
+    }
 
-    const sanitizedItems = req.body.items.map(item => ({
-        id: parseInt(item.id),
-        product: item.product,
-        state: item.state || 'SP',
-        current_price: parseFloat(item.sellPrice || item.current_price || 0), 
-        buy_price: parseFloat(item.buyPrice || item.buy_price || 0)
-    }));
+    const sanitizedItems = req.body.items.map(item => {
+        const financials = item.financials || {};
+        const origin = item.origin || {};
+        const coords = item.coords || {};
+        
+        return {
+            id: parseInt(item.id),
+            product: item.product || 'Tomate',
+            state: origin.state || 'SP',
+            
+            // Força conversão para número e evita NaN
+            lat: Number(coords.lat) || 0.0,
+            lng: Number(coords.lng) || 0.0,
+            accumulated_rainfall: 0.0, 
+            storage_cost_per_day: 0.03, 
+            
+            current_price: Number(financials.sellPrice) || 0.0, 
+            buy_price: Number(financials.buyPrice) || 0.0
+        };
+    });
 
-    const response = await axios.post(`${PYTHON_API_URL}/predict/batch`, { items: sanitizedItems }, { timeout: 15000 });
+    if (sanitizedItems.length === 0) return res.json({});
+
+    const response = await axios.post(`${PYTHON_API_URL}/predict/batch`, { items: sanitizedItems }, { timeout: 60000 });
     res.json(response.data);
 
   } catch (error) {
-    console.error("❌ Erro Batch:", error.message);
-    res.status(500).json({ error: 'Erro no processamento em lote' });
+    // AQUI ESTÁ O TRUQUE: Pegamos a mensagem de erro do Python e mandamos pro Front
+    const pythonError = error.response?.data?.detail || error.message;
+    console.error("❌ Erro Batch Node:", JSON.stringify(pythonError));
+    
+    // Retorna o erro real para vermos no console do navegador
+    res.status(500).json({ error: "Erro Python", details: pythonError });
   }
 });
 
@@ -315,28 +386,55 @@ app.get('/api/fuel/price/:state', verifyToken, async (req, res) => {
   }
 });
 
+// ============================================
+// 🧮 ROTAS DE CÁLCULO (AGORA BLINDADAS)
+// ============================================
+
 // 4. Calculadora de Produção
 app.post('/calc/production', verifyToken, async (req, res) => {
   try {
-    const response = await axios.post(`${PYTHON_API_URL}/calc/production`, req.body);
+    const safePayload = {
+        state: req.body.state || 'SP',
+        product: req.body.product || 'Tomate',
+        // Garante números
+        area_ha: parseFloat(req.body.area_ha) || 10,
+        planting_month: parseInt(req.body.planting_month) || 1,
+        cost_per_ha: parseFloat(req.body.cost_per_ha) || 0,
+        expected_productivity: parseFloat(req.body.expected_productivity) || 0,
+        expected_sell_price: parseFloat(req.body.expected_sell_price) || 0
+    };
+
+    const response = await axios.post(`${PYTHON_API_URL}/calc/production`, safePayload);
     res.json(response.data);
   } catch (error) {
     console.error("Erro Ponte Produção:", error.message);
-    res.status(500).json({ error: 'Erro no serviço de cálculo.' });
+    res.status(500).json({ error: 'Erro cálculo produção' });
   }
 });
 
-// 5. Calculadora de Arbitragem
+// 5. Calculadora de Arbitragem (A que estava dando erro 500)
 app.post('/calc/arbitrage', verifyToken, async (req, res) => {
   try {
-    const response = await axios.post(`${PYTHON_API_URL}/calc/arbitrage`, req.body);
+    // O erro acontecia porque enviávamos req.body direto, e vinha string ou null
+    const safePayload = {
+        product: req.body.product || 'Tomate',
+        origin_state: req.body.origin_state || 'SP',
+        destination_state: req.body.destination_state || 'SP',
+        // Conversão forçada para evitar erro de validação no Python
+        area_ha: parseFloat(req.body.area_ha) || 10,
+        planting_month: parseInt(req.body.planting_month) || 1
+    };
+
+    console.log(`📤 [Node -> Python] Arbitragem: ${safePayload.origin_state} -> ${safePayload.destination_state}`);
+    const response = await axios.post(`${PYTHON_API_URL}/calc/arbitrage`, safePayload);
     res.json(response.data);
+
   } catch (error) {
-    console.error("Erro Ponte Arbitragem:", error.message);
-    res.status(500).json({ error: 'Erro no cálculo de arbitragem.' });
+    const errorDetail = error.response?.data?.detail || error.message;
+    console.error("❌ Erro Ponte Arbitragem:", JSON.stringify(errorDetail));
+    res.status(500).json({ error: 'Erro cálculo arbitragem', details: errorDetail });
   }
 });
-
 // 6. Radar de Mercado
 app.post('/market/scan', verifyToken, async (req, res) => {
   try {
@@ -369,6 +467,6 @@ app.use('/api/ceasa', ceasaRoutes);
 // 🚀 INICIALIZAÇÃO DO SERVIDOR
 // ============================================
 app.listen(PORT, () => {
-  console.log(`🔥 BACKEND v7.2 (FULL) RODANDO NA PORTA ${PORT}`);
+  console.log('🔥 BACKEND AGRO-AI - MODO TECH LEAD ATIVADO NA PORTA ' + PORT);
   console.log(`🔗 Conectado ao Python em: ${PYTHON_API_URL}`);
 });

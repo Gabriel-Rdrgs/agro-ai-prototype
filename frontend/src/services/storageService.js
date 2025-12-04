@@ -32,7 +32,6 @@ export const StorageService = {
   },
 
   // --- CORREÇÃO DO ERRO ---
-  // Mantemos o nome 'getAll' para não quebrar seu Dashboard antigo.
   // Ela faz a mesma coisa que a getScenarios.
   getAll: () => {
     return StorageService.getScenarios();

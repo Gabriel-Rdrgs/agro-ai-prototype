@@ -9,16 +9,16 @@ from utils.geography import calculate_distance_coords
 logger = logging.getLogger(__name__)
 
 HUBS = {
-    'SP': {'name': 'CEAGESP - SP', 'lat': -23.55, 'lng': -46.63, 'premium': 1.08},
-    'RJ': {'name': 'CEASA - RJ', 'lat': -22.84, 'lng': -43.35, 'premium': 1.06}, 
-    'MG': {'name': 'CEASA - MG', 'lat': -19.92, 'lng': -44.04, 'premium': 1.04},
-    'PR': {'name': 'CEASA - PR', 'lat': -25.50, 'lng': -49.29, 'premium': 1.03},
-    'PE': {'name': 'CEASA - PE', 'lat': -8.07, 'lng': -34.93, 'premium': 1.05},
-    'GO': {'name': 'CEASA - GO', 'lat': -16.63, 'lng': -49.22, 'premium': 1.00},
-    'BA': {'name': 'CEASA - BA', 'lat': -12.87, 'lng': -38.43, 'premium': 1.02},
-    'RS': {'name': 'CEASA - RS', 'lat': -30.03, 'lng': -51.23, 'premium': 1.05}, 
-    'SC': {'name': 'CEASA - SC', 'lat': -27.60, 'lng': -48.55, 'premium': 1.04},
-    'MT': {'name': 'CEASA - MT', 'lat': -15.60, 'lng': -56.10, 'premium': 1.01}
+    'SP': {'name': 'CEAGESP - SP', 'lat': -23.55, 'lng': -46.63, 'premium': 1.05},
+    'RJ': {'name': 'CEASA - RJ', 'lat': -22.84, 'lng': -43.35, 'premium': 1.04}, 
+    'MG': {'name': 'CEASA - MG', 'lat': -19.92, 'lng': -44.04, 'premium': 1.02},
+    'PR': {'name': 'CEASA - PR', 'lat': -25.50, 'lng': -49.29, 'premium': 1.01},
+    'PE': {'name': 'CEASA - PE', 'lat': -8.07, 'lng': -34.93, 'premium': 1.02},
+    'GO': {'name': 'CEASA - GO', 'lat': -16.63, 'lng': -49.22, 'premium': 1.005},
+    'BA': {'name': 'CEASA - BA', 'lat': -12.87, 'lng': -38.43, 'premium': 1.005},
+    'RS': {'name': 'CEASA - RS', 'lat': -30.03, 'lng': -51.23, 'premium': 1.02}, 
+    'SC': {'name': 'CEASA - SC', 'lat': -27.60, 'lng': -48.55, 'premium': 1.02},
+    'MT': {'name': 'CEASA - MT', 'lat': -15.60, 'lng': -56.10, 'premium': 1.005}
 }
 
 class LogisticsService:
@@ -26,42 +26,47 @@ class LogisticsService:
         self.truck_consumption = 3.5 
         self.maintenance_per_km = 1.50
 
-    def calculate_freight(self, origin_lat: float, origin_lng: float, dest_state: str) -> float:
-        """Calcula custo de frete (Com Fator de Retorno e Pedágio Pesado)"""
-        if dest_state not in HUBS: return 0.0
-        
-        dest = HUBS[dest_state]
-        dist = calculate_distance_coords(origin_lat, origin_lng, dest['lat'], dest['lng'])
-        
-        try:
-            fuel_data = fuel_api.get_diesel_price('BR')
-            diesel_price = fuel_data.get('price_per_liter', 6.00)
-        except:
-            diesel_price = 6.00
-        
-        # --- CALIBRAGEM DE REALIDADE ---
-        
-        # 1. Fator de Retorno (Empty Leg): 
-        # Cobra +30% para cobrir o risco de voltar vazio ou o tempo de espera
-        return_factor = 1.30 
-        
-        fuel_cost = ((dist / self.truck_consumption) * diesel_price) * return_factor
-        maint_cost = (dist * self.maintenance_per_km) * return_factor
-        
-        # 2. Custos Extras
-        # Pedágio: Aumentado para R$ 0,40/km (Média truck eixos suspensos)
-        toll_cost = dist * 0.40 
-        
-        # Seguro e Risco: R$ 200 fixo + taxa por km
-        insurance_cost = 200.0 + (dist * 0.15)
-        
-        # Carga/Descarga e Estadia
-        handling_cost = 400.0 
-        
-        total_freight = fuel_cost + maint_cost + toll_cost + insurance_cost + handling_cost
-        
-        return round(total_freight, 2)
+# --- NOVO MÉTODO DE CÁLCULO (Baseado em Coordenadas) ---
+    def calculate_distance(self, lat1, lon1, lat2, lon2):
+        """Calcula distância em km entre dois pontos (Haversine)"""
+        R = 6371  # Raio da terra
+        dlat = math.radians(lat2 - lat1)
+        dlon = math.radians(lon2 - lon1)
+        a = math.sin(dlat/2) * math.sin(dlat/2) + \
+            math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * \
+            math.sin(dlon/2) * math.sin(dlon/2)
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+        return R * c * 1.2  # +20% margem de sinuosidade
 
+    def calculate_freight(self, lat_origin, lng_origin, lat_dest, lng_dest):
+        """
+        Calcula frete com base em coordenadas reais.
+        Assinatura atualizada para aceitar 4 argumentos de lat/lng.
+        """
+        try:
+            # 1. Distância Real
+            dist_km = self.calculate_distance(lat_origin, lng_origin, lat_dest, lng_dest)
+            
+            # 2. Custo Base (Referência: R$ 6.00/km para Truck 15t)
+            # Pode ajustar esse fator conforme o preço do diesel sobe
+            cost_per_km = 6.00 
+            
+            total_trip_cost = dist_km * cost_per_km
+            
+            # 3. Rateio por Unidade (Ex: 750 caixas de 20kg = 15.000kg)
+            # Se a carga for menor, o custo unitário sobe. Assumindo carga plena.
+            units_per_truck = 750 
+            cost_per_unit = total_trip_cost / units_per_truck
+            
+            return {
+                "distance_km": round(dist_km, 0),
+                "total_cost": round(total_trip_cost, 2),
+                "cost_per_unit": round(cost_per_unit, 2)
+            }
+        except Exception as e:
+            logger.error(f"Erro cálculo frete: {e}")
+            return {"distance_km": 0, "total_cost": 0, "cost_per_unit": 0}
+        
     def analyze_routes(self, product: str, origin_state: str, lat: float, lng: float, base_price: float) -> List[Dict]:
         """
         Retorna LISTA de rotas ordenadas por lucro líquido.

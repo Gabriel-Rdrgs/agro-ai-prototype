@@ -7,32 +7,36 @@ const Sidebar = ({ onSelectOpportunity, hideHeader = false, opportunities = [] }
   const [sortBy, setSortBy] = useState('roi');
   const [searchTerm, setSearchTerm] = useState('');
 
-  const getFilteredOpportunities = () => {
-    // Usa a lista que veio do pai
-    let filtered = [...opportunities];
+const getFilteredOpportunities = () => {
+    let filtered = Array.isArray(opportunities) ? [...opportunities] : [];
 
+    // 1. Filtro de Texto (Busca em Produto, Estado e Cidade)
     if (searchTerm) {
-      filtered = filtered.filter(opp =>
-        opp.product.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        opp.stateName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        opp.city.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(opp => {
+        const product = opp.product?.toLowerCase() || '';
+        const state = opp.origin?.state?.toLowerCase() || ''; // Novo endereço
+        const city = opp.origin?.city?.toLowerCase() || '';   // Novo endereço
+        return product.includes(term) || state.includes(term) || city.includes(term);
+      });
     }
 
+    // 2. Filtro de ROI (Busca em financials.roi)
     if (filter === 'high') {
-      filtered = filtered.filter(opp => opp.roi >= 100);
+      filtered = filtered.filter(opp => (opp.financials?.roi || 0) >= 100);
     } else if (filter === 'medium') {
-      filtered = filtered.filter(opp => opp.roi >= 50 && opp.roi < 100);
+      filtered = filtered.filter(opp => (opp.financials?.roi || 0) >= 50 && (opp.financials?.roi || 0) < 100);
     } else if (filter === 'low') {
-      filtered = filtered.filter(opp => opp.roi < 50);
+      filtered = filtered.filter(opp => (opp.financials?.roi || 0) < 50);
     }
 
+    // 3. Ordenação
     if (sortBy === 'roi') {
-      filtered.sort((a, b) => b.roi - a.roi);
+      filtered.sort((a, b) => (b.financials?.roi || 0) - (a.financials?.roi || 0));
     } else if (sortBy === 'risk') {
-      filtered.sort((a, b) => a.riskLevel - b.riskLevel);
+      filtered.sort((a, b) => (a.details?.riskLevel || 0) - (b.details?.riskLevel || 0));
     } else if (sortBy === 'price') {
-      filtered.sort((a, b) => b.buyPrice - a.buyPrice);
+      filtered.sort((a, b) => (a.financials?.buyPrice || 0) - (b.financials?.buyPrice || 0));
     }
 
     return filtered;
@@ -106,7 +110,7 @@ const Sidebar = ({ onSelectOpportunity, hideHeader = false, opportunities = [] }
         </select>
       </div>
 
-      {/* Lista de oportunidades */}
+{/* Lista de oportunidades */}
       <div className="opportunities-list">
         {filteredOpportunities.length === 0 ? (
           <div className="empty-state">
@@ -114,39 +118,62 @@ const Sidebar = ({ onSelectOpportunity, hideHeader = false, opportunities = [] }
             <p>Tente ajustar os filtros</p>
           </div>
         ) : (
-          filteredOpportunities.map((opp) => (
-            <div
-              key={opp.id}
-              className="opportunity-card"
-              onClick={() => onSelectOpportunity(opp)}
-            >
-              <div className="opportunity-card-header">
-                <div className="opportunity-card-title">
-                  <h3>{opp.product}</h3>
-                  <p>📍 {opp.city}, {opp.state}</p>
-                </div>
-                <div className={`roi-badge ${getROIColor(opp.roi)}`}>
-                  {opp.roi}%
-                </div>
-              </div>
+          filteredOpportunities.map((opp) => {
+            // --- CORREÇÃO: Extração segura dos dados aninhados ---
+            const financials = opp.financials || {};
+            const origin = opp.origin || {};
+            const details = opp.details || {};
+            
+            // Valores com fallback para evitar erros (NaN ou undefined)
+            const roi = financials.roi || 0;
+            const buyPrice = financials.buyPrice || 0;
+            const sellPrice = financials.sellPrice || 0;
+            const riskLevel = details.riskLevel || 1;
+            const volume = details.volume || 'N/A';
 
-              <div className="opportunity-info">
-                <span>
-                  <strong className="opportunity-info-price">
-                    {formatPrice(opp.buyPrice)}
-                  </strong>
-                </span>
-                <span>
-                  → <strong className="opportunity-info-price">{formatPrice(opp.sellPrice)}</strong>
-                </span>
-              </div>
+            return (
+              <div
+                key={opp.id}
+                className={`opportunity-card ${details.isOptimized ? 'optimized' : ''}`}
+                onClick={() => onSelectOpportunity && onSelectOpportunity(opp)}
+              >
+                <div className="opportunity-card-header">
+                  <div className="opportunity-card-title">
+                    <h3>
+                        {opp.product}
+                        {/* Ícone de Robô se for IA */}
+                        {details.isOptimized && <span title="Otimizado por IA" style={{fontSize:'0.8em', marginLeft:'5px'}}> 🤖</span>}
+                    </h3>
+                    {/* Agora lê de 'origin' */}
+                    <p>📍 {origin.city}, {origin.state}</p>
+                  </div>
+                  
+                  {/* Agora usa a variável 'roi' extraída acima */}
+                  <div className={`roi-badge ${getROIColor(roi)}`}>
+                    {roi.toFixed(1)}%
+                  </div>
+                </div>
 
-              <div className="opportunity-details">
-                <span>📦 {opp.volume}</span>
-                <span>⚠️ Risco {opp.risk}</span>
+                <div className="opportunity-info">
+                  <span>
+                    <strong className="opportunity-info-price">
+                      {/* Agora usa 'buyPrice' extraído */}
+                      {formatPrice(buyPrice)}
+                    </strong>
+                  </span>
+                  <span>
+                    → <strong className="opportunity-info-price">{formatPrice(sellPrice)}</strong>
+                  </span>
+                </div>
+
+                <div className="opportunity-details">
+                  {/* Agora lê de 'details' */}
+                  <span>📦 {volume}</span>
+                  <span>⚠️ Risco {riskLevel}</span>
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </>

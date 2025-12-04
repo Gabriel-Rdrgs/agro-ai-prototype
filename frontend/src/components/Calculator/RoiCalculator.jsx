@@ -35,7 +35,8 @@ const RoiCalculator = () => {
   const [scanMessage, setScanMessage] = useState(null); // Feedback da IA
   const [topOpportunities, setTopOpportunities] = useState([]); // 🆕 Lista Top 5
 
-  // 1. Carrega as Cidades Produtoras ao abrir a Calculadora
+
+// 1. Carrega as Cidades Produtoras (Corrigido para ler op.origin)
   useEffect(() => {
     const loadOrigins = async () => {
         const opportunities = await OpportunityService.getAll();
@@ -44,10 +45,14 @@ const RoiCalculator = () => {
         const seen = new Set();
 
         opportunities.forEach(op => {
-            const key = `${op.city}-${op.state}`;
+            // CORREÇÃO: Acessa city e state dentro de origin
+            const city = op.origin?.city || 'Desconhecida';
+            const state = op.origin?.state || 'BR';
+            
+            const key = `${city}-${state}`;
             if (!seen.has(key)) {
                 seen.add(key);
-                uniqueLocations.push({ city: op.city, state: op.state });
+                uniqueLocations.push({ city, state });
             }
         });
 
@@ -436,10 +441,10 @@ const RoiCalculator = () => {
                     <small style={{color: 'var(--text-primary)'}}>
                         {/* Tenta pegar o dado novo (fuel_breakdown) ou o antigo (legacy) */}
                         Diesel Ref: {
-                            result.logistics.fuel_breakdown 
-                            ? `R$ ${result.logistics.fuel_breakdown.weighted_price_liter.toFixed(2)}/L (Média Pond.)`
-                            : (result.logistics.diesel_price_ref || 'N/D')
-                        }
+    (result.logistics.fuel_breakdown && result.logistics.fuel_breakdown.weighted_price_liter)
+    ? `R$ ${Number(result.logistics.fuel_breakdown.weighted_price_liter).toFixed(2)}/L`
+    : (result.logistics.diesel_price_ref || 'N/D')
+}
                     </small>
                  </div>
                  

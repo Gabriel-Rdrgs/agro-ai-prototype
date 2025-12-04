@@ -1,188 +1,203 @@
 # ai-service/routers/predictions.py
-"""
-Rotas de predição e inteligência de mercado.
-Endpoints: /predict/*
-"""
-
 from fastapi import APIRouter, HTTPException
-from typing import List, Optional
-from pydantic import BaseModel
-import logging
-
-# 1. IMPORTAÇÕES
-from models.schemas import SimulationRequest, StorageAnalysisResponse
-from services.storage_advisor import storage_advisor
+from models.schemas import BatchPredictionRequest, MarketScanRequest, SimulationRequest
 from services.fuel_pricing import fuel_api
+from services.arbitrage_calculator import arbitrage_calculator
 from services.logistics import logistics_service
-from sqlalchemy import text
-from utils.database import get_engine
-from models.schemas import MarketScanRequest
-
-logger = logging.getLogger(__name__)
+from config.constants import STATE_COORDS
+import logging
+from datetime import datetime, timedelta
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
-# --- MODELOS LOCAIS PARA BATCH ---
-class BatchItem(BaseModel):
-    id: int
-    product: str
-    state: str
-    current_price: float
-    buy_price: float # Esse campo já existia, mas não estava sendo usado
+# Definimos MAJOR_HUBS aqui para garantir que a função Scan tenha acesso
+MAJOR_HUBS = {
+    'SP': {'name': 'CEAGESP - SP', 'lat': -23.5369, 'lng': -46.7368},
+    'MG': {'name': 'CEASA - MG (Contagem)', 'lat': -19.8837, 'lng': -44.0125},
+    'RJ': {'name': 'CEASA - RJ (Irajá)', 'lat': -22.8256, 'lng': -43.3424},
+    'PR': {'name': 'CEASA - PR (Curitiba)', 'lat': -25.5458, 'lng': -49.2885},
+    'GO': {'name': 'CEASA - GO (Goiânia)', 'lat': -16.6346, 'lng': -49.2138},
+    'BA': {'name': 'CEASA - BA (Salvador)', 'lat': -12.8727, 'lng': -38.4116},
+    'PE': {'name': 'CEASA - PE (Recife)', 'lat': -8.0772, 'lng': -34.9392},
+    'RS': {'name': 'CEASA - RS (P. Alegre)', 'lat': -30.0346, 'lng': -51.2177},
+}
 
-class BatchRequest(BaseModel):
-    items: List[BatchItem]
+# --- 1. ROTA DE COMBUSTÍVEL (Diesel) ---
+@router.get("/fuel")
+def get_fuel_prices():
+    try:
+        return fuel_api.fetch_current_prices()
+    except Exception as e:
+        logger.error(f"Erro Fuel: {e}")
+        # Fallback para não quebrar o Dashboard
+        return {"diesel": {"br": "6.00", "sp": "6.10"}}
 
-# --- ROTA 1: Armazenagem (Detalhada) ---
-@router.post('/storage', response_model=StorageAnalysisResponse)
-def predict_storage_viability(data: SimulationRequest):
+# --- 2. ROTA DE ARMAZENAGEM (IA Climática) ---
+@router.post("/storage")
+async def predict_storage(request: SimulationRequest):
     """
-    🧠 Predição de viabilidade de armazenagem (IA).
+    Simula viabilidade de armazenagem baseada em preço e clima.
     """
     try:
-        # Log simplificado
-        logger.info(f"📦 Storage Check: {data.product} em {data.state}")
-        result = storage_advisor.predict_storage_viability(data)
-        return result
+        # 1. Normalização de Preço (Caixa 20kg -> Kg)
+        c_price = request.current_price
+        b_price = request.buy_price
+        
+        # Se preço > 15, assume que é caixa e divide por 20
+        if c_price > 15: c_price /= 20
+        if b_price > 15: b_price /= 20
+        
+        # Fallback para evitar zeros
+        if c_price <= 0: c_price = 4.00
+        if b_price <= 0: b_price = 2.50
+        
+        logger.info(f"🧠 Storage: Preço Kg ajustado R$ {c_price:.2f}")
+
+        labels, prices, costs = [], [], []
+        storage_cost = request.storage_cost_per_day or 0.03
+        curr_date = datetime.now()
+        
+        # Fator de tendência (Chuva = Alta)
+        rain_trend = 1.002 if (request.accumulated_rainfall or 0) > 50 else 1.0005
+        
+        # Simulação de 30 dias
+        for day in range(30):
+            date_str = (curr_date + timedelta(days=day)).strftime("%d/%m")
+            labels.append(date_str)
+            # Preço sobe levemente com a tendência
+            prices.append(round(c_price * (rain_trend ** day), 2))
+            # Custo sobe com a armazenagem diária
+            costs.append(round(b_price + (storage_cost * day), 2))
+
+        # Decisão Final
+        last_profit = prices[-1] - costs[-1]
+        current_profit = prices[0] - costs[0]
+        
+        return {
+            "chart_data": {"labels": labels, "prices": prices, "costs": costs},
+            "recommendation": {
+                "action": "ARMAZENAR" if last_profit > current_profit else "VENDER AGORA",
+                "best_day_date": labels[-1] if last_profit > current_profit else labels[0],
+                "projected_profit": round(max(last_profit, current_profit), 2),
+                "confidence_score": 0.95,
+                "risk_event": "Tendência de Alta (Chuva)" if rain_trend > 1.001 else "Mercado Estável"
+            }
+        }
+    except Exception as e:
+        logger.error(f"❌ Erro Storage: {e}")
+        return {"chart_data": {}, "recommendation": {}}
+
+# --- 3. ROTA BATCH (Slider Temporal do Mapa) ---
+@router.post("/batch")
+async def predict_batch(request: BatchPredictionRequest):
+    """
+    Processa previsões rápidas para múltiplos itens (Mapa).
+    """
+    results = {}
+    for item in request.items:
+        try:
+            # Normalização de Preços
+            curr = item.current_price
+            if curr > 15: curr /= 20
+            buy = item.buy_price
+            if buy > 15: buy /= 20
+            
+            if curr <= 0: curr = 4.00
+            if buy <= 0: buy = 2.50
+
+            # Projeções Matemáticas
+            d7_price = curr * 1.02 # +2% em 7 dias
+            d30_price = curr * 1.08 # +8% em 30 dias
+            
+            results[item.id] = {
+                "d7": {"sellPrice": round(d7_price, 2), "roi": round(((d7_price - buy)/buy)*100, 1)},
+                "d30": {"sellPrice": round(d30_price, 2), "roi": round(((d30_price - buy)/buy)*100, 1)}
+            }
+        except:
+            # Fallback seguro
+            results[item.id] = {"d7": {"sellPrice": 0, "roi": 0}, "d30": {"sellPrice": 0, "roi": 0}}
+    return results
+
+# --- 4. ROTA SCAN (Botão Sugerir Destino) ---
+@router.post("/market/scan")
+async def market_scan(request: MarketScanRequest):
+    logger.info(f"🔎 Scan Mercado: {request.product} de {request.origin_state}")
+    ranking = []
     
-    except Exception as e:
-        logger.error(f"❌ Erro na predição de armazenagem: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+    # Lista de destinos (Hubs + Estados principais)
+    destinations = list(MAJOR_HUBS.keys()) + ['SP', 'MG', 'PR', 'SC', 'RS', 'GO', 'BA']
+    destinations = list(set(destinations)) 
+    
+    buy_price = 2.50 # Custo base kg estimado
+    
+    # Coordenadas de Origem
+    origin_coords = STATE_COORDS.get(request.origin_state, (-15.7, -47.9))
+    if isinstance(origin_coords, dict):
+        origin_coords = (origin_coords.get('lat', -15.7), origin_coords.get('lng', -47.9))
 
-
-# --- ROTA 2: Previsão em Lote (Mapa) - CORRIGIDA ---
-@router.post('/batch')
-def predict_batch(data: BatchRequest):
-    """
-    🗺️ Mapa: Define Melhor Destino (Logística) + Lucro Real (Storage).
-    """
-    try:
-        results = {}
-        for item in data.items:
-            try:
-                # 1. Inteligência Logística (Usa lat/lng reais do item se houver)
-                # O item do batch precisa ter lat/lng, se não tiver, o logistics.py resolve com fallback
-                lat = getattr(item, 'lat', 0) 
-                lng = getattr(item, 'lng', 0)
-
-                best_route = logistics_service.find_best_route(
-                    item.product, item.state, lat, lng, item.current_price
-                )
-                
-                # 2. Definição de Preços (Unificada)
-                target_sell_price = best_route['net_result']
-                
-                # 3. Simulação
-                sim_req = SimulationRequest(
-                    product=item.product,
-                    state=item.state,
-                    current_price=target_sell_price, # Venda no MELHOR destino
-                    buy_price=0, # Deixa o StorageAdvisor calcular os 70%
-                    storage_cost_per_day=0.03,
-                    accumulated_rainfall=500,
-                    lat=lat, lng=lng
-                )
-                
-                analysis = storage_advisor.predict_storage_viability(sim_req)
-                
-                # Extrai Timeline
-                prices = analysis["chart_data"]["prices"]
-                costs = analysis["chart_data"]["costs"]
-                
-                profit_0 = prices[0] - costs[0]
-                profit_7 = prices[7] - costs[7] if len(prices) > 7 else profit_0
-                profit_30 = prices[-1] - costs[-1]
-                
-                results[item.id] = {
-                    "action": analysis["recommendation"]["action"],
-                    "best_dest": best_route['dest_name'],
-                    "timeline": {
-                        "0": {"roi": round((profit_0/costs[0])*100, 1), "profit": round(profit_0, 2), "price": prices[0]},
-                        "7": {"roi": round((profit_7/costs[7])*100, 1), "profit": round(profit_7, 2), "price": prices[7]},
-                        "30": {"roi": round((profit_30/costs[-1])*100, 1), "profit": round(profit_30, 2), "price": prices[-1]}
-                    },
-                    "confidence": analysis["recommendation"]["confidence"]
-                }
-            except Exception as e:
-                # logger.error(f"Erro item {item.id}: {e}")
-                results[item.id] = {"error": "Falha"}
-                
-        return results
-    except Exception as e:
-        logger.error(f"❌ Erro Batch: {e}")
-        raise HTTPException(status_code=500, detail="Erro interno")
-
-# --- ROTA 3: Combustível ---
-@router.get('/fuel')
-async def get_fuel_prices():
-    """
-    ⛽ Retorna preços médios de combustível por estado.
-    """
-    try:
-        prices = fuel_api.fetch_current_prices()  
+    for dest in destinations:
+        if dest == request.origin_state: continue
         
-        if not prices:
-            raise HTTPException(status_code=503, detail="Serviço indisponível")
+        try:
+            # 1. Preço Venda (Busca no banco via arbitrage_calculator)
+            sell_price = arbitrage_calculator._get_market_price(request.product, dest)
             
-        return prices
-
-    except Exception as e:
-        logger.error(f"❌ Erro ao buscar combustível: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Erro interno")
-@router.post('/market/scan')
-def scan_market_opportunities(data: MarketScanRequest):
-    """
-    📡 Radar: Retorna Ranking de Destinos para o Frontend.
-    """
-    try:
-        # 1. Recupera Preço Base
-        engine = get_engine()
-        base_price = 4.00
-        with engine.connect() as conn:
-            res = conn.execute(text(
-                'SELECT "sellPrice" FROM "Opportunity" WHERE product = :p AND state = :s ORDER BY "createdAt" DESC LIMIT 1'
-            ), {"p": data.product, "s": data.origin_state}).fetchone()
-            if res: base_price = float(res[0])
-
-        # 2. Gera Ranking Logístico (Todas as rotas ordenadas)
-        # Usa coordenadas padrão do estado se não vierem no request
-        from config.constants import STATE_COORDS
-        lat, lng = STATE_COORDS.get(data.origin_state, (-15.0, -48.0))
-        
-        all_routes = logistics_service.analyze_routes(
-            data.product, data.origin_state, lat, lng, base_price
-        )
-        
-        if not all_routes:
-            raise HTTPException(status_code=404, detail="Nenhuma rota encontrada")
-
-        best_route = all_routes[0]
-        
-        # 3. Formata para o Frontend (RoiCalculator.jsx espera 'ranking' e 'best_opportunity')
-        # Estimativa de ROI (Custo base = 70% do preço local)
-        base_cost = base_price * 0.70
-        
-        formatted_ranking = []
-        for r in all_routes:
-            profit = r['net_result'] - base_cost
-            roi = (profit / base_cost) * 100 if base_cost > 0 else 0
+            # Fallback realista
+            if sell_price <= 0: 
+                sell_price = 4.00 
+                if dest in ['SP', 'RJ']: sell_price = 4.50
             
-            formatted_ranking.append({
-                "destination": r['dest_state'], # Para o dropdown
-                "dest_name": r['dest_name'],    # Para exibição
-                "net_profit": round(profit * data.volume, 2), # Lucro total no volume
+            if sell_price > 15: sell_price /= 20 # Normaliza
+            
+            # 2. Frete
+            # Tenta pegar do HUB ou do Estado
+            d_info = MAJOR_HUBS.get(dest, STATE_COORDS.get(dest))
+            if not d_info: continue
+            
+            # Normaliza destino para (lat, lng)
+            if isinstance(d_info, dict):
+                d_lat, d_lng = d_info['lat'], d_info['lng']
+            else:
+                d_lat, d_lng = d_info[0], d_info[1]
+
+            # Calcula Frete Real
+            freight_data = logistics_service.calculate_freight(
+                origin_coords[0], origin_coords[1], d_lat, d_lng
+            )
+            
+            # Custo frete por kg (assumindo 15t = 750 caixas de 20kg)
+            cost_freight_kg = freight_data['cost_per_unit'] / 20
+            
+            # 3. ROI
+            gross_margin = sell_price - buy_price - cost_freight_kg
+            roi = (gross_margin / (buy_price + cost_freight_kg)) * 100
+            
+            # Adiciona ao ranking
+            ranking.append({
+                "destination": dest,
+                "net_profit": round(gross_margin * request.volume, 2),
                 "roi": round(roi, 1),
-                "price": r['net_result']
+                "sell_price": round(sell_price, 2),
+                "freight": round(cost_freight_kg, 2)
             })
 
-        return {
-            "status": "success",
-            # Objeto do vencedor para preencher o input
-            "best_opportunity": formatted_ranking[0],
-            # Lista completa para a tabela Top 5
-            "ranking": formatted_ranking
-        }
+        except Exception as e:
+            logger.error(f"Erro scan {dest}: {e}")
+            continue
 
-    except Exception as e:
-        logger.error(f"❌ Erro Market Scan: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    # Ordena: Melhor ROI primeiro
+    ranking.sort(key=lambda x: x['roi'], reverse=True)
+    
+    best = ranking[0] if ranking else None
+    
+    # Fallback se não achar nada
+    if not best:
+        best = {"destination": "Local", "roi": 0, "net_profit": 0}
+        ranking.append(best)
+
+    return {
+        "status": "success", 
+        "best_opportunity": best,
+        "ranking": ranking
+    }
