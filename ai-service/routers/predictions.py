@@ -1,12 +1,14 @@
 # ai-service/routers/predictions.py
 from fastapi import APIRouter, HTTPException
-from models.schemas import BatchPredictionRequest, MarketScanRequest, SimulationRequest
+import math
+from models.schemas import BatchPredictionRequest, MarketScanRequest, SimulationRequest, ArbitrageRequest
 from services.fuel_pricing import fuel_api
 from services.arbitrage_calculator import arbitrage_calculator
 from services.logistics import logistics_service
 from config.constants import STATE_COORDS
 import logging
 from datetime import datetime, timedelta
+from config.crops import get_crop_specs
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -122,82 +124,89 @@ async def predict_batch(request: BatchPredictionRequest):
 # --- 4. ROTA SCAN (Botão Sugerir Destino) ---
 @router.post("/market/scan")
 async def market_scan(request: MarketScanRequest):
-    logger.info(f"🔎 Scan Mercado: {request.product} de {request.origin_state}")
-    ranking = []
-    
-    # Lista de destinos (Hubs + Estados principais)
-    destinations = list(MAJOR_HUBS.keys()) + ['SP', 'MG', 'PR', 'SC', 'RS', 'GO', 'BA']
-    destinations = list(set(destinations)) 
-    
-    buy_price = 2.50 # Custo base kg estimado
-    
-    # Coordenadas de Origem
-    origin_coords = STATE_COORDS.get(request.origin_state, (-15.7, -47.9))
-    if isinstance(origin_coords, dict):
-        origin_coords = (origin_coords.get('lat', -15.7), origin_coords.get('lng', -47.9))
-
-    for dest in destinations:
-        if dest == request.origin_state: continue
+    """
+    🔍 Scan Centralizado (v3.0): Usa a mesma matemática do Simulador.
+    """
+    try:
+        logger.info(f"🔎 Scan Centralizado: {request.product} de {request.origin_state}")
         
-        try:
-            # 1. Preço Venda (Busca no banco via arbitrage_calculator)
-            sell_price = arbitrage_calculator._get_market_price(request.product, dest)
-            
-            # Fallback realista
-            if sell_price <= 0: 
-                sell_price = 4.00 
-                if dest in ['SP', 'RJ']: sell_price = 4.50
-            
-            if sell_price > 15: sell_price /= 20 # Normaliza
-            
-            # 2. Frete
-            # Tenta pegar do HUB ou do Estado
-            d_info = MAJOR_HUBS.get(dest, STATE_COORDS.get(dest))
-            if not d_info: continue
-            
-            # Normaliza destino para (lat, lng)
-            if isinstance(d_info, dict):
-                d_lat, d_lng = d_info['lat'], d_info['lng']
-            else:
-                d_lat, d_lng = d_info[0], d_info[1]
+        # 1. Normalização
+        origin_uf = request.origin_state.strip().upper()[:2]
+        ranking = []
+        
+        # 2. Área Padrão (10ha) para justificar frete de carga fechada
+        AREA_STANDARD_HA = 10.0
+        
+        # 3. Importa Hubs da calculadora para não duplicar lista
+        from services.arbitrage_calculator import MAJOR_HUBS
+        
+        # Define destinos: Hubs + SP + PR (referências de mercado)
+        destinos = set(list(MAJOR_HUBS.keys()) + ['SP', 'PR', 'MG'])
+        
+        for dest_uf in destinos:
+            if dest_uf == origin_uf: continue # Pula mercado local
 
-            # Calcula Frete Real
-            freight_data = logistics_service.calculate_freight(
-                origin_coords[0], origin_coords[1], d_lat, d_lng
-            )
-            
-            # Custo frete por kg (assumindo 15t = 750 caixas de 20kg)
-            cost_freight_kg = freight_data['cost_per_unit'] / 20
-            
-            # 3. ROI
-            gross_margin = sell_price - buy_price - cost_freight_kg
-            roi = (gross_margin / (buy_price + cost_freight_kg)) * 100
-            
-            # Adiciona ao ranking
-            ranking.append({
-                "destination": dest,
-                "net_profit": round(gross_margin * request.volume, 2),
-                "roi": round(roi, 1),
-                "sell_price": round(sell_price, 2),
-                "freight": round(cost_freight_kg, 2)
-            })
+            try:
+                # 4. A MÁGICA DA CENTRALIZAÇÃO ✨
+                # Cria um pedido idêntico ao do simulador manual
+                calc_request = ArbitrageRequest(
+                    product=request.product,
+                    origin_state=origin_uf,
+                    destination_state=dest_uf,
+                    area_ha=AREA_STANDARD_HA,
+                    planting_month=getattr(request, 'month', 1)
+                )
+                
+                # Chama a FONTE DA VERDADE (ArbitrageCalculator)
+                # Ela já tem a lógica de Kg, Fator Regional, Diesel e Frota
+                result = arbitrage_calculator.calculate(calc_request)
+                
+                # 5. Extração dos Dados
+                fin = result['financial']
+                log = result['logistics']
+                mkt = result['market']
+                prod = result['production']
+                
+                # Filtros de Sanidade da Calculadora
+                roi = fin['roi']
+                # Ignora prejuízo total (-100%) ou lucro absurdo (>200%)
+                if roi <= -100 or roi > 200: continue 
 
-        except Exception as e:
-            logger.error(f"Erro scan {dest}: {e}")
-            continue
+                ranking.append({
+                    "destination": dest_uf,
+                    "destination_name": MAJOR_HUBS.get(dest_uf, {}).get('name', f"Mercado {dest_uf}"),
+                    
+                    # Dados Reais vindos da Calculadora
+                    "net_profit": fin['net_profit'],
+                    "roi": roi,
+                    "sell_price": mkt['predicted_sell_price'],
+                    
+                    # Custo Unitário de Frete (apenas para exibição na tabela)
+                    # Total Logística / Volume Total
+                    "freight": round(log['total_logistics_cost'] / prod['total_volume'], 2),
+                    
+                    "distance_km": int(result['analysis']['distance_km'])
+                })
 
-    # Ordena: Melhor ROI primeiro
-    ranking.sort(key=lambda x: x['roi'], reverse=True)
-    
-    best = ranking[0] if ranking else None
-    
-    # Fallback se não achar nada
-    if not best:
-        best = {"destination": "Local", "roi": 0, "net_profit": 0}
-        ranking.append(best)
+            except Exception:
+                continue # Se um destino falhar, tenta o próximo
 
-    return {
-        "status": "success", 
-        "best_opportunity": best,
-        "ranking": ranking
-    }
+        # Ordena: Melhor ROI primeiro
+        ranking.sort(key=lambda x: x['roi'], reverse=True)
+        
+        # Pega o melhor (Top 1)
+        best = ranking[0] if ranking else None
+        
+        if not best:
+            best = {"destination": "Local", "roi": 0, "net_profit": 0}
+            ranking.append(best)
+
+        return {
+            "status": "success", 
+            "best_opportunity": best,
+            "ranking": ranking[:5] # Retorna Top 5
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Erro Crítico Scan: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

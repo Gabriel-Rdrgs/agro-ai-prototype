@@ -33,7 +33,16 @@ MAJOR_HUBS = {
     'PE': {'name': 'CEASA - PE (Recife)', 'lat': -8.0772, 'lng': -34.9392},
     'RS': {'name': 'CEASA - RS (P. Alegre)', 'lat': -30.0346, 'lng': -51.2177},
 }
-
+REGIONAL_FACTORS = {
+    'GO': 1.4,  # Alta tecnologia (Pivôs) -> ~420cx/ha
+    'SP': 1.2,  # Alta tecnologia -> ~360cx/ha
+    'MG': 1.0,  # Média nacional -> 300cx/ha
+    'PR': 1.1,  # Boa tecnologia -> 330cx/ha
+    'BA': 0.9,  # Polo Juazeiro é alto, mas média estado puxa pra baixo
+    'PE': 0.8,  # Agricultura familiar predominante
+    'CE': 1.1,  # Ibiapaba (Alta tecnologia em estufas/irrigação)
+    'DEFAULT': 1.0
+}
 class ArbitrageCalculator:
     """
     Calcula viabilidade de arbitragem (produzir em A, vender em B).
@@ -69,166 +78,211 @@ class ArbitrageCalculator:
             logger.warning(f"⚠️ Preço não encontrado para {product}-{state}: {e}")
         return 0.0
 
-    # ==========================================================================
-    # 🧠 NOVO MÉTODO: ENCONTRA A MELHOR ROTA AUTOMATICAMENTE
+# ==========================================================================
+    # 🧠 MÉTODO 1: FIND BEST ROUTE (Versão DEBUG X-RAY 🕵️‍♂️)
     # ==========================================================================
     def find_best_route(self, opportunity: Dict) -> Dict:
-        # Busca specs para saber o peso correto
-        specs = get_crop_specs(opportunity['product'])
-        unit_weight = specs.get('unit_weight_kg', 20.0)
-        
-        # 1. Normaliza Custo de Origem (Compra)
-        raw_buy = float(opportunity['buyPrice'])
-        # Se preço > 10, converte caixa -> kg
-        buy_price_kg = raw_buy / unit_weight if raw_buy > 10.0 else raw_buy
-        
-        origin_lat = float(opportunity['lat'])
-        origin_lng = float(opportunity['lng'])
-        origin_state = opportunity['state']
-
-        best_scenario = None
-        max_roi = -float('inf')
-
-        # Definimos quais destinos testar
-        destinations_to_test = set([origin_state, 'SP'] + list(MAJOR_HUBS.keys()))
-        
-        for dest_uf in destinations_to_test:
-            # ✅ CORREÇÃO: Passa specs para a função auxiliar
-            sell_price_kg = self._get_market_price(opportunity['product'], dest_uf, specs)
-            if sell_price_kg <= 0: continue
-
-            try:
-                # Dados de Destino
-                dest_info = MAJOR_HUBS.get(dest_uf, {'lat': -23.55, 'lng': -46.63, 'name': f'Mercado Local {dest_uf}'})
-                
-                # Frete
-                if origin_state == dest_uf:
-                    freight_cost = 0.15 # Custo baixo local
-                    distance = 50
-                else:
-                    route = logistics_service.calculate_freight(
-                        origin_lat, origin_lng,
-                        dest_info['lat'], dest_info['lng']
-                    )
-                    distance = route['distance_km']
-                    # Frete por Kg (considerando rateio de carga plena)
-                    # Se custo unitário veio > 1.0 (provavel caixa), divide por 20
-                    f_unit = route['cost_per_unit']
-                    freight_cost = f_unit / 20 if f_unit > 1.0 else f_unit
-
-                # 3. Calcula ROI
-                # Lucro Bruto = Venda - (Compra + Frete)
-                gross_profit = sell_price - buy_price - freight_cost
-                roi = (gross_profit / (buy_price + freight_cost)) * 100
-
-                scenario = {
-                    'destination_state': dest_uf,
-                    'destination_name': dest_info['name'], # Ex: CEASA - MG
-                    'sell_price': sell_price,
-                    'freight_cost': round(freight_cost, 2),
-                    'distance_km': int(distance),
-                    'roi': round(roi, 2)
-                }
-                
-                if roi > max_roi:
-                    max_roi = roi
-                    best_scenario = scenario
+        """
+        Encontra a melhor rota com LOGS DETALHADOS para auditoria.
+        """
+        try:
+            # 1. Configuração Inicial
+            product_name = opportunity.get('product', 'Tomate')
+            specs = get_crop_specs(product_name)
+            origin_state = opportunity.get('state', 'SP')
             
-            except Exception as e:
-                # Log silencioso para não poluir, apenas ignora rota inválida
-                continue
+            logger.info(f"🕵️‍♂️ [DEBUG START] Analisando Rota para {origin_state}")
 
-        # Se falhar tudo, retorna o próprio estado como fallback
-        if not best_scenario:
-            best_scenario = {
-                'destination_state': origin_state,
-                'destination_name': f"Mercado Local {origin_state}",
-                'roi': 0.0,
-                'freight_cost': 0.0
-            }
+            # Recupera Fator Regional
+            region_factor = REGIONAL_FACTORS.get(origin_state, REGIONAL_FACTORS['DEFAULT'])
+            
+            # 2. Definição de Volume
+            area_ha_standard = 10.0 
+            base_prod_cx = specs.get('base_productivity', 300)
+            unit_weight = specs.get('unit_weight_kg', 20.0)
+            
+            # Produtividade
+            real_productivity_kg_ha = base_prod_cx * region_factor * unit_weight
+            total_volume_kg = area_ha_standard * real_productivity_kg_ha
+            
+            # Custo de Produção UNITÁRIO (R$/kg)
+            base_cost_ha = specs.get('base_cost_ha', 25000)
+            production_cost_unit = base_cost_ha / real_productivity_kg_ha
 
-        return best_scenario
+            logger.info(f"📊 [DEBUG PROD] Custo Prod/Kg: R$ {production_cost_unit:.4f} (Base Ha: {base_cost_ha})")
 
+            # Coordenadas
+            orig_lat = float(opportunity.get('lat', -15.7))
+            orig_lng = float(opportunity.get('lng', -47.9))
+
+            best_scenario = None
+            max_roi = -float('inf')
+
+            # 3. Loop de Destinos
+            destinations_to_test = set([origin_state, 'SP'] + list(MAJOR_HUBS.keys()))
+            
+            for dest_uf in destinations_to_test:
+                # Busca Preço
+                sell_price_kg = self._get_market_price(product_name, dest_uf, specs)
+                
+                # SE NÃO TIVER PREÇO, LOGA E PULA
+                if sell_price_kg <= 0: 
+                    # logger.debug(f"   🚫 {dest_uf}: Sem preço de venda.")
+                    continue 
+
+                try:
+                    dest_info = MAJOR_HUBS.get(dest_uf, {'lat': -23.55, 'lng': -46.63, 'name': dest_uf})
+                    
+                    # 4. Logística
+                    route = logistics_service.calculate_freight(orig_lat, orig_lng, dest_info['lat'], dest_info['lng'])
+                    
+                    truck_capacity_kg = 15000.0
+                    trips_needed = math.ceil(total_volume_kg / truck_capacity_kg)
+                    total_freight_cost = route['total_cost'] * trips_needed
+                    
+                    # 5. Financeiro
+                    gross_revenue = total_volume_kg * sell_price_kg
+                    total_production_cost = total_volume_kg * production_cost_unit
+                    total_op_cost = total_production_cost + total_freight_cost
+                    
+                    net_profit = gross_revenue - total_op_cost
+                    roi = (net_profit / total_op_cost) * 100 if total_op_cost > 0 else 0
+
+                    # 🚨 O LOG REVELADOR 🚨
+                    logger.info(f"   👉 Rota {origin_state}->{dest_uf}:")
+                    logger.info(f"      - Venda: R$ {sell_price_kg:.2f}/kg")
+                    logger.info(f"      - Custo Prod: R$ {production_cost_unit:.2f}/kg")
+                    logger.info(f"      - Frete Total: R$ {total_freight_cost:.2f} ({trips_needed} viagens)")
+                    logger.info(f"      - ROI: {roi:.2f}%")
+
+                    # Filtro de Sanidade (> 300%)
+                    if roi > 300: 
+                        logger.warning(f"      ⚠️ ROI {roi:.2f}% IGNORADO (Suspeito)")
+                        continue
+
+                    if roi > max_roi:
+                        max_roi = roi
+                        best_scenario = {
+                            'destination_state': dest_uf,
+                            'destination_name': dest_info['name'],
+                            'sell_price': round(sell_price_kg, 2),
+                            'freight_cost': round(total_freight_cost / total_volume_kg, 2),
+                            'distance_km': int(route['distance_km']),
+                            'roi': round(roi, 1)
+                        }
+                except Exception as e:
+                    logger.error(f"❌ Erro calculando {dest_uf}: {e}")
+                    continue
+
+            if not best_scenario:
+                best_scenario = {'destination_state': origin_state, 'roi': 0.0, 'freight_cost': 0.0}
+
+            return best_scenario
+            
+        except Exception as e:
+            logger.error(f"❌ ERRO FATAL NO FIND_BEST_ROUTE: {e}")
+            return {'destination_state': 'ERRO', 'roi': 0.0}
     # ==========================================================================
-    # 🧠 MÉTODO 2: SIMULADOR DETALHADO (Manual)
+    # 🧠 MÉTODO 2: SIMULADOR DETALHADO (Com Normalização de UF)
     # ==========================================================================
     def calculate(self, data: ArbitrageRequest) -> ArbitrageAnalysisResponse:
-        logger.info(f"🌍 Simulador Manual: {data.origin_state} -> {data.destination_state}")
+        logger.info(f"🌍 Simulador: {data.origin_state} -> {data.destination_state} | {data.area_ha}ha")
         
-        # 1. Definição de Specs (Fundamental para pesos e custos)
+        # 1. Normalização de Inputs (A Correção Chave) 🛡️
+        # Garante que 'goiás' vire 'GO', 'sp ' vire 'SP'
+        def normalize_uf(uf):
+            if not uf: return 'SP'
+            clean = uf.strip().upper()
+            # Mapeamento básico se vier nome completo (opcional, mas seguro)
+            names = {'SÃO PAULO': 'SP', 'MINAS GERAIS': 'MG', 'GOIÁS': 'GO', 'GOIAS': 'GO', 'PARANÁ': 'PR', 'BAHIA': 'BA'}
+            return names.get(clean, clean)[:2] # Pega 2 primeiras letras se não achar
+
+        origin_uf = normalize_uf(data.origin_state)
+        dest_uf = normalize_uf(data.destination_state)
+
+        # 2. Definição de Specs e Produtividade
         specs = get_crop_specs(data.product)
+        region_factor = REGIONAL_FACTORS.get(origin_uf, REGIONAL_FACTORS['DEFAULT'])
         
-        # 2. Definição de Coordenadas (Origem e Destino)
-        # Tenta pegar de HUBS, senão usa coordenadas estaduais genéricas
-        orig_info = MAJOR_HUBS.get(data.origin_state)
+        base_prod_cx = specs.get('base_productivity', 300)
+        unit_weight = specs.get('unit_weight_kg', 20.0)
+        
+        # Produtividade Real
+        real_productivity_kg_ha = base_prod_cx * region_factor * unit_weight
+        total_volume_kg = data.area_ha * real_productivity_kg_ha
+        if total_volume_kg == 0: total_volume_kg = 15000.0
+
+        # 3. Logística
+        # Usa coordenadas de HUB se disponível, ou estaduais
+        orig_info = MAJOR_HUBS.get(origin_uf)
         if orig_info:
             orig_lat, orig_lng = orig_info['lat'], orig_info['lng']
         else:
-            # Fallback seguro
-            raw_orig = STATE_COORDS.get(data.origin_state, (-15.7, -47.9))
+            raw_orig = STATE_COORDS.get(origin_uf, (-15.7, -47.9))
             orig_lat, orig_lng = raw_orig if isinstance(raw_orig, tuple) else (-15.7, -47.9)
 
-        dest_info = MAJOR_HUBS.get(data.destination_state)
+        dest_info = MAJOR_HUBS.get(dest_uf)
         if dest_info:
             dest_lat, dest_lng = dest_info['lat'], dest_info['lng']
         else:
-            raw_dest = STATE_COORDS.get(data.destination_state, (-23.5, -46.6))
+            raw_dest = STATE_COORDS.get(dest_uf, (-23.5, -46.6))
             dest_lat, dest_lng = raw_dest if isinstance(raw_dest, tuple) else (-23.5, -46.6)
 
-        # 3. 🚚 CÁLCULO DA ROTA (Aqui estava o erro: a variável 'route' nasce aqui!)
-        route = logistics_service.calculate_freight(orig_lat, orig_lng, dest_lat, dest_lng)
+        single_trip_data = logistics_service.calculate_freight(orig_lat, orig_lng, dest_lat, dest_lng)
         
-        # -------------------------------------------------------
-        # Lógica Financeira Científica (Kg)
-        # -------------------------------------------------------
+        truck_capacity_kg = 15000.0 
+        trips_needed = math.ceil(total_volume_kg / truck_capacity_kg)
+        total_freight_cost = single_trip_data['total_cost'] * trips_needed
         
-        # A. Preço de Venda (Normalizado em Kg)
-        sell_price = self._get_market_price(data.product, data.destination_state, specs)
-        if sell_price <= 0: sell_price = 4.00 # Fallback R$ 4/kg
+        # 4. Precificação
+        # Preço de Venda
+        sell_price = self._get_market_price(data.product, dest_uf, specs)
+        
+        # LOG X-9: Vamos ver qual preço ele achou!
+        logger.info(f"💰 Preço Mercado [{dest_uf}]: R$ {sell_price:.2f}/kg")
 
-        # B. Custo de Origem (Preço de mercado ou Custo Produção)
-        buy_price = self._get_market_price(data.product, data.origin_state, specs)
-        
-        if buy_price <= 0:
-            # Fallback Científico: Custo Base / Produtividade Kg
-            base_cost = specs.get('base_cost_ha', 25000)
-            productivity_kg = specs.get('base_productivity', 300) * specs.get('unit_weight_kg', 20.0)
-            buy_price = base_cost / productivity_kg
+        if sell_price <= 0: 
+            sell_price = 4.00 # Fallback
+            logger.warning(f"⚠️ Usando preço Fallback R$ 4.00 para {dest_uf}")
 
-        # C. Resultados Consolidados
-        total_freight = route['total_cost']
-        
-        # Volume Total em Kg
-        volume_kg = data.area_ha * specs.get('base_productivity', 300) * specs.get('unit_weight_kg', 20.0)
-        if volume_kg == 0: volume_kg = 15000.0 # 15 ton default
+        # Custo de Produção (R$/kg)
+        base_cost_ha = specs.get('base_cost_ha', 25000)
+        production_cost_unit = base_cost_ha / real_productivity_kg_ha
 
-        gross_revenue = volume_kg * sell_price
-        total_cost = (volume_kg * buy_price) + total_freight
+        # 5. Consolidação
+        gross_revenue = total_volume_kg * sell_price
+        total_production_cost = total_volume_kg * production_cost_unit
         
-        net_profit = gross_revenue - total_cost
-        roi = (net_profit / total_cost) * 100 if total_cost > 0 else 0
+        total_cost_operation = total_production_cost + total_freight_cost
+        
+        net_profit = gross_revenue - total_cost_operation
+        roi = (net_profit / total_cost_operation) * 100 if total_cost_operation > 0 else 0
+
+        # Debug Diesel
+        diesel_ref = single_trip_data.get('diesel_price', 6.10)
 
         return {
             "analysis": {
-                "origin": data.origin_state,
-                "destination": data.destination_state,
-                "distance_km": route['distance_km'],
+                "origin": origin_uf,
+                "destination": dest_uf,
+                "distance_km": single_trip_data['distance_km'],
                 "planting_window": f"Mês {data.planting_month}"
             },
             "production": {
-                "productivity_ha": specs.get('base_productivity'),
-                "total_volume": round(volume_kg, 1),
-                "unit_cost_origin": round(buy_price, 2),
-                "total_production_cost": round(volume_kg * buy_price, 2)
+                "productivity_ha": round(real_productivity_kg_ha / unit_weight, 1),
+                "total_volume": round(total_volume_kg, 1),
+                "unit_cost_origin": round(production_cost_unit, 2),
+                "total_production_cost": round(total_production_cost, 2)
             },
             "logistics": {
                 "fuel_breakdown": {
-                    "diesel_price": 6.00, 
-                    "total_fuel": round(total_freight * 0.4, 2)
+                    "weighted_price_liter": diesel_ref, 
+                    "total_fuel": round((total_freight_cost * 0.45), 2),
+                    "data_coleta": "Hoje"
                 },
-                "trips_needed": 1,
-                "cost_per_trip": round(total_freight, 2),
-                "total_logistics_cost": round(total_freight, 2),
+                "trips_needed": trips_needed,
+                "cost_per_trip": round(single_trip_data['total_cost'], 2),
+                "total_logistics_cost": round(total_freight_cost, 2),
                 "maintenance_cost": 0, "driver_cost": 0, "toll_cost": 0, "insurance_cost": 0
             },
             "market": {
@@ -236,11 +290,14 @@ class ArbitrageCalculator:
                 "gross_revenue": round(gross_revenue, 2)
             },
             "financial": {
-                "total_cost": round(total_cost, 2),
+                "total_cost": round(total_cost_operation, 2),
                 "net_profit": round(net_profit, 2),
                 "roi": round(roi, 1)
             },
-            "risks": ["Cálculo científico em KG", "Frete calculado via rota real"]
+            "risks": [
+                f"Fator Regional {origin_uf}: {region_factor}x",
+                f"Preço Destino Usado: R$ {sell_price:.2f}/kg"
+            ]
         }
 # ========================================
 # INSTÂNCIA GLOBAL (Singleton)
