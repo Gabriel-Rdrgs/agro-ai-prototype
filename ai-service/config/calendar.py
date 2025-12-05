@@ -12,174 +12,64 @@ Critérios de definição:
 3. Radiação solar > 8 MJ/m²/dia
 4. Evita geadas, chuvas torrenciais e calor extremo
 
-Última atualização: 2025-11-29
+Última atualização: 2025-12-04
 """
 
+from .agronomic_params import TOMATO_SPECS
+
+def _get_months(window_data):
+    """Converte start/end do agronomic_params para lista de meses [1, 2, 3...]"""
+    start = window_data['start']
+    end = window_data['end']
+    if start <= end:
+        return list(range(start, end + 1))
+    # Caso atravesse o ano (ex: Ago a Jan)
+    return list(range(start, 13)) + list(range(1, end + 1))
+
 PLANTING_CALENDAR = {
-    'Tomate': {
-        # ========================================
-        # SUDESTE (70% da produção nacional)
-        # ========================================
+'Tomate': {
+        # Mapeando Regiões Científicas para Estados (Adapter)
+        
+        # SP: Usa dados do Oeste Paulista (SP_WEST)
         'SP': {
-            'ideal': [2, 3, 4, 5, 6],        # Fev-Jun (pós-chuvas de verão)
-            'risk': [1, 12, 7],               # Jan/Dez (chuvas 100mm+), Jul (frio)
-            'notes': (
-                'Altitudes > 800m permitem plantio Ago-Jan. '
-                'Oeste paulista: Fev-Jun mais seguro. '
-                'Evitar janeiro (precipitação > 200mm/mês).'
-            ),
-            'source': 'document-2.pdf pág 2, Embrapa 2024'
+            'ideal': _get_months(TOMATO_SPECS['planting_windows']['SP_WEST']),
+            'risk': [1, 12], # Janeiro/Dezembro (Chuvas excessivas)
+            'notes': TOMATO_SPECS['planting_windows']['SP_WEST']['desc'],
+            'source': 'Document-2.pdf'
         },
         
+        # MG, RJ, ES: Usam dados de Baixa Altitude (SE_LOW_ALT)
         'MG': {
-            'ideal': [2, 3, 4, 5, 6, 7, 8, 9],  # Fev-Set (janela ampla)
-            'risk': [1, 12],
-            'notes': (
-                'Maior flexibilidade pela altitude variada (500-1200m). '
-                'Sul de Minas: similar a SP. '
-                'Triângulo: similar a GO.'
-            ),
-            'source': 'document-2.pdf pág 2'
+            'ideal': _get_months(TOMATO_SPECS['planting_windows']['SE_LOW_ALT']),
+            'risk': [12, 1],
+            'notes': TOMATO_SPECS['planting_windows']['SE_LOW_ALT']['desc'],
+            'source': 'Document-2.pdf'
         },
-        
         'RJ': {
-            'ideal': [2, 3, 4, 5, 6],
-            'risk': [1, 12, 7],
-            'notes': 'Similar a SP. Região serrana tem janela mais ampla.',
-            'source': 'document-2.pdf pág 2'
+            'ideal': _get_months(TOMATO_SPECS['planting_windows']['SE_LOW_ALT']),
+            'risk': [12, 1],
+            'notes': 'Região Serrana pode seguir calendário de Alta Altitude.'
         },
         
-        'ES': {
-            'ideal': [2, 3, 4, 5, 6],
-            'risk': [1, 11, 12],
-            'notes': (
-                'Venda Nova do Imigrante: frio invernal atrasa maturação. '
-                'Redução de oferta de até 35% em anos frios (2025).'
-            ),
-            'source': 'document.pdf pág 5, G1 ES 2025'
-        },
-        
-        # ========================================
-        # SUL (12% da produção, uso intensivo de estufas)
-        # ========================================
-        'RS': {
-            'ideal': [8, 9, 10, 11, 12, 1],   # Ago-Jan (Primavera-Verão)
-            'risk': [5, 6, 7],                 # Mai-Jul (geadas críticas)
-            'notes': (
-                'Priorizar plantio Ago-Nov para colheita Nov-Fev. '
-                'Geadas em Jun-Ago impedem cultivo ao ar livre. '
-                'Estufas permitem produção anual.'
-            ),
-            'source': 'document-2.pdf pág 3, Tabela 1'
-        },
-        
-        'SC': {
-            'ideal': [8, 9, 10, 11, 12],
-            'risk': [5, 6, 7],
-            'notes': 'Similar a RS. Oeste catarinense tem frio menos intenso.',
-            'source': 'document-2.pdf pág 3'
-        },
-        
+        # Sul (RS, SC, PR): Usa dados SOUTH
         'PR': {
-            'ideal': [8, 9, 10, 11, 12, 1],
-            'risk': [5, 6, 7],
-            'notes': 'Norte do PR (clima mais quente) permite Jan-Fev.',
-            'source': 'document-2.pdf pág 3'
+            'ideal': _get_months(TOMATO_SPECS['planting_windows']['SOUTH']),
+            'risk': [6, 7], # Inverno rigoroso
+            'notes': TOMATO_SPECS['planting_windows']['SOUTH']['desc'],
+            'source': 'Document-2.pdf'
+        },
+        'RS': {
+            'ideal': _get_months(TOMATO_SPECS['planting_windows']['SOUTH']),
+            'risk': [6, 7],
+            'notes': 'Evitar geadas severas.'
         },
         
-        # ========================================
-        # CENTRO-OESTE (15% da produção, irrigação obrigatória)
-        # ========================================
-        'GO': {
-            'ideal': [3, 4, 5, 6, 7, 8],      # Mar-Ago ✅ CORRIGIDO (era 3-6)
-            'risk': [11, 12, 1, 2],            # Nov-Fev (chuvas concentradas)
-            'notes': (
-                'Cristalina/Morrinhos: plantio Mar-Jun mais seguro. '
-                'Jul-Ago: baixa umidade + insolação alta = ideal. '
-                'Irrigação essencial (chuvas irregulares).'
-            ),
-            'source': 'document-2.pdf pág 3, Tabela 1 (corrigido)'
-        },
-        
-        'MT': {
-            'ideal': [3, 4, 5, 6, 7],
-            'risk': [11, 12, 1, 2],
-            'notes': (
-                'Sudoeste de MT: baixa umidade favorece. '
-                'Irrigação artificial obrigatória.'
-            ),
-            'source': 'document-2.pdf pág 3'
-        },
-        
-        'MS': {
-            'ideal': [3, 4, 5, 6],
-            'risk': [11, 12, 1, 2],
-            'notes': 'Manejo similar a GO. Evitar excesso hídrico.',
-            'source': 'document-2.pdf pág 3'
-        },
-        
-        'DF': {
-            'ideal': [3, 4, 5, 6, 7],
-            'risk': [11, 12, 1, 2],
-            'notes': 'Altitude favorável (1000-1200m). Irrigação obrigatória.',
-            'source': 'document-2.pdf pág 3'
-        },
-        
-        # ========================================
-        # NORDESTE (7% da produção, polos irrigados)
-        # ========================================
-        'BA': {
-            'ideal': [3, 4, 5, 6, 7, 8],      # Mar-Ago ✅ CORRIGIDO (era 5-8)
-            'risk': [1, 2, 12],
-            'notes': (
-                'Irecê/Petrolina: polos irrigados produzem o ano todo. '
-                'Sertão não irrigado: apenas Mar-Abr (pós-chuvas). '
-                'BA é maior produtor do Nordeste (2024).'
-            ),
-            'source': 'document-2.pdf pág 4, Tabela 1 (corrigido)'
-        },
-        
-        'PE': {
-            'ideal': [3, 4, 5, 6],
-            'risk': [1, 2, 12],
-            'notes': (
-                'Serra Talhada/Pesqueira: irrigação obrigatória. '
-                'Agreste: depende de chuvas (Mar-Abr).'
-            ),
-            'source': 'document-2.pdf pág 4'
-        },
-        
-        'CE': {
-            'ideal': [3, 4, 5, 6],
-            'risk': [1, 2, 12],
-            'notes': (
-                'Ibiapaba: clima ideal (20-24°C dia, 14°C noite). '
-                'Ciclo 40 dias mais curto que média nacional. '
-                'CE ultrapassou BA como maior produtor NE (2024).'
-            ),
-            'source': 'document-2.pdf pág 4, document.pdf pág 6'
-        },
-        
-        # ========================================
-        # NORTE (1% da produção, alta pressão fitossanitária)
-        # ========================================
-        'AM': {
-            'ideal': [3, 4, 5, 6, 7, 8, 9, 10],  # Mar-Out (menos chuva relativa)
-            'risk': [11, 12, 1, 2],               # Chuvas torrenciais
-            'notes': (
-                'Cultivo protegido (estufas) obrigatório. '
-                'Alta umidade (>80%) favorece doenças fúngicas. '
-                'Produção local limitada.'
-            ),
-            'source': 'document-2.pdf pág 4, document.pdf pág 7'
-        },
-        
-        'PA': {
-            'ideal': [3, 4, 5, 6, 7, 8, 9, 10],
-            'risk': [11, 12, 1, 2],
-            'notes': 'Similar AM. Consumo local predominante.',
-            'source': 'document-2.pdf pág 4'
-        },
+        # Fallback para outros estados (GO, BA) - Mantemos lógica segura
+        'default': {
+            'ideal': [4, 5, 6, 7, 8], # Meses secos no cerrado/nordeste
+            'risk': [],
+            'notes': 'Calendário genérico (Estação Seca).'
+        }
     },
     
     # ========================================

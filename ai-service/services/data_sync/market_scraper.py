@@ -77,11 +77,7 @@ class MarketScraper:
         price_kg: float
     ) -> None:
         """
-        Atualiza preços na tabela Opportunity.
-        
-        LÓGICA CORRIGIDA:
-        - Preço web = Preço de VENDA (Ceasa/Mercado)
-        - Preço produtor = % do preço Ceasa (variável por produto)
+        Atualiza preços na tabela Opportunity E salva no PriceHistory.
         """
         try:
             weight = UNIT_WEIGHTS.get(product, 1.0)
@@ -89,42 +85,66 @@ class MarketScraper:
             # Preço de mercado (unidade comercial)
             market_price_unit = price_kg * weight
             
-            # ✅ CORREÇÃO: Margem variável por produto
+            # Margem variável por produto
             margin_factor = PRODUCER_MARGINS.get(product, 0.70)
             producer_price_unit = market_price_unit * margin_factor
             
+            # Prepara valores decimais (arredondando para evitar erros de float)
+            buy_price = round(producer_price_unit, 2)
+            sell_price = round(market_price_unit, 2)
+
             with self.engine.begin() as conn:
-                # Verifica se existe
-                check = text(
-                    'SELECT id FROM "Opportunity" '
-                    'WHERE product = :p AND state = :s'
+                # 1. Verifica se a Oportunidade já existe
+                check_sql = text(
+                    'SELECT id FROM "Opportunity" WHERE product = :p AND state = :s'
                 )
-                exists = conn.execute(check, {"p": product, "s": state}).fetchone()
+                existing = conn.execute(check_sql, {"p": product, "s": state}).fetchone()
                 
-                if exists:
-                    query = text("""
+                if existing:
+                    opp_id = existing[0]
+                    
+                    # 2. ✅ NOVO: Salvar no Histórico ANTES de atualizar
+                    history_sql = text("""
+                        INSERT INTO "PriceHistory" ("opportunityId", "price", "createdAt")
+                        VALUES (:oid, :price, NOW())
+                    """)
+                    conn.execute(history_sql, {"oid": opp_id, "price": sell_price})
+                    
+                    # 3. Atualiza a tabela principal (Snapshot atual)
+                    update_sql = text("""
                         UPDATE "Opportunity"
                         SET "buyPrice" = :buy,
                             "sellPrice" = :sell,
-                            "climate" = 'Atualizado via Mercado Real'
-                        WHERE "product" = :product AND "state" = :state
+                            "climate" = 'Atualizado via Mercado Real',
+                            "createdAt" = NOW() 
+                        WHERE id = :oid
                     """)
-                    
-                    conn.execute(query, {
-                        "buy": round(producer_price_unit, 2),
-                        "sell": round(market_price_unit, 2),
-                        "product": product,
-                        "state": state
+                    conn.execute(update_sql, {
+                        "buy": buy_price,
+                        "sell": sell_price,
+                        "oid": opp_id
                     })
                     
-                    logger.debug(
-                        f"🔄 {state}: Produtor R$ {producer_price_unit:.2f} "
-                        f"→ Mercado R$ {market_price_unit:.2f} "
-                        f"(Margem: {margin_factor:.0%})"
-                    )
+                    logger.debug(f"🔄 {product}/{state}: Histórico salvo + Atualizado p/ R$ {sell_price}")
+                
+                else:
+                    # 4. Se não existe, cria do zero (Primeira carga)
+                    # Lat/Lng genéricos (-15, -50) apenas para constar no mapa inicialmente
+                    create_sql = text("""
+                        INSERT INTO "Opportunity" 
+                        ("product", "category", "city", "state", "lat", "lng", 
+                         "buyPrice", "sellPrice", "sellLocation", "riskLevel", "bestRoute")
+                        VALUES 
+                        (:p, 'Grãos/Horti', 'Capital', :s, -15.0, -50.0, 
+                         :buy, :sell, 'Ceasa Local', 1, false)
+                    """)
+                    conn.execute(create_sql, {
+                        "p": product, "s": state, "buy": buy_price, "sell": sell_price
+                    })
+                    logger.info(f"✨ Nova Oportunidade Criada: {product} em {state}")
         
         except Exception as e:
-            logger.error(f"❌ Erro ao atualizar {product} em {state}: {e}")
+            logger.error(f"❌ Erro crítico ao persistir {product}/{state}: {e}")
     
     def fetch_ceasa_pr(self) -> List[Dict]:
         """Scraping CEASA-PR oficial"""

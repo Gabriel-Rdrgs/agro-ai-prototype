@@ -58,15 +58,15 @@ model Opportunity {
   @@index([geom], name: "opportunity_geom_idx", type: Gist)
 }
 
+
 model PriceHistory {
   id            Int         @id @default(autoincrement())
-  
-  // Relação com a Oportunidade
   opportunity   Opportunity @relation(fields: [opportunityId], references: [id])
   opportunityId Int
   
-  price         Float       // O preço registrado naquele dia
-  createdAt     DateTime    @default(now()) // Data do registro
+  price         Decimal     @db.Decimal(10, 2)
+  
+  createdAt     DateTime    @default(now())
 }
 
 // --- MODELOS DE AUTENTICAÇÃO ---
@@ -122,9 +122,9 @@ model CeasaPrice {
   unit_type String?
   
   // Preços (em Decimal para evitar problemas de ponto flutuante)
-  price_min Float
-  price_max Float
-  price_avg Float
+  price_min Decimal @db.Decimal(10, 2)
+  price_max Decimal @db.Decimal(10, 2)
+  price_avg Decimal @db.Decimal(10, 2)
   
   // Data e Timestamps
   price_date DateTime
