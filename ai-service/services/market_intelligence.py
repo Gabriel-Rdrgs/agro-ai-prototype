@@ -220,72 +220,88 @@ class MarketIntelligence:
         
         return 1.0  # Default (sem ajuste)
     
-    def get_predicted_market_price(
+    def apply_weather_volatility(self, base_price: float, meteo_risk: float, rain_mm: float) -> float:
+        """
+        Aplica volatilidade de curto prazo baseada em eventos extremos.
+        Se chove muito, o preço explode (logística travada).
+        """
+        volatility_markup = 1.0
+        
+        # Regra 1: Dilúvio (Logística Travada)
+        # Se chover > 50mm no acumulado recente, caminhão não entra na roça.
+        if rain_mm > 80.0:
+            volatility_markup += 0.35 # +35% (Escassez aguda)
+            logger.info(f"⛈️ ALERTA: Chuva extrema ({rain_mm}mm). Aplicando ágio de escassez (+35%).")
+        elif rain_mm > 40.0:
+            volatility_markup += 0.15 # +15% (Dificuldade logística)
+            logger.info(f"🌧️ Chuva moderada ({rain_mm}mm). Ágio logístico (+15%).")
+            
+        # Regra 2: Risco Agronômico (Perda de safra futura)
+        # Se o risco calculado pelo RiskAnalyzer for alto (ex: 0.8), o mercado precifica quebra futura.
+        if meteo_risk > 0.7:
+            volatility_markup += 0.10 # +10% especulação de quebra
+            
+        final_price = base_price * volatility_markup
+        return round(final_price, 2)
+    
+def get_predicted_market_price(
         self, 
         product: str, 
         state: str, 
-        month: int
+        month: int,
+        meteo_data: dict = None # <--- 1. NOVO ARGUMENTO
     ) -> float:
         """
-        Calcula preço futuro = Preço Base (banco) × Fator Sazonal.
-        
-        Args:
-            product: Nome do produto (ex: 'Tomate')
-            state: Estado (ex: 'SP')
-            month: Mês futuro (1-12)
-        
-        Returns:
-            Preço em R$/kg
+        Calcula preço futuro = Preço Base (banco) × Fator Sazonal × Volatilidade Climática.
         """
         try:
-            # 1. Busca preço base no banco (CEASA mais recente)
+            # 1. Busca preço base no banco (MANTIDO DO SEU CÓDIGO ORIGINAL)
             query = text("""
-                SELECT price_avg
-                FROM "CeasaPrice"
-                WHERE product_name ILIKE :prod
+                SELECT price_avg 
+                FROM "CeasaPrice" 
+                WHERE product_name ILIKE :prod 
                   AND (ceasa_region = :state OR ceasa_name ILIKE :state_like)
-                ORDER BY price_date DESC
+                ORDER BY price_date DESC 
                 LIMIT 1
             """)
             
             with self.engine.connect() as conn:
                 result = conn.execute(query, {
-                    "prod": f"%{product}%",
+                    "prod": f"%{product}%", 
                     "state": state,
                     "state_like": f"%{state}%"
                 }).fetchone()
             
-            # Preço base (fallback: R$ 4,00/kg para tomate)
+            # Preço base (fallback)
             base_price_kg = 4.00
             
             if result and result[0]:
                 val = float(result[0])
-                
-                # Normaliza se estiver em caixa (safety check)
+                # Normaliza caixas (lógica sua mantida)
                 prod_key = product.strip().capitalize()
-                if prod_key == 'Tomate' and val > 15.0:
-                    val /= 20.0
-                elif prod_key in ['Soja', 'Milho'] and val > 10.0:
-                    val /= 60.0
-                
+                if prod_key == 'Tomate' and val > 15.0: val /= 20.0
+                elif prod_key in ['Soja', 'Milho'] and val > 10.0: val /= 60.0
                 base_price_kg = val
             
-            # 2. Aplica fator de sazonalidade (PDF)
+            # 2. Aplica fator de sazonalidade
             season_factor = self.get_seasonality_factor(product, state, month)
-            
             predicted_price = base_price_kg * season_factor
             
+            # 3. 🌩️ APLICA A REGRA DA CHUVA (AQUI ESTÁ A NOVIDADE)
+            if meteo_data:
+                rain = meteo_data.get('rain_mm', 0)
+                # Chama a função nova que criamos na etapa anterior
+                predicted_price = self.apply_weather_volatility(predicted_price, rain)
+            
             logger.debug(
-                f"💰 {product} em {state} (mês {month}): "
-                f"Base R$ {base_price_kg:.2f} × {season_factor:.2f} = R$ {predicted_price:.2f}/kg"
+                f"💰 {product}/{state}: Base R${base_price_kg:.2f} -> Final R${predicted_price:.2f}"
             )
             
             return round(predicted_price, 2)
         
         except Exception as e:
             logger.error(f"❌ Erro ao prever preço: {e}")
-            return 4.00  # Fallback conservador
-
+            return 4.00
 
 # ========================================
 # INSTÂNCIA GLOBAL (Singleton)
@@ -308,7 +324,6 @@ def get_seasonality_factor(product: str, state: str, month: int) -> float:
     return market_intelligence.get_seasonality_factor(product, state, month)
 
 
-def get_predicted_market_price(product: str, state: str, month: int) -> float:
-    """Wrapper para compatibilidade com código legado"""
-    return market_intelligence.get_predicted_market_price(product, state, month)
-
+def get_predicted_market_price(product: str, state: str, month: int, meteo_data: dict = None) -> float:
+    """Wrapper para compatibilidade com código legado (Com suporte a Clima)"""
+    return market_intelligence.get_predicted_market_price(product, state, month, meteo_data)
