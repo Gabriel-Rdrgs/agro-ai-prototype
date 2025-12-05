@@ -1,23 +1,24 @@
-# backend/Dockerfile
-
-# Troca: De 'alpine' (leve/problemático) para 'slim' (Debian leve/robusto)
-FROM node:18-slim
-
-# Instala bibliotecas de sistema necessárias para o Prisma + OpenSSL
-RUN apt-get update -y && apt-get install -y openssl
+# Dockerfile de Produção para o Backend Node.js
+FROM node:18-alpine
 
 WORKDIR /app
 
-COPY package*.json ./
+# 1. Instala OpenSSL (Obrigatório para o Prisma rodar no Alpine Linux)
+RUN apk add --no-cache openssl libc6-compat
+
+# 2. Copia arquivos de dependência
+COPY package.json package-lock.json ./
 COPY prisma ./prisma/
 
-RUN npm install
+# 3. Instala dependências (modo limpo)
+RUN npm ci
 
-# Gera o cliente do banco
+# 4. Gera o Prisma Client
 RUN npx prisma generate
 
+# 5. Copia o resto do código
 COPY . .
 
+# 6. Expõe a porta
 EXPOSE 3001
-
 CMD ["npm", "start"]

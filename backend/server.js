@@ -32,10 +32,16 @@ if (!JWT_SECRET) {
 }
 
 // 5. MIDDLEWARES
+// 🚨 INSERÇÃO START: Configuração para Deploy 🚨
 app.use(cors({
-  origin: '*', 
-  credentials: true
+  origin: true,       // Reflete a origem da requisição (aceita tudo)
+  credentials: true,  // Permite cookies/headers de auth
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 }));
+
+// Rota para o Railway saber que o app está vivo
+app.get('/', (req, res) => res.send('Backend Agro-AI Online 🚀'));
+app.get('/health', (req, res) => res.json({ status: 'ok' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 // --- 🕵️‍♂️ MIDDLEWARE DE DEBUG (RAIO-X) ---

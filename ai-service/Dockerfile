@@ -1,26 +1,25 @@
-# ai-service/Dockerfile
+# Dockerfile de Produção para o Serviço de IA
+FROM python:3.10-slim
 
-# 1. Imagem base leve do Python
-FROM python:3.12-slim
-
-# 2. Define pasta de trabalho dentro do container
 WORKDIR /app
 
-# 3. Instala dependências do sistema (necessário para psycopg2 e numpy)
+# 1. Instala dependências do sistema (necessário para Pandas/Numpy)
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# 4. Copia e instala as dependências do Python
+# 2. Copia e instala dependências Python
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Aumenta timeout para evitar erro em bibliotecas grandes
+RUN pip install --no-cache-dir --default-timeout=100 -r requirements.txt
 
-# 5. Copia todo o código para dentro do container
+# 3. Copia o código fonte
 COPY . .
 
-# 6. Expõe a porta 8000
-EXPOSE 8000
+# 4. Configuração de Porta
+ENV PORT=8000
+EXPOSE $PORT
 
-# 7. Comando para iniciar o servidor
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 5. Comando de Inicialização
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
