@@ -199,7 +199,7 @@ def generate_price_history(
                 # ========================================
                 price = (base_price + seasonal_wave + regional_adjustment + noise) * shock
                 
-                # Validação: nunca menor que 10% do base
+                # Validação: nunca menor que 10% do preço base 
                 price = max(base_price * 0.1, price)
                 
                 data_buffer.append({
