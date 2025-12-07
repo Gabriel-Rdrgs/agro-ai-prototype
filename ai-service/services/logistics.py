@@ -40,22 +40,29 @@ class LogisticsService:
 
     def calculate_freight(self, lat_origin, lng_origin, lat_dest, lng_dest):
         """
-        Calcula frete com base em coordenadas reais.
-        Assinatura atualizada para aceitar 4 argumentos de lat/lng.
+        Calcula frete com "Custo Brasil" (Retorno vazio e Diesel alto).
         """
         try:
             # 1. Distância Real
             dist_km = self.calculate_distance(lat_origin, lng_origin, lat_dest, lng_dest)
             
-            # 2. Custo Base (Referência: R$ 6.00/km para Truck 15t)
-            # Pode ajustar esse fator conforme o preço do diesel sobe
-            cost_per_km = 6.00 
+            # 2. Custo Base (Atualizado 2025: Truck/Carreta)
+            # R$ 7.50 é realista para cobrir diesel, pneu e motorista
+            cost_per_km = 7.50 
             
-            total_trip_cost = dist_km * cost_per_km
+            # 3. Fator "Retorno Vazio" (Deadhead)
+            # Se a viagem for longa (> 800km), o caminhoneiro cobra a volta ou parte dela
+            # porque é difícil achar carga de retorno imediato.
+            empty_return_factor = 1.0
+            if dist_km > 800:
+                empty_return_factor = 1.4 # Cobra +40% para cobrir a volta
+            elif dist_km > 400:
+                empty_return_factor = 1.2 # Cobra +20%
+
+            total_trip_cost = dist_km * cost_per_km * empty_return_factor
             
-            # 3. Rateio por Unidade (Ex: 750 caixas de 20kg = 15.000kg)
-            # Se a carga for menor, o custo unitário sobe. Assumindo carga plena.
-            units_per_truck = 750 
+            # 4. Rateio por Unidade
+            units_per_truck = 750  # 15 toneladas / 20kg
             cost_per_unit = total_trip_cost / units_per_truck
             
             return {

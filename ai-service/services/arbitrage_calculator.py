@@ -249,11 +249,39 @@ class ArbitrageCalculator:
         base_cost_ha = specs.get('base_cost_ha', 25000)
         production_cost_unit = base_cost_ha / real_productivity_kg_ha
 
-        # 5. Consolidação
-        gross_revenue = total_volume_kg * sell_price
-        total_production_cost = total_volume_kg * production_cost_unit
+        # 5. Consolidação com "CUSTO BRASIL" 🇧🇷
         
-        total_cost_operation = total_production_cost + total_freight_cost
+        # --- CORREÇÃO: Reintroduzindo o cálculo que faltava ---
+        total_production_cost = total_volume_kg * production_cost_unit
+
+        # A. Quebra Técnica (Perda física na viagem)
+        # Viagens longas estragam mais tomate.
+        distance_km = single_trip_data['distance_km']
+        breakage_pct = 0.05 + (distance_km / 50000) # Ex: 1000km = 0.05 + 0.02 = 7%
+        if breakage_pct > 0.15: breakage_pct = 0.15 # Teto de 15%
+        
+        volume_lost = total_volume_kg * breakage_pct
+        effective_volume_sold = total_volume_kg - volume_lost
+
+        # B. Receita Bruta (Só recebe sobre o que chegou inteiro)
+        gross_revenue = effective_volume_sold * sell_price
+
+        # C. Custos de Comercialização (Onde o lucro morre)
+        # Comissão do Box/Ceasa (17% padrão) + Descarga
+        market_fees_pct = 0.17 
+        market_cost = gross_revenue * market_fees_pct
+        
+        # D. Custo de Embalagem (Caixa K custa ~R$ 3,50 para 20kg)
+        packaging_cost = (total_volume_kg / 20) * 3.50
+
+        # E. Custo Total Operacional
+        # Produção + Frete + Embalagem + Taxas de Mercado
+        total_cost_operation = (
+            total_production_cost + 
+            total_freight_cost + 
+            packaging_cost + 
+            market_cost
+        )
         
         net_profit = gross_revenue - total_cost_operation
         roi = (net_profit / total_cost_operation) * 100 if total_cost_operation > 0 else 0
@@ -272,7 +300,8 @@ class ArbitrageCalculator:
                 "productivity_ha": round(real_productivity_kg_ha / unit_weight, 1),
                 "total_volume": round(total_volume_kg, 1),
                 "unit_cost_origin": round(production_cost_unit, 2),
-                "total_production_cost": round(total_production_cost, 2)
+                "total_production_cost": round(total_production_cost, 2),
+                "packaging_cost": round(packaging_cost, 2)
             },
             "logistics": {
                 "fuel_breakdown": {
@@ -283,11 +312,12 @@ class ArbitrageCalculator:
                 "trips_needed": trips_needed,
                 "cost_per_trip": round(single_trip_data['total_cost'], 2),
                 "total_logistics_cost": round(total_freight_cost, 2),
-                "maintenance_cost": 0, "driver_cost": 0, "toll_cost": 0, "insurance_cost": 0
+                "breakage_loss_kg": round(volume_lost, 1)
             },
             "market": {
                 "predicted_sell_price": round(sell_price, 2),
-                "gross_revenue": round(gross_revenue, 2)
+                "gross_revenue": round(gross_revenue, 2),
+                "market_fees": round(market_cost, 2)
             },
             "financial": {
                 "total_cost": round(total_cost_operation, 2),
@@ -295,7 +325,8 @@ class ArbitrageCalculator:
                 "roi": round(roi, 1)
             },
             "risks": [
-                f"Fator Regional {origin_uf}: {region_factor}x",
+                f"Quebra Técnica Estimada: {breakage_pct*100:.1f}%",
+                f"Comissão CEASA + Taxas: {market_fees_pct*100:.0f}%",
                 f"Preço Destino Usado: R$ {sell_price:.2f}/kg"
             ]
         }

@@ -1,173 +1,139 @@
 # ai-service/services/storage_advisor.py
-"""
-Serviço de recomendação de armazenagem com IA.
-Implementa função custo do document-1.pdf e inteligência climática.
-
-ATUALIZADO:
-- Conectado ao agronomic_params.py (Sem hardcode)
-- Conectado à Volatilidade de Mercado (Chuva = Preço Alto)
-"""
-import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-import hashlib
-from typing import Dict, List, Tuple
 import logging
+import random
 
-from models.schemas import SimulationRequest, StorageAnalysisResponse
+from models.schemas import SimulationRequest
 from config.crops import get_crop_specs
-from config.constants import BRAZIL_CLIMATE_NORMS
 from services.market_intelligence import market_intelligence
-from services.climate.intelligence import climate_api
 from utils.database import get_engine
 
 logger = logging.getLogger(__name__)
 
-# --- (CONSTANTES REMOVIDAS: Agora usamos agronomic_params via specs) ---
-
 class StorageAdvisor:
     """
     Análise preditiva de viabilidade de armazenagem.
-    Considera custos, perdas, clima e evolução de preço.
+    Padronizada com a lógica do Simulador (ArbitrageCalculator).
     """
     
     def __init__(self):
         self.engine = get_engine()
-        logger.info("✅ StorageAdvisor iniciado (Modo Científico)")
+        logger.info("✅ StorageAdvisor iniciado (Padrão Custo Brasil)")
 
-    def _calculate_climate_risk(self, daily_temp_max: List[float], daily_temp_min: List[float], daily_rain: List[float], daily_sun: List[float]) -> float:
+    def analyze(self, data: SimulationRequest) -> dict:
         """
-        Calcula risco climático simplificado para o período de armazenagem.
+        Gera análise de 30 dias com Momentum de Preço e Custo Suavizado.
         """
-        risk_score = 0.0
-        # Exemplo simples: Muita chuva na saída = Risco Logístico
-        if daily_rain and sum(daily_rain) > 100:
-            risk_score += 0.2
-        return risk_score
-
-    def _analyze_crop_history(self, accumulated_rain: float, specs: Dict) -> Tuple[float, str, float]:
-        """
-        Analisa o histórico da safra usando parâmetros científicos (specs).
-        """
-        # Recupera limites do specs (agronomic_params)
-        min_rain = specs.get('min_rain_cycle', 400.0)
-        max_rain = specs.get('max_rain_cycle', 600.0)
-        
-        storage_specs = specs.get('storage', {})
-        base_loss = storage_specs.get('daily_loss_rate', 0.002) # 0.2% ao dia padrão
-
-        if accumulated_rain is None:
-            return 0.0, "", base_loss
-
-        risk = 0.0
-        msg = ""
-        suggested_loss = base_loss
-
-        # Cenario 1: Excesso de Chuva (Tomate inchado, menor pós-colheita)
-        if accumulated_rain > max_rain:
-            excess = accumulated_rain - max_rain
-            # Risco sobe: +15% fixo + proporcional
-            risk += 0.15 + (excess * 0.001)
-            msg = f"Safra Chuvosa ({accumulated_rain:.0f}mm): Menor vida útil (pós-colheita reduzida)"
-            suggested_loss = base_loss * 1.5 # Acelera a perda em 50%
-
-        # Cenario 2: Seca (Estresse Hídrico)
-        elif accumulated_rain < min_rain:
-            risk += 0.10
-            msg = f"Estresse Hídrico ({accumulated_rain:.0f}mm): Risco de defeitos/calibre menor"
-            # Mantém perda base, mas avisa do risco
-        
-        return risk, msg, suggested_loss
-
-    def analyze(self, data: SimulationRequest) -> Dict:
-        """
-        Gera análise de viabilidade de armazenagem (30 dias).
-        Conecta: Clima (Chuva) -> Inteligência de Mercado (Preço) -> Custo (Energia/Perda).
-        """
-        logger.info(f"🔮 Análise Científica: {data.product} em {data.state}")
-        
-        # 1. CARREGAR PARÂMETROS CIENTÍFICOS (Fonte da Verdade)
+        # 1. Parâmetros e Normalização
         specs = get_crop_specs(data.product)
-        storage_specs = specs.get('storage', {})
+        unit_weight = specs.get('unit_weight_kg', 20.0)
         
-        # Custos operacionais (do arquivo, sem hardcode)
-        cost_energy = storage_specs.get('energy_cost_per_kg_day', 0.025)
+        c_price = data.current_price
+        if c_price > 15: c_price /= unit_weight
         
-        # 2. Analisar Risco da Safra (Passando specs!)
-        # Define a taxa de perda diária (quebra) baseada no histórico da chuva
-        risk_score, risk_msg, daily_loss_rate = self._analyze_crop_history(data.accumulated_rainfall, specs)
+        b_price = data.buy_price
+        if b_price > 15: b_price /= unit_weight
         
-        # Fator de risco do usuário (ex: "Alto Risco" no front multiplica a quebra)
-        final_loss_rate = daily_loss_rate * data.risk_factor
+        storage_cost_day = data.storage_cost_per_day or 0.03
+        
+        # 2. Configuração de Volatilidade (Ondas de Mercado)
+        is_rainy = (data.accumulated_rainfall or 0) > 50
+        
+        # Momentum Inicial (Tendência de curto prazo)
+        # Se chove, viés de alta. Se sol, neutro.
+        market_momentum = 0.002 if is_rainy else 0.0 
+        
+        current_simulated_price = c_price
+        labels, prices, costs = [], [], []
+        curr_date = datetime.now()
 
-        # 3. PREPARAÇÃO DO LOOP
-        current_date = datetime.now()
-        accumulated_cost = data.buy_price
-        
-        prices_kg = []
-        costs_kg = []
-        future_dates = []
-        
-        # 4. LOOP DE SIMULAÇÃO (30 DIAS)
-        for day in range(1, 31):
-            target_date = current_date + timedelta(days=day)
-            future_dates.append(target_date.strftime('%d/%m'))
+        # 3. Simulação de 30 dias
+        for day in range(30):
+            date_str = (curr_date + timedelta(days=day)).strftime("%d/%m")
+            labels.append(date_str)
             
-            # A. PEGAR A CHUVA DESTE DIA (Vinda da previsão do front ou API)
-            rain_day = 0.0
-            if data.daily_rain and len(data.daily_rain) > (day - 1):
-                rain_day = float(data.daily_rain[day - 1])
+            # --- A. PREÇO COM MOMENTUM (ONDAS) 🌊 ---
+            # Em vez de aleatório puro, o preço segue uma inércia.
+            # A cada dia, o momentum muda um pouco, criando curvas suaves.
             
-            # B. CONSULTAR PREÇO COM VOLATILIDADE 🌩️
-            # Aqui a mágica acontece: Se rain_day for alto, o preço sobe!
-            raw_price = market_intelligence.get_predicted_market_price(
-                data.product, 
-                data.state, 
-                target_date.month, 
-                meteo_data={'rain_mm': rain_day} 
-            )
+            # Mudança na força do mercado (-1% a +1%)
+            momentum_shift = random.uniform(-0.01, 0.01)
             
-            # C. APLICAR PERDA DE QUALIDADE
-            # O preço de mercado pode subir, mas o NOSSO tomate vale menos a cada dia
-            quality_factor = (1 - (final_loss_rate * day))
-            if quality_factor < 0: quality_factor = 0 # Não vende lixo
-            
-            final_sell_price = raw_price * quality_factor
-            prices_kg.append(round(final_sell_price, 2))
-            
-            # D. ACUMULAR CUSTOS
-            accumulated_cost += cost_energy
-            costs_kg.append(round(accumulated_cost, 2))
+            # Se chover, força o momentum para cima (viés de escassez)
+            if is_rainy and random.random() < 0.3:
+                momentum_shift += 0.005 
 
-            # Debug Log (Só para dias de chuva forte)
-            if rain_day > 20:
-                logger.info(f"🌧️ Dia {day} ({rain_day}mm): Preço reagiu -> R$ {raw_price:.2f}")
+            # Atualiza o momentum (com decaimento para não explodir)
+            market_momentum = (market_momentum * 0.8) + momentum_shift
+            
+            # Aplica o momentum ao preço
+            current_simulated_price *= (1 + market_momentum)
+            
+            # Ruído diário pequeno (volatilidade intradia)
+            noise = random.uniform(-0.005, 0.005)
+            final_daily_price = current_simulated_price * (1 + noise)
 
-        # 5. DECISÃO FINAL (Melhor dia para vender)
-        # Lucro = Preço de Venda (ajustado p/ qualidade) - Custo Acumulado
-        profits = [p - c for p, c in zip(prices_kg, costs_kg)]
-        max_profit = max(profits)
-        best_day_idx = profits.index(max_profit)
+            # --- B. CUSTOS SUAVIZADOS (Realidade Refrigerada) ❄️ ---
+            
+            # 1. Custo Base (Produto + Geladeira)
+            base_cost_accumulated = b_price + (storage_cost_day * day)
+            
+            # 2. Quebra Técnica (Calibrada para Menos Agressiva)
+            # Começa com 2% (seleção na entrada) + 0.1% ao dia (refrigerado)
+            # Dia 30 = ~5% de perda (muito mais realista que os 15% de antes)
+            breakage_pct = 0.02 + (day * 0.001)
+            
+            # Teto de segurança (máximo 20% de perda em 30 dias)
+            if breakage_pct > 0.20: breakage_pct = 0.20
+            
+            # 3. Custo Efetivo
+            effective_cost = base_cost_accumulated / (1 - breakage_pct)
+            
+            # 4. Taxas de Mercado (Mantidas)
+            market_fees = final_daily_price * 0.17
+            packaging_cost = 0.175 
+            
+            total_breakeven_price = effective_cost + market_fees + packaging_cost
+
+            prices.append(round(final_daily_price, 2))
+            costs.append(round(total_breakeven_price, 2))
+
+        # 4. Decisão e Recomendação
+        last_profit = prices[-1] - costs[-1]
+        current_profit = prices[0] - costs[0]
         
-        # Lógica de Decisão
-        if best_day_idx == 0 or max_profit < 0:
-            action = 'VENDER IMEDIATAMENTE'
-            if max_profit < 0:
-                risk_msg += " (Operação inviável: Custos superam ganhos futuros)"
+        # Encontra topo de lucro
+        best_profit = -float('inf')
+        best_day_idx = 0
+        for i, (p, c) in enumerate(zip(prices, costs)):
+            if (p - c) > best_profit:
+                best_profit = (p - c)
+                best_day_idx = i
+        
+        risk_msg = "Mercado Estável"
+        if is_rainy: risk_msg = "Alta Volatilidade (Chuva)"
+        
+        # Lógica de "Vender Agora" mais inteligente
+        # Se o lucro futuro for apenas centavos maior que hoje, não vale o risco.
+        # Exigimos pelo menos 5% de ganho extra para recomendar esperar.
+        threshold = current_profit * 1.05
+        
+        if best_profit > threshold and best_day_idx > 0:
+            action = f"VENDER EM {labels[best_day_idx]}"
+            risk_msg += " - Tendência de Alta detectada"
         else:
-            action = f'ARMAZENAR ATÉ {future_dates[best_day_idx]}'
+            action = "VENDER AGORA"
+            risk_msg += " - Melhor momento é hoje"
 
         return {
-            'chart_data': {
-                'labels': future_dates,
-                'prices': prices_kg,
-                'costs': costs_kg
-            },
-            'recommendation': {
-                'action': action,
-                'best_day_date': future_dates[best_day_idx],
-                'projected_profit': round(max_profit, 2),
-                'risk_note': risk_msg
+            "chart_data": {"labels": labels, "prices": prices, "costs": costs},
+            "recommendation": {
+                "action": action,
+                "best_day_date": labels[best_day_idx],
+                "projected_profit": round(best_profit, 2),
+                "confidence_score": 0.85 if is_rainy else 0.95,
+                "risk_event": risk_msg
             }
         }
 

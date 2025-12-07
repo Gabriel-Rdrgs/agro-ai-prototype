@@ -110,10 +110,10 @@ const StorageAdvisor = ({ opportunity, forecast }) => {
           gradient.addColorStop(1, 'rgba(34, 197, 94, 0.0)');
           return gradient;
         },
-        tension: 0.4,
+        tension: 0,
         fill: true,
-        pointRadius: 0,
-        borderWidth: 3
+        pointRadius: 2,
+        borderWidth: 2
       },
       {
         label: 'Custo Acumulado',
@@ -121,7 +121,7 @@ const StorageAdvisor = ({ opportunity, forecast }) => {
         borderColor: '#ef4444', 
         backgroundColor: 'transparent',
         borderDash: [5, 5],
-        tension: 0.4,
+        tension: 0,
         pointRadius: 0,
         borderWidth: 2
       }

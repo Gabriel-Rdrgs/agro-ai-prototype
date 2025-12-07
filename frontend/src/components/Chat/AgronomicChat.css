@@ -1,115 +1,209 @@
 /* frontend/src/components/Chat/AgronomicChat.css */
+
+/* Container Principal - Estilo "Painel de Controle" */
 .chat-container {
   display: flex;
   flex-direction: column;
-  height: 85vh; /* Ocupa quase toda a altura */
-  background: #f4f7f6;
-  border-radius: 12px;
+  height: 100%; /* Ocupa a altura do pai (.tab-content) */
+  background: var(--bg-dark); /* Fundo base escuro */
+  border: 1px solid var(--accent-primary); /* Borda Neon */
+  border-radius: 0; /* Reto para encaixar na tela ou var(--border-radius-lg) se preferir flutuante */
   overflow: hidden;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-  margin: 1rem;
+  box-shadow: inset 0 0 50px rgba(0, 217, 255, 0.05); /* Glow interno sutil */
+  position: relative;
 }
 
+/* Header do Chat */
 .chat-header {
-  background: #2ecc71;
-  color: white;
-  padding: 1rem;
-  font-weight: bold;
+  background: linear-gradient(90deg, var(--bg-card) 0%, rgba(0, 217, 255, 0.1) 100%);
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-bottom: 1px solid var(--accent-primary);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+  z-index: 10;
 }
 
+.chat-header h3 {
+  margin: 0;
+  color: var(--accent-primary);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  text-shadow: 0 0 10px rgba(0, 217, 255, 0.5); /* Texto brilhante */
+}
+
+/* Área de Mensagens */
 .chat-messages {
   flex: 1;
-  padding: 1rem;
+  padding: var(--spacing-lg);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: var(--spacing-md);
+  background-image: 
+    radial-gradient(circle at 50% 50%, rgba(0, 217, 255, 0.03) 0%, transparent 60%);
 }
 
+/* Scrollbar personalizada (Padrão Global) */
+.chat-messages::-webkit-scrollbar {
+  width: 6px;
+}
+.chat-messages::-webkit-scrollbar-track {
+  background: rgba(0, 217, 255, 0.02);
+}
+.chat-messages::-webkit-scrollbar-thumb {
+  background: var(--accent-primary);
+  border-radius: 3px;
+}
+
+/* Bolhas de Mensagem */
 .message {
   display: flex;
+  width: 100%;
 }
 
+.message-bubble {
+  max-width: 80%;
+  padding: 16px 20px;
+  border-radius: var(--border-radius-lg);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  position: relative;
+  backdrop-filter: blur(5px);
+  transition: all 0.3s ease;
+}
+
+/* USUÁRIO (Direita) - Estilo "Comando Enviado" */
 .message.user {
   justify-content: flex-end;
 }
 
+.message.user .message-bubble {
+  background: rgba(0, 217, 255, 0.1); /* Ciano transparente */
+  border: 1px solid var(--accent-primary);
+  color: var(--accent-primary);
+  border-bottom-right-radius: 2px;
+  box-shadow: 0 0 15px rgba(0, 217, 255, 0.1);
+}
+
+/* BOT (Esquerda) - Estilo "Resposta do Sistema" */
 .message.bot {
   justify-content: flex-start;
 }
 
-.message-bubble {
-  max-width: 70%;
-  padding: 12px 16px;
-  border-radius: 12px;
-  font-size: 0.95rem;
-  line-height: 1.5;
-  position: relative;
-}
-
-.message.user .message-bubble {
-  background: #2ecc71;
-  color: white;
-  border-bottom-right-radius: 2px;
-}
-
 .message.bot .message-bubble {
-  background: white;
-  color: #333;
-  border: 1px solid #e0e0e0;
+  background: var(--bg-card);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
   border-bottom-left-radius: 2px;
+  border-left: 3px solid var(--accent-secondary); /* Detalhe roxo no bot */
 }
 
+/* Fontes/Citações */
 .message-sources {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(0,0,0,0.1);
-  color: #666;
-  font-size: 0.8rem;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-family: monospace; /* Estilo técnico */
 }
 
+/* Loading "Thinking" */
 .loading {
   font-style: italic;
-  color: #888;
+  color: var(--accent-primary);
+  animation: pulse 1.5s infinite;
 }
 
+@keyframes pulse {
+  0% { opacity: 0.5; }
+  50% { opacity: 1; text-shadow: 0 0 10px var(--accent-primary); }
+  100% { opacity: 0.5; }
+}
+
+/* Área de Input (Rodapé) */
 .chat-input-area {
-  padding: 1rem;
-  background: white;
-  border-top: 1px solid #ddd;
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--bg-card);
+  border-top: 1px solid var(--accent-primary);
   display: flex;
-  gap: 10px;
+  gap: 15px;
+  align-items: center;
+  position: relative;
+  z-index: 20;
 }
 
 .chat-input-area input {
   flex: 1;
-  padding: 12px;
-  border: 1px solid #ddd;
-  border-radius: 25px;
+  background: var(--bg-dark);
+  border: 1px solid rgba(0, 217, 255, 0.3);
+  color: var(--text-primary);
+  padding: 14px 20px;
+  border-radius: 30px; /* Arredondado futurista */
+  font-family: inherit;
+  font-size: 0.95rem;
   outline: none;
+  transition: all 0.3s ease;
+  box-shadow: inset 0 2px 5px rgba(0,0,0,0.5);
 }
 
 .chat-input-area input:focus {
-  border-color: #2ecc71;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 15px rgba(0, 217, 255, 0.2), inset 0 2px 5px rgba(0,0,0,0.5);
 }
 
+.chat-input-area input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+/* Botão de Enviar */
 .chat-input-area button {
-  background: #2ecc71;
-  color: white;
-  border: none;
-  width: 45px;
-  height: 45px;
+  background: transparent;
+  border: 1px solid var(--accent-primary);
+  color: var(--accent-primary);
+  width: 50px;
+  height: 50px;
   border-radius: 50%;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 1.2rem;
-  transition: transform 0.2s;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  box-shadow: 0 0 10px rgba(0, 217, 255, 0.1);
 }
 
 .chat-input-area button:hover:not(:disabled) {
-  transform: scale(1.1);
+  background: var(--accent-primary);
+  color: var(--bg-dark);
+  transform: scale(1.1) rotate(-45deg); /* Efeito dinâmico */
+  box-shadow: 0 0 20px var(--accent-primary);
 }
 
 .chat-input-area button:disabled {
-  background: #ccc;
+  border-color: var(--text-muted);
+  color: var(--text-muted);
   cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Ajuste Mobile */
+@media (max-width: 768px) {
+  .chat-container {
+    border: none; /* Remove borda em tela cheia mobile */
+    height: 100%;
+  }
+  
+  .message-bubble {
+    max-width: 90%;
+    padding: 12px 16px;
+  }
+  
+  .chat-input-area {
+    padding: 10px;
+  }
 }

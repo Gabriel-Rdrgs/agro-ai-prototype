@@ -9,6 +9,8 @@ from config.constants import STATE_COORDS
 import logging
 from datetime import datetime, timedelta
 from config.crops import get_crop_specs
+from services.storage_advisor import storage_advisor
+import random
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -39,57 +41,15 @@ def get_fuel_prices():
 @router.post("/storage")
 async def predict_storage(request: SimulationRequest):
     """
-    Simula viabilidade de armazenagem baseada em preço e clima.
+    Simula viabilidade de armazenagem usando o StorageAdvisor (Padrão Custo Brasil).
     """
     try:
-        # 1. Normalização de Preço (Caixa 20kg -> Kg)
-        c_price = request.current_price
-        b_price = request.buy_price
-        
-        # Se preço > 15, assume que é caixa e divide por 20
-        if c_price > 15: c_price /= 20
-        if b_price > 15: b_price /= 20
-        
-        # Fallback para evitar zeros
-        if c_price <= 0: c_price = 4.00
-        if b_price <= 0: b_price = 2.50
-        
-        logger.info(f"🧠 Storage: Preço Kg ajustado R$ {c_price:.2f}")
-
-        labels, prices, costs = [], [], []
-        storage_cost = request.storage_cost_per_day or 0.03
-        curr_date = datetime.now()
-        
-        # Fator de tendência (Chuva = Alta)
-        rain_trend = 1.002 if (request.accumulated_rainfall or 0) > 50 else 1.0005
-        
-        # Simulação de 30 dias
-        for day in range(30):
-            date_str = (curr_date + timedelta(days=day)).strftime("%d/%m")
-            labels.append(date_str)
-            # Preço sobe levemente com a tendência
-            prices.append(round(c_price * (rain_trend ** day), 2))
-            # Custo sobe com a armazenagem diária
-            costs.append(round(b_price + (storage_cost * day), 2))
-
-        # Decisão Final
-        last_profit = prices[-1] - costs[-1]
-        current_profit = prices[0] - costs[0]
-        
-        return {
-            "chart_data": {"labels": labels, "prices": prices, "costs": costs},
-            "recommendation": {
-                "action": "ARMAZENAR" if last_profit > current_profit else "VENDER AGORA",
-                "best_day_date": labels[-1] if last_profit > current_profit else labels[0],
-                "projected_profit": round(max(last_profit, current_profit), 2),
-                "confidence_score": 0.95,
-                "risk_event": "Tendência de Alta (Chuva)" if rain_trend > 1.001 else "Mercado Estável"
-            }
-        }
+        # Delega para o especialista
+        return storage_advisor.analyze(request)
     except Exception as e:
         logger.error(f"❌ Erro Storage: {e}")
-        return {"chart_data": {}, "recommendation": {}}
-
+        raise HTTPException(status_code=500, detail=str(e))
+    
 # --- 3. ROTA BATCH (Slider Temporal do Mapa) ---
 @router.post("/batch")
 async def predict_batch(request: BatchPredictionRequest):
