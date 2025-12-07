@@ -23,7 +23,7 @@ import scripts.run_etl
 from threading import Thread
 from datetime import datetime
 from contextlib import asynccontextmanager
-
+from routers import chat as chat_router
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -248,7 +248,11 @@ app.include_router(
     tags=["🛠️ Administrativo"]
 )
 
-
+app.include_router(
+    chat_router.router, 
+    prefix="/api/v1/chat", 
+    tags=["AI Chat"]
+)
 # ========================================
 # ROTAS RAIZ
 # ========================================

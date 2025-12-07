@@ -7,6 +7,7 @@ import RoiCalculator from './components/Calculator/RoiCalculator';
 import Login from './components/Auth/Login';
 import WeatherDashboard from './components/Weather/WeatherDashboard';
 import MarketRadar from './components/Market/MarketRadar';
+import AgronomicChat from './components/Chat/AgronomicChat';
 
 function App() {
   // --- 1. ESTADOS GLOBAIS ---
@@ -172,12 +173,14 @@ function App() {
             <button onClick={() => setActiveTab('dashboard')} className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}>📊 DASHBOARD</button>
             <button onClick={() => setActiveTab('calculator')} className={`tab-btn ${activeTab === 'calculator' ? 'active' : ''}`}>🧮 SIMULADOR</button>
             <button onClick={() => setActiveTab('Weather')} className={`tab-btn ${activeTab === 'Weather' ? 'active' : ''}`}>⛈️ CLIMA</button>
+            <button onClick={() => setActiveTab('chat')} className={`tab-btn ${activeTab === 'chat' ? 'active' : ''}`}>🤖 IA</button>
           </div>
 
           <div className="tab-content">
             {/* Botão Lista Mobile */}
             {activeTab === 'map' && !showSidebar && (
               <button onClick={toggleSidebar} className="mobile-show-sidebar-btn"><span className="icon">📋</span><span className="text">Lista</span></button>
+              
             )}
 
             {/* --- CONTEÚDO --- */}
@@ -213,7 +216,12 @@ function App() {
             )}
             {activeTab === 'Weather' && (
               <WeatherDashboard opportunities={opportunities} />
-        )}
+            )}
+
+            {/* RENDERIZAÇÃO DO CHAT */}
+            {activeTab === 'chat' && (
+              <AgronomicChat />
+            )}
           </div>
         </div>
       </div>
@@ -235,6 +243,11 @@ function App() {
         <button onClick={() => setActiveTab('Weather')} className={`nav-item ${activeTab === 'Weather' ? 'active' : ''}`}>
           <span className="icon">⛈️</span>
           <span className="label">Clima</span>
+        </button>
+        {/* NOVO BOTÃO MOBILE */}
+        <button onClick={() => setActiveTab('chat')} className={`nav-item ${activeTab === 'chat' ? 'active' : ''}`}>
+          <span className="icon">🤖</span>
+          <span className="label">IA</span>
         </button>
       </div>
 

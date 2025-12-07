@@ -1,17 +1,20 @@
-# utils/database.py (VERSÃO CORRIGIDA)
-
+# ai-service/utils/database.py
 import os
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
-from contextlib import contextmanager
 import logging
+from contextlib import contextmanager
 from dotenv import load_dotenv
+
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker, declarative_base
 
 logger = logging.getLogger(__name__)
 
-# Carrega .env ANTES de tudo
+# Carrega .env
 load_dotenv()
 
+# 1. Definição da Base para Models (NOVO)
+# Todos os modelos (tabelas) devem herdar desta classe
+Base = declarative_base()
 
 def get_database_url() -> str:
     """
@@ -24,17 +27,17 @@ def get_database_url() -> str:
         logger.warning("⚠️ DATABASE_URL não definida, usando SQLite local para testes")
         return 'sqlite:///./agro_test.db'
     
-    # Normaliza postgres:// → postgresql://
+    # Normaliza postgres:// → postgresql:// para SQLAlchemy
     if url.startswith('postgres://'):
         url = url.replace('postgres://', 'postgresql://', 1)
+    
+    # Remove parâmetros de pooling que o SQLAlchemy gerencia nativamente
     url = url.replace('?pgbouncer=true', '').replace('&pgbouncer=true', '')
     return url
 
-
-# Singleton do engine
+# Singleton do engine e session factory
 _engine = None
 _SessionLocal = None
-
 
 def get_engine():
     """Retorna engine SQLAlchemy (singleton)"""
@@ -51,7 +54,6 @@ def get_engine():
         logger.info("✅ Database engine criado")
     return _engine
 
-
 def get_session_factory():
     """Retorna factory de sessões"""
     global _SessionLocal
@@ -64,15 +66,13 @@ def get_session_factory():
         )
     return _SessionLocal
 
-
 @contextmanager
 def get_db_session():
     """
     Context manager para sessões de banco.
-    
     Uso:
         with get_db_session() as session:
-            result = session.execute(text("SELECT 1"))
+            ...
     """
     SessionLocal = get_session_factory()
     session = SessionLocal()
@@ -85,7 +85,6 @@ def get_db_session():
         raise
     finally:
         session.close()
-
 
 def test_connection() -> bool:
     """Testa conexão com banco"""

@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agro AI - Tracker de Plano de Ação</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            padding: 30px;
+            background: #f7fafc;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .metric-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #667eea;
+            margin: 10px 0;
+        }
+
+        .metric-label {
+            color: #718096;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .filters {
+            padding: 20px 30px;
+            background: #edf2f7;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .filter-btn {
+            padding: 8px 16px;
+            border: 2px solid #cbd5e0;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 0.9em;
+        }
+
+        .filter-btn.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .filter-btn:hover {
+            border-color: #667eea;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .week-section {
+            margin-bottom: 20px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .week-header {
+            background: #f7fafc;
+            padding: 20px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.3s;
+        }
+
+        .week-header:hover {
+            background: #edf2f7;
+        }
+
+        .week-title {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #2d3748;
+        }
+
+        .week-progress {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .progress-bar-container {
+            width: 150px;
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #48bb78, #38a169);
+            transition: width 0.5s ease;
+        }
+
+        .progress-text {
+            font-weight: bold;
+            color: #667eea;
+            min-width: 40px;
+        }
+
+        .expand-icon {
+            font-size: 1.5em;
+            transition: transform 0.3s;
+        }
+
+        .week-section.expanded .expand-icon {
+            transform: rotate(180deg);
+        }
+
+        .week-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.5s ease;
+        }
+
+        .week-section.expanded .week-content {
+            max-height: 2000px;
+        }
+
+        .category {
+            padding: 20px;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .category-title {
+            font-weight: bold;
+            color: #4a5568;
+            margin-bottom: 12px;
+            font-size: 1.1em;
+        }
+
+        .task-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 10px;
+            margin: 8px 0;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+
+        .task-item:hover {
+            background: #f7fafc;
+        }
+
+        .task-checkbox {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            margin-top: 2px;
+            flex-shrink: 0;
+        }
+
+        .task-text {
+            flex: 1;
+            color: #2d3748;
+            line-height: 1.6;
+        }
+
+        .task-item.completed .task-text {
+            text-decoration: line-through;
+            color: #a0aec0;
+        }
+
+        .category-tag {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75em;
+            font-weight: bold;
+            margin-left: 8px;
+        }
+
+        .tag-infra { background: #fed7d7; color: #c53030; }
+        .tag-backend { background: #feebc8; color: #c05621; }
+        .tag-frontend { background: #c6f6d5; color: #276749; }
+        .tag-db { background: #bee3f8; color: #2c5282; }
+        .tag-ml { background: #e9d8fd; color: #6b46c1; }
+        .tag-qa { background: #fbb6ce; color: #97266d; }
+
+        .deliverable {
+            margin-top: 15px;
+            padding: 12px;
+            background: #edf2f7;
+            border-left: 4px solid #667eea;
+            border-radius: 4px;
+        }
+
+        .deliverable-label {
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        @media (max-width: 768px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+
+            .week-progress {
+                flex-direction: column;
+                align-items: flex-end;
+                gap: 5px;
+            }
+        }
+
+        .export-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            padding: 15px 25px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            font-weight: bold;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            transition: transform 0.2s;
+        }
+
+        .export-btn:hover {
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Agro AI - MVP Tracker</h1>
+            <p>Plano de Ação Tático: 8 Semanas para o MVP</p>
+        </div>
+
+        <div class="dashboard" id="dashboard"></div>
+
+        <div class="filters">
+            <button class="filter-btn active" onclick="filterTasks('all')">Todas</button>
+            <button class="filter-btn" onclick="filterTasks('pending')">Pendentes</button>
+            <button class="filter-btn" onclick="filterTasks('completed')">Concluídas</button>
+            <button class="filter-btn" onclick="filterTasks('infra')">Infra/Cloud</button>
+            <button class="filter-btn" onclick="filterTasks('backend')">Backend</button>
+            <button class="filter-btn" onclick="filterTasks('frontend')">Frontend</button>
+            <button class="filter-btn" onclick="filterTasks('ml')">ML/IA</button>
+        </div>
+
+        <div class="content" id="content"></div>
+    </div>
+
+    <button class="export-btn" onclick="exportProgress()">📊 Exportar Progresso</button>
+
+    <script>
+        const actionPlan = [
+            {
+                week: 1,
+                title: "Semana 1 – Fundação e 'Arrumar a Casa'",
+                objective: "Preparar a infraestrutura AWS, corrigir débitos técnicos do Python e implementar a predição real.",
+                categories: [
+                    {
+                        name: "Infra/Cloud",
+                        tag: "infra",
+                        tasks: [
+                            "Configurar conta AWS e provisionar RDS PostgreSQL (com PostGIS habilitado)",
+                            "Configurar repositório ECR (Elastic Container Registry) para as imagens Docker",
+                            "Migrar deploy do Railway para AWS App Runner (Node e Python)"
+                        ]
+                    },
+                    {
+                        name: "Backend (Python)",
+                        tag: "backend",
+                        tasks: [
+                            "Atualizar requirements.txt: Adicionar prophet, pypdf, langchain, openai, pgvector",
+                            "Refatorar market_intelligence.py: Remover a regressão linear manual e implementar a classe Prophet real"
+                        ]
+                    },
+                    {
+                        name: "Banco de Dados",
+                        tag: "db",
+                        tasks: [
+                            "Criar migration Prisma para habilitar a extensão vector (pgvector)",
+                            "Criar tabela Document e DocumentEmbedding no schema"
+                        ]
+                    }
+                ],
+                deliverable: "Sistema rodando na AWS com banco preparado para vetores e modelo Prophet instalado"
+            },
+            {
+                week: 2,
+                title: "Semana 2 – O Cérebro: Ingestão de Documentos (RAG Backend)",
+                objective: "Permitir que o sistema leia e indexe os manuais agronômicos (PDFs).",
+                categories: [
+                    {
+                        name: "Backend (Node)",
+                        tag: "backend",
+                        tasks: [
+                            "Criar rota POST /api/documents/upload (upload de arquivo para S3 + registro no Postgres)"
+                        ]
+                    },
+                    {
+                        name: "IA Service (Python)",
+                        tag: "ml",
+                        tasks: [
+                            "Criar script de ETL de Documentos: Ler PDF com pypdf",
+                            "Implementar Chunking (quebrar texto) com LangChain",
+                            "Gerar Embeddings (OpenAI text-embedding-3-small)",
+                            "Salvar vetores no Postgres via SQLAlchemy",
+                            "Executar carga inicial dos 3 PDFs de tomate (manuais técnicos)"
+                        ]
+                    }
+                ],
+                deliverable: "Pipeline de ingestão funcionando. Banco de dados populado com o 'conhecimento' dos manuais técnicos."
+            },
+            {
+                week: 3,
+                title: "Semana 3 – O Consultor: Chat Agronômico (RAG Frontend)",
+                objective: "Interface para o agrônomo conversar com os documentos.",
+                categories: [
+                    {
+                        name: "IA Service (Python)",
+                        tag: "ml",
+                        tasks: [
+                            "Criar endpoint POST /chat/query",
+                            "Implementar lógica de busca vetorial (Cosine Similarity) no Postgres",
+                            "Integrar com GPT-4o-mini para gerar a resposta baseada no contexto recuperado"
+                        ]
+                    },
+                    {
+                        name: "Frontend (React)",
+                        tag: "frontend",
+                        tasks: [
+                            "Criar componente ChatWidget (flutuante ou página dedicada)",
+                            "Conectar ao endpoint de chat e exibir resposta com fontes (citação da página do PDF)"
+                        ]
+                    }
+                ],
+                deliverable: "Funcionalidade de 'Consultor IA' operacional. Usuário pergunta 'Qual o espaçamento do tomate?' e recebe resposta baseada no PDF."
+            },
+            {
+                week: 4,
+                title: "Semana 4 – Conexão com o Mundo Real (Clima API)",
+                objective: "Substituir dados climáticos 'mockados' por dados reais da Open-Meteo.",
+                categories: [
+                    {
+                        name: "Backend (Python)",
+                        tag: "backend",
+                        tasks: [
+                            "Criar módulo services/climate_api.py para consumir API da Open-Meteo",
+                            "Criar job agendado (Cron) para atualizar histórico de chuva/temperatura das fazendas cadastradas"
+                        ]
+                    },
+                    {
+                        name: "IA Service (Refino)",
+                        tag: "ml",
+                        tasks: [
+                            "Atualizar market_intelligence.py para usar features climáticas reais como regressores no Prophet"
+                        ]
+                    }
+                ],
+                deliverable: "Gráficos de previsão de preço reagindo a dados reais de chuva histórica da região."
+            },
+            {
+                week: 5,
+                title: "Semana 5 – Modelagem de Risco e Alertas",
+                objective: "Prever doenças baseando-se no clima real.",
+                categories: [
+                    {
+                        name: "ML (Python)",
+                        tag: "ml",
+                        tasks: [
+                            "Treinar modelo simples (XGBoost ou Regras de Negócio baseadas nos PDFs) para risco de doenças (ex: Requeima)",
+                            "Implementar Input: Umidade > 90% + Temp 20°C (dados da Open-Meteo)"
+                        ]
+                    },
+                    {
+                        name: "Backend/Frontend",
+                        tag: "frontend",
+                        tasks: [
+                            "Criar sistema de notificações no Dashboard ('Alerta: Risco Alto de Requeima em 3 dias')"
+                        ]
+                    }
+                ],
+                deliverable: "Dashboard exibindo 'Semáforo de Risco' para a lavoura."
+            },
+            {
+                week: 6,
+                title: "Semana 6 – Performance e Otimização",
+                objective: "Garantir que o sistema aguente múltiplos usuários e consultas pesadas.",
+                categories: [
+                    {
+                        name: "Infra",
+                        tag: "infra",
+                        tasks: [
+                            "Implementar Redis (ElastiCache ou container) para cachear previsões do Prophet e vetores frequentes"
+                        ]
+                    },
+                    {
+                        name: "Observabilidade",
+                        tag: "infra",
+                        tasks: [
+                            "Configurar Sentry (backend/frontend) para monitorar erros",
+                            "Adicionar logs estruturados para auditoria de uso da IA (custo de tokens)"
+                        ]
+                    }
+                ],
+                deliverable: "Sistema rápido, com cache de respostas e monitoramento de erros ativo."
+            },
+            {
+                week: 7,
+                title: "Semana 7 – Experiência Visual (Mapas Avançados)",
+                objective: "Visualização geoespacial rica.",
+                categories: [
+                    {
+                        name: "Frontend",
+                        tag: "frontend",
+                        tasks: [
+                            "Integrar camadas WMS (Web Map Service) de satélite (Sentinel ou Google Satellite) no Leaflet",
+                            "Implementar filtro visual: 'Mostrar apenas regiões com ROI > 20%'",
+                            "Melhorar responsividade mobile para uso em campo"
+                        ]
+                    }
+                ],
+                deliverable: "Mapa interativo 'estilo Enterprise' com camadas de dados sobrepostas."
+            },
+            {
+                week: 8,
+                title: "Semana 8 – Polimento e Entrega Beta",
+                objective: "Testes finais e documentação.",
+                categories: [
+                    {
+                        name: "QA",
+                        tag: "qa",
+                        tasks: [
+                            "Testes de carga no endpoint de predição",
+                            "Validação das respostas do Chatbot (evitar alucinações)"
+                        ]
+                    },
+                    {
+                        name: "Geral",
+                        tag: "backend",
+                        tasks: [
+                            "Escrever documentação da API (Swagger/OpenAPI)",
+                            "Limpeza de código e fechamento do MVP"
+                        ]
+                    }
+                ],
+                deliverable: "MVP pronto para testes beta com usuários reais."
+            }
+        ];
+
+        function initTracker() {
+            renderDashboard();
+            renderWeeks();
+            loadProgress();
+        }
+
+        function renderDashboard() {
+            const totalTasks = actionPlan.reduce((sum, week) => 
+                sum + week.categories.reduce((catSum, cat) => catSum + cat.tasks.length, 0), 0
+            );
+            
+            const completedTasks = getCompletedCount();
+            const percentage = Math.round((completedTasks / totalTasks) * 100);
+            const currentWeek = getCurrentWeek();
+
+            document.getElementById('dashboard').innerHTML = `
+                <div class="metric-card">
+                    <div class="metric-label">Progresso Geral</div>
+                    <div class="metric-value">${percentage}%</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Tarefas Concluídas</div>
+                    <div class="metric-value">${completedTasks}/${totalTasks}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Semana Atual</div>
+                    <div class="metric-value">${currentWeek}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Semanas Restantes</div>
+                    <div class="metric-value">${8 - currentWeek + 1}</div>
+                </div>
+            `;
+        }
+
+        function renderWeeks() {
+            const content = document.getElementById('content');
+            content.innerHTML = actionPlan.map(week => `
+                <div class="week-section" id="week-${week.week}">
+                    <div class="week-header" onclick="toggleWeek(${week.week})">
+                        <div>
+                            <div class="week-title">${week.title}</div>
+                            <div style="color: #718096; margin-top: 5px;">${week.objective}</div>
+                        </div>
+                        <div class="week-progress">
+                            <div class="progress-bar-container">
+                                <div class="progress-bar" id="progress-${week.week}" style="width: 0%"></div>
+                            </div>
+                            <div class="progress-text" id="progress-text-${week.week}">0%</div>
+                            <div class="expand-icon">▼</div>
+                        </div>
+                    </div>
+                    <div class="week-content">
+                        ${week.categories.map(category => `
+                            <div class="category">
+                                <div class="category-title">
+                                    ${category.name}
+                                    <span class="category-tag tag-${category.tag}">${category.tag}</span>
+                                </div>
+                                ${category.tasks.map((task, idx) => `
+                                    <div class="task-item" data-week="${week.week}" data-category="${category.tag}" data-task="${idx}">
+                                        <input type="checkbox" class="task-checkbox" 
+                                            onchange="toggleTask(${week.week}, '${category.tag}', ${idx})">
+                                        <div class="task-text">${task}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        `).join('')}
+                        <div class="deliverable">
+                            <div class="deliverable-label">📦 Entregável:</div>
+                            <div>${week.deliverable}</div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+            
+            updateAllProgress();
+        }
+
+        function toggleWeek(weekNum) {
+            const weekEl = document.getElementById(`week-${weekNum}`);
+            weekEl.classList.toggle('expanded');
+        }
+
+        function getCurrentWeek() {
+            const startDate = new Date('2025-12-06'); // Data de início
+            const today = new Date();
+            const diffTime = Math.abs(today - startDate);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            return Math.min(Math.ceil(diffDays / 7), 8);
+        }
+
+        function toggleTask(week, category, taskIdx) {
+            const key = `task-${week}-${category}-${taskIdx}`;
+            const current = localStorage.getItem(key) === 'true';
+            localStorage.setItem(key, !current);
+            
+            const taskEl = document.querySelector(`[data-week="${week}"][data-category="${category}"][data-task="${taskIdx}"]`);
+            taskEl.classList.toggle('completed');
+            
+            updateAllProgress();
+            renderDashboard();
+        }
+
+        function loadProgress() {
+            actionPlan.forEach(week => {
+                week.categories.forEach(category => {
+                    category.tasks.forEach((task, idx) => {
+                        const key = `task-${week.week}-${category.tag}-${idx}`;
+                        if (localStorage.getItem(key) === 'true') {
+                            const taskEl = document.querySelector(`[data-week="${week.week}"][data-category="${category.tag}"][data-task="${idx}"]`);
+                            if (taskEl) {
+                                taskEl.classList.add('completed');
+                                taskEl.querySelector('.task-checkbox').checked = true;
+                            }
+                        }
+                    });
+                });
+            });
+            updateAllProgress();
+        }
+
+        function updateAllProgress() {
+            actionPlan.forEach(week => {
+                const totalTasks = week.categories.reduce((sum, cat) => sum + cat.tasks.length, 0);
+                let completed = 0;
+                
+                week.categories.forEach(category => {
+                    category.tasks.forEach((task, idx) => {
+                        const key = `task-${week.week}-${category.tag}-${idx}`;
+                        if (localStorage.getItem(key) === 'true') completed++;
+                    });
+                });
+                
+                const percentage = Math.round((completed / totalTasks) * 100);
+                const progressBar = document.getElementById(`progress-${week.week}`);
+                const progressText = document.getElementById(`progress-text-${week.week}`);
+                
+                if (progressBar) progressBar.style.width = `${percentage}%`;
+                if (progressText) progressText.textContent = `${percentage}%`;
+            });
+        }
+
+        function getCompletedCount() {
+            let count = 0;
+            actionPlan.forEach(week => {
+                week.categories.forEach(category => {
+                    category.tasks.forEach((task, idx) => {
+                        const key = `task-${week.week}-${category.tag}-${idx}`;
+                        if (localStorage.getItem(key) === 'true') count++;
+                    });
+                });
+            });
+            return count;
+        }
+
+        function filterTasks(filter) {
+            // Update active button
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            const tasks = document.querySelectorAll('.task-item');
+            tasks.forEach(task => {
+                const isCompleted = task.classList.contains('completed');
+                const category = task.dataset.category;
+                
+                let show = false;
+                if (filter === 'all') show = true;
+                else if (filter === 'pending' && !isCompleted) show = true;
+                else if (filter === 'completed' && isCompleted) show = true;
+                else if (category === filter) show = true;
+                
+                task.style.display = show ? 'flex' : 'none';
+            });
+        }
+
+        function exportProgress() {
+            const data = {
+                exportDate: new Date().toISOString(),
+                totalProgress: document.querySelector('.metric-value').textContent,
+                weeks: actionPlan.map(week => {
+                    const tasks = [];
+                    week.categories.forEach(category => {
+                        category.tasks.forEach((task, idx) => {
+                            const key = `task-${week.week}-${category.tag}-${idx}`;
+                            tasks.push({
+                                category: category.name,
+                                task: task,
+                                completed: localStorage.getItem(key) === 'true'
+                            });
+                        });
+                    });
+                    return {
+                        week: week.week,
+                        title: week.title,
+                        tasks: tasks
+                    };
+                })
+            };
+            
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `agro-ai-progress-${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+        }
+
+        // Initialize on load
+        window.onload = initTracker;
+    </script>
+</body>
+</html>
