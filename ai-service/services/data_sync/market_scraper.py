@@ -133,14 +133,15 @@ class MarketScraper:
                     create_sql = text("""
                         INSERT INTO "Opportunity" 
                         ("product", "category", "city", "state", "lat", "lng", 
-                         "buyPrice", "sellPrice", "sellLocation", "riskLevel", "bestRoute")
+                         "buyPrice", "sellPrice", "sellLocation", "riskLevel", "bestRoute", "volume", "climate")
                         VALUES 
                         (:p, 'Grãos/Horti', 'Capital', :s, -15.0, -50.0, 
-                         :buy, :sell, 'Ceasa Local', 1, false)
+                         :buy, :sell, 'Ceasa Local', 1, false, 0, 'Atualizado via Mercado Real')
                     """)
                     conn.execute(create_sql, {
                         "p": product, "s": state, "buy": buy_price, "sell": sell_price
                     })
+
                     logger.info(f"✨ Nova Oportunidade Criada: {product} em {state}")
         
         except Exception as e:
@@ -253,16 +254,19 @@ class MarketScraper:
                 df = tables[0]
                 
                 for _, row in df.iterrows():
-                    local = str(row.iloc[1]).upper()
+                    # Coluna "Ceasa" contém: "CEASA-PE Recife(PE)" ou "CEAGESP Araçatuba(SP)"
+                    local = str(row['Ceasa']).upper()  # Usar nome da coluna em vez de índice
                     
                     if any(uf in local for uf in self.target_states):
                         try:
-                            price_raw = row.iloc[2]
+                            price_raw = row['Preço']  # Agora usando nome da coluna
                             if isinstance(price_raw, str):
+                                # Remove "R$ " e converte vírgula brasileira para ponto
                                 price_val = float(
                                     price_raw.replace('R$', '')
-                                             .replace('.', '')
-                                             .replace(',', '.')
+                                    .strip()
+                                    .replace('.', '')
+                                    .replace(',', '.')
                                 )
                             else:
                                 price_val = float(price_raw)
@@ -301,7 +305,7 @@ class MarketScraper:
         
         logger.info(f"✅ Agrolink: {len(all_prices)} preços coletados")
         return all_prices
-    
+
     def run_etl(self) -> Dict:
         """
         Executa ETL completo.

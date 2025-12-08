@@ -24,6 +24,7 @@ from threading import Thread
 from datetime import datetime
 from contextlib import asynccontextmanager
 from routers import chat as chat_router
+from routers import weather
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -34,6 +35,8 @@ from dotenv import load_dotenv
 from config.settings import get_settings
 from routers import predictions_router, calculations_router, admin_router
 from utils.database import test_connection
+
+
 
 # ========================================
 # CONFIGURAÇÃO DE LOGGING
@@ -232,19 +235,19 @@ async def log_requests(request: Request, call_next):
 # ========================================
 app.include_router(
     predictions_router,
-    prefix="/predict",
+    prefix="/api/v1/predict", 
     tags=["🔮 Predições (IA)"]
 )
 
 app.include_router(
     calculations_router,
-    prefix="/calc",
+    prefix="/api/v1/calc", 
     tags=["💰 Calculadoras"]
 )
 
 app.include_router(
     admin_router,
-    prefix="/admin",
+    prefix="/api/v1/admin", 
     tags=["🛠️ Administrativo"]
 )
 
@@ -252,6 +255,12 @@ app.include_router(
     chat_router.router, 
     prefix="/api/v1/chat", 
     tags=["AI Chat"]
+)
+
+app.include_router(
+    weather.router,
+    prefix="/api/v1/weather",
+    tags=["Climate Intelligence"]
 )
 # ========================================
 # ROTAS RAIZ

@@ -7,7 +7,7 @@ const api = axios.create({
 
 // 1. NOVA INSTÂNCIA DEDICADA PARA IA (Python)
 // Aponta direto para o container Python na porta 8000
-const aiApi = axios.create({
+export const aiApi = axios.create({
   baseURL: 'http://localhost:8000/api/v1', // Atenção ao /api/v1
   timeout: 10000, // 10 segundos (IA pode demorar pensar)
   headers: {

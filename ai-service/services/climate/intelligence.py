@@ -13,12 +13,19 @@ CORREÇÕES APLICADAS (baseadas em document.pdf):
 import requests
 import pandas as pd
 import logging
+import httpx
+import asyncio 
 from datetime import datetime
 from functools import lru_cache
 from typing import Dict, Optional, Tuple
 
+
 from utils.cache import CacheManager
 from config.constants import BRAZIL_CLIMATE_NORMS
+
+
+FORECAST_API_URL = "https://api.open-meteo.com/v1/forecast"
+ARCHIVE_API_URL = "https://archive-api.open-meteo.com/v1/archive"
 
 logger = logging.getLogger(__name__)
 
@@ -268,7 +275,122 @@ class ClimateIntelligence:
         except Exception as e:
             logger.error(f"❌ Erro Agrometeo: {e}")
             return None
+    
+    async def get_extended_forecast(self, lat: float, lng: float) -> Optional[Dict]:
+        """
+        Versão Final (Híbrida):
+        - Umidade: Busca da API (Hourly) e agrega -> Sucesso confirmado!
+        - ET0: Calcula via Hargreaves (Python) -> Porque a API retornou zeros.
+        """
+        if not self._validate_coords(lat, lng):
+            return {}
 
+        try:
+            params = {
+                "latitude": lat,
+                "longitude": lng,
+                "timezone": "America/Sao_Paulo",
+                "forecast_days": 16,
+                "models": "gfs_seamless",
+                
+                # 1. Variáveis Diárias (Garantidas)
+                "daily": [
+                    "temperature_2m_max",
+                    "temperature_2m_min",
+                    "precipitation_sum",
+                    "precipitation_probability_max",
+                    "wind_speed_10m_max"
+                ],
+                # 2. Variáveis Horárias (Para Umidade)
+                "hourly": [
+                    "relative_humidity_2m"
+                ]
+            }
+
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                response = await client.get(FORECAST_API_URL, params=params)
+                
+                if response.status_code != 200:
+                    logger.error(f"❌ Erro API: {response.text}")
+                    response.raise_for_status()
+                
+                data = response.json()
+                daily = data.get("daily", {})
+                hourly = data.get("hourly", {})
+                
+                # --- PROCESSAMENTO HÍBRIDO ---
+                
+                t_max_list = daily.get("temperature_2m_max", [])
+                t_min_list = daily.get("temperature_2m_min", [])
+                hourly_hum = hourly.get("relative_humidity_2m", [])
+                
+                daily_et0 = []
+                daily_hum_max = []
+                
+                # Constante de Radiação (Ra) ~ 15 MJ/m2 (Média Brasil)
+                Ra = 15.0 
+
+                num_days = len(daily.get("time", []))
+
+                for i in range(num_days):
+                    # 1. Umidade (API Real)
+                    start_idx = i * 24
+                    end_idx = start_idx + 24
+                    if start_idx < len(hourly_hum):
+                        day_hum_slice = hourly_hum[start_idx:end_idx]
+                        max_hum = max([v for v in day_hum_slice if v is not None], default=0)
+                        daily_hum_max.append(max_hum)
+                    else:
+                        daily_hum_max.append(0)
+
+                    # 2. ET0 (Cálculo Matemático Hargreaves)
+                    # Porque a API retornou zeros no 'evapotranspiration'
+                    try:
+                        if i < len(t_max_list) and i < len(t_min_list):
+                            t_max = t_max_list[i]
+                            t_min = t_min_list[i]
+                            
+                            if t_max is not None and t_min is not None:
+                                t_mean = (t_max + t_min) / 2
+                                delta_t = t_max - t_min
+                                if delta_t < 0: delta_t = 0
+                                
+                                # Fórmula Hargreaves-Samani
+                                et0 = 0.0023 * (t_mean + 17.8) * (delta_t ** 0.5) * (0.408 * Ra)
+                                daily_et0.append(round(et0, 2))
+                            else:
+                                daily_et0.append(0.0)
+                        else:
+                            daily_et0.append(0.0)
+                    except:
+                        daily_et0.append(3.5) # Fallback seguro
+
+                result = {
+                    "time": daily.get("time", []),
+                    "temp_max": t_max_list,
+                    "temp_min": t_min_list,
+                    "rain_sum": daily.get("precipitation_sum", []),
+                    "rain_prob": daily.get("precipitation_probability_max", []),
+                    "wind_max": daily.get("wind_speed_10m_max", []),
+                    "et0": daily_et0,             # ✅ Calculado (Hargreaves)
+                    "humidity_max": daily_hum_max # ✅ API Real
+                }
+                
+                logger.info(f"✅ Previsão Híbrida (16 dias) gerada para {lat},{lng}")
+                return result
+
+        except Exception as e:
+            logger.error(f"❌ Erro Crítico Intelligence: {e}")
+            return {}
+
+    async def _get_fallback_forecast(self, lat: float, lng: float) -> Optional[Dict]:
+        """
+        Fallback simples caso o GFS falhe (apenas dados básicos).
+        """
+        # ... (Cópia da versão simplificada que funcionou antes) ...
+        # Se quiser implementar, copie o código da "Solução Definitiva (Modo Básico Garantido)" aqui
+        return {}
+        
     @lru_cache(maxsize=128)
     def get_accumulated_rain_recent(self, lat: float, lng: float, days_back: int = 120) -> float:
         """

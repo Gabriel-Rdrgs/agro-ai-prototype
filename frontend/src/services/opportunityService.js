@@ -1,6 +1,7 @@
+// frontend/src/services/opportunityService.js
 import axios from 'axios';
 
-// URL da sua API Node.js
+// --- CÓDIGO EXISTENTE (NÃO MEXA) ---
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
 
 const api = axios.create({
@@ -11,6 +12,13 @@ api.interceptors.request.use((config) => {
     const token = localStorage.getItem('token');
     if (token) config.headers.Authorization = `Bearer ${token}`;
     return config;
+});
+// -----------------------------------
+
+// 🔥 ADICIONE ISTO AQUI (NOVA CONEXÃO SÓ PARA O PYTHON)
+const aiApi = axios.create({
+    baseURL: 'http://localhost:8000/api/v1', // Porta 8000 (Python)
+    timeout: 20000 // 20 segundos
 });
 
 const handleAuthError = (error) => {
@@ -106,20 +114,22 @@ export const OpportunityService = {
     }
   },
 
-  // 4. PREVISÃO DO TEMPO (Corrigido para 'getForecast')
+// 4. PREVISÃO DO TEMPO (Alterado para usar aiApi na porta 8000)
   getForecast: async (lat, lng) => {
       try {
-          const response = await api.get(`/api/weather`, {
+          // Usa a conexão 'aiApi' que criamos acima
+          const response = await aiApi.get('/weather/forecast', {
               params: { lat, lng }
           });
-          // O Backend agora retorna { forecast: [], current: {} }
-          // Retornamos o array .forecast para o Dashboard não quebrar
-          return response.data.forecast || []; 
+          
+          // Retorna os dados diretos (o Python já manda no formato { data: ... })
+          return response.data; 
       } catch (error) {
-          console.error("Erro getForecast:", error);
-          return [];
+          console.error("Erro getForecast (IA):", error);
+          return null;
       }
   },
+  
   getCurrentWeather: async (lat, lng) => {
       try {
           const response = await api.get(`/api/weather`, { params: { lat, lng } });
