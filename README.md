@@ -1,382 +1,327 @@
-# 🚀 AgroArbitrage AI (MVP v1.0)
+# 🌾 Agro-AI Prototype (AgroArbitrage IA)
 
-**Plataforma de Inteligência Estratégica para Arbitragem Agrícola**
+**Plataforma de Inteligência Agrícola para Arbitragem, Clima, Logística e RAG em Documentos Técnicos**
 
-Transformando dados climáticos, financeiros e logísticos em lucro líquido através de IA.
+Este repositório contém um sistema full-stack composto por:
+- **Frontend** React (dashboard, mapas, simuladores)
+- **Backend** Node.js/Express (API pública, autenticação, orquestração)
+- **Serviço de IA** em Python/FastAPI (cálculos, predições, RAG)
+- **Banco de dados** PostgreSQL com **PostGIS** e **pgvector**
 
-![React](https://img.shields.io/badge/React-18-blue)
-![Backend](https://img.shields.io/badge/Node.js-green)
-![Python](https://img.shields.io/badge/Python-3.12-yellow)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Latest-blue)
-![Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen)
+Foco atual: **tomate de mesa** no Brasil, com base em PDFs técnicos (Embrapa, UFG, ZARC) e integrações CEASA/Agrolink.
 
-## 📋 Visão Geral
+---
 
-O **AgroArbitrage AI** é um Sistema de Suporte à Decisão (DSS) Full-stack que monitora oportunidades de arbitragem no mercado agrícola brasileiro.
+## 📌 Visão Geral
 
-Diferente de planilhas estáticas, o sistema opera em **tempo real**, cruzando:
+O Agro-AI Prototype é um **Sistema de Suporte à Decisão (DSS)** para operações agrícolas e de arbitragem de hortifrúti, com 3 pilares principais:
 
-- 💱 Cotações internacionais (Dólar)
-- 🛰️ Previsões meteorológicas (Satélite)
-- 🚛 Logística rodoviária
+### 1. Arbitragem e fluxo comercial
+- Oportunidades entre origens (CEASA/produção) e destinos (centros consumidores)
+- Cálculo de ROI real considerando frete, dólar, sazonalidade e risco
 
-Para calcular o **ROI exato** de cada operação.
+### 2. Inteligência climática e produtiva
+- Consumo de APIs climáticas (Open-Meteo, NASA POWER)
+- Análise de armazenagem com base em perdas diárias, radiação, chuva e calendário de plantio
+- Simulações de produção e arbitragem interestadual
 
-## 🎯 Diferenciais do MVP
+### 3. Camada de IA / RAG em PDFs
+- Ingestão de documentos técnicos (PDFs agrícolas)
+- Vetorização com OpenAI Embeddings (`text-embedding-3-small`)
+- Busca semântica com pgvector e resposta via LLM (`gpt-4o-mini`)
 
-### ✨ Visualização Inteligente
+---
 
-O sistema desenha automaticamente as rotas mais lucrativas (ROI 50%) conectando origem e destino.
+## 🏗 Arquitetura Técnica
 
-### 🌡️ Clima em Tempo Real
+### Componentes
 
-Ao clicar em uma região, o sistema consulta satélites e informa a temperatura e chuva no local exato.
+**Frontend (React)**
+- SPA com mapas, dashboards, tabelas e simuladores
+- Comunicação via Axios com o backend Node
+- Usa tokens JWT para proteger as rotas autenticadas
 
-### 📊 Clustering Automático
+**Backend (Node.js + Express)**
+- Autenticação (login, registro, refresh token) com JWT
+- Exposição de endpoints de negócio:
+  - `/api/opportunities` – oportunidades de arbitragem
+  - `/api/weather` – clima consolidado por coordenada
+  - `/api/analytics/trend` – histórico de preços
+  - `/api/ai/storage`, `/api/ai/batch` – ponte para IA em Python
+  - `/calc/production`, `/calc/arbitrage` – simuladores
+  - `/api/ceasa/*` – dados CEASA
+- Orquestração com o serviço Python via `PYTHON_API_URL`
 
-Agrupamento automático de oportunidades para visualização limpa em alta escala.
+**AI Service (Python + FastAPI)**
+- Endpoints sob `/api/v1/*`:
+  - `/predict/storage`, `/predict/batch`, `/predict/market/scan`
+  - `/calc/production`, `/calc/arbitrage`
+  - `/admin/*` (ETL, correções de dados)
+  - `/chat/*` (RAG)
+  - `/weather/*` (inteligência climática)
+- Módulos de serviço:
+  - `storage_advisor.py` – análise de armazenagem
+  - `market_intelligence.py` – sazonalidade e tendências
+  - `arbitrage_calculator.py` – arbitragem interestadual
+  - `fuel_pricing.py` – preços de combustível por estado
+  - `rag_service.py` / `rag_ingestion.py` – RAG em PDFs
 
-## 🏗️ Arquitetura Técnica
+**Banco de Dados (PostgreSQL)**
+- **Prisma** no backend (schema em `backend/prisma/schema.prisma`)
+- Extensões:
+  - `postgis` – campo `geom` para oportunidades (consultas geoespaciais)
+  - `vector` – campo `embedding` em `Document` para RAG
+- Principais modelos:
+  - `Opportunity`, `PriceHistory`
+  - `User`, `RefreshToken`, `AuditLog`
+  - `CeasaPrice`, `CeasaSyncLog`
+  - `FuelPrice`
+  - `Document` (chunks de PDFs + embeddings)
 
-### Arquitetura de Microsserviços
+---
 
-- ✅ Separação clara entre Aplicação Node.js e Inteligência Python
-- ✅ Dados vivos com integração de APIs
-- ✅ Segurança Enterprise (JWT + Bcrypt + Variáveis de Ambiente)
+## 🧭 Fluxo de Dados (alto nível)
+
+1. **Dados de mercado**
+   - ETLs em `ai-service/scripts/` consultam CEASA/Agrolink periodicamente
+   - Dados são gravados em `CeasaPrice` e relacionados a `Opportunity`/`PriceHistory`
+
+2. **Dados climáticos e radiação**
+   - `services/climate/intelligence.py` consulta:
+     - Open-Meteo (histórico + previsão)
+     - NASA POWER (radiação solar diária)
+   - Resultados cacheados (LRU + TTL configurável) para redução de latência
+
+3. **Cálculos e simulações**
+   - Backend consolida dados do Prisma + respostas da IA em Python
+   - Usuário interage via frontend:
+     - Mapa → escolhe origem/destino
+     - Formulário → preenche parâmetros de produção/armazenagem
+   - Resultados voltam como JSON prontos para gráficos
+
+4. **RAG em documentos**
+   - PDFs técnicos são ingeridos via scripts usando `rag_ingestion.py`
+   - Texto é quebrado em chunks, vetorizado com OpenAI Embeddings
+   - Queries do usuário caem em `/api/v1/chat/ask`
+   - Serviço RAG faz:
+     - Busca vetorial (pgvector)
+     - Montagem de contexto
+     - Chamada ao LLM (`gpt-4o-mini`)
+     - Resposta citando fontes (metadados dos chunks)
+
+---
 
 ## 📦 Stack Tecnológico
 
-| Camada             | Tecnologia                   | Detalhes                                |
-| ------------------ | ---------------------------- | --------------------------------------- |
-| **Frontend**       | React.js, Leaflet, Chart.js  | Responsivo, Visualizações em tempo real |
-| **Backend**        | Node.js, Express, Prisma ORM | APIs RESTful escaláveis com dotenv      |
-| **IA/ML**          | Python 3.12, FastAPI         | Processamento de dados e algoritmos     |
-| **Banco de Dados** | PostgreSQL (Supabase/Neon)   | Dados estruturados e persistentes       |
-| **Infraestrutura** | Vercel, Render               | Deploy automático, escalabilidade       |
+| Camada        | Tecnologia principal           |
+|---------------|--------------------------------|
+| Frontend      | React 18, Leaflet, Chart.js   |
+| Backend       | Node.js, Express, Prisma ORM  |
+| IA / ML / RAG | Python 3.12, FastAPI, LangChain, OpenAI |
+| Banco         | PostgreSQL + PostGIS + pgvector |
+| Infra         | Vercel, Railway, Render       |
 
-## 🎁 Funcionalidades Entregues
+---
 
-### 1️⃣ Mapa de Fluxo Comercial (Trade Flow)
+## 🚀 Como Rodar o Projeto Localmente
 
-**Análise de Armazenagem**
+### Pré-requisitos
 
-- Algoritmo rodando em Python que analisa a curva de preços futura vs. custos de estocagem
-- Localidade: Boca de Jacaré
+- Node.js 18+
+- Python 3.10+
+- PostgreSQL (local, Supabase ou Neon)
+- Git
+- Chave OpenAI (`OPENAI_API_KEY`) para a camada de RAG
 
-**Previsão de Risco**
+### 1️⃣ Banco de Dados
 
-- O sistema recomenda a melhor data de venda baseada em eventos climáticos futuros
+Crie um banco PostgreSQL, habilitando as extensões:
 
-### 2️⃣ Cérebro de IA (Python Microservice)
+```sql
+CREATE EXTENSION IF NOT EXISTS postgis;
+CREATE EXTENSION IF NOT EXISTS vector;
+```
 
-**Custo Real de Logística**
+Configure `DATABASE_URL` para apontar para esse banco (ver seções de `.env` abaixo).
 
-- Cálculo de frete baseado em:
-  - Distância rodoviária
-  - Fator de Sinuosidade: 1.35
-  - Preço do diesel em tempo real
-
-**Multimoeda**
-
-- Conversão automática de valores para Dólar (PTAX) em tempo real
-
-**Persistência**
-
-- Salve cenários de simulação para comparar estratégias posteriormente
-
-### 3️⃣ Simulador Logístico-Financeiro
-
-**Simulações Avançadas**
-
-- Teste múltiplos cenários com um clique
-- Análise de sensibilidade para riscos
-- Exportação de resultados em tempo real
-
-### 4️⃣ Dashboard & Relatórios
-
-**KPIs Dinâmicos**
-
-- Volume total em movimentação
-- ROI médio das operações
-- Alertas de Risco atualizados ao vivo
-
-**Exportação PDF**
-
-- Geração de relatórios executivos completos
-- Pronto para envio via WhatsApp/Email
-
-## 🚀 Como Rodar Localmente
-
-O projeto é composto por **3 partes** que devem rodar **simultaneamente**.
-
-### 📋 Pré-requisitos
-
-- ✓ Node.js v18+
-- ✓ Python v3.10+
-- ✓ PostgreSQL (ou usar Supabase)
-- ✓ Git
-
-### 1️⃣ Backend Node.js (porta 3001)
+### 2️⃣ Backend (Node.js – porta 3001)
 
 ```bash
 cd backend
 npm install
 ```
 
-Crie um arquivo `.env` na pasta `backend/`:
+Crie um `.env` (veja exemplo em `backend/.env.example`):
 
 ```env
-# Base de dados
-DATABASE_URL=postgresql://user:password@localhost:5432/agro-ai
-
-# JWT para autenticação (gerar com: openssl rand -base64 32)
-JWT_SECRET=seu_segredo_jwt_muito_seguro_aqui_32_caracteres_minimo
-
-# URLs dos microsserviços
+DATABASE_URL=postgresql://user:password@localhost:5432/agro_ai
+JWT_SECRET=algum_token_seguro_aqui
 PYTHON_API_URL=http://localhost:8000
 PORT=3001
+AWESOME_API_URL=https://economia.awesomeapi.com.br
 ```
 
-**Executar migrations:**
+Rode migrations e seed:
 
 ```bash
 npx prisma migrate dev --name init
-npx prisma db seed  # Popula dados iniciais
+node prisma/seed.js
 ```
 
-**Iniciar servidor:**
+Inicie o backend:
 
 ```bash
 npm run dev
-# Rodando em http://localhost:3001
+# http://localhost:3001
 ```
 
-### 2️⃣ AI Service Python (porta 8000)
+### 3️⃣ AI Service (Python – porta 8000)
 
 ```bash
 cd ai-service
 python -m venv venv
-```
 
-Ativar virtual environment:
-
-```bash
 # Windows
 .\venv\Scripts\activate
-
 # Mac/Linux
 source venv/bin/activate
-```
 
-Instalar dependências:
-
-```bash
 pip install -r requirements.txt
 ```
 
-Crie um arquivo `.env` na pasta `ai-service/`:
+Crie `.env` em `ai-service/`:
 
 ```env
-# Banco de dados
-DATABASE_URL=postgresql://user:password@localhost:5432/agro-ai
-
-# URLs dos APIs
-CLIMATE_API_URL=https://api.openweathermap.org/data/2.5
-CONAB_API_URL=https://www.conab.gov.br/api
-
-# Chaves de API (manter seguro)
-CLIMATE_API_KEY=seu_openweathermap_key_aqui
-
-# Configurações
+DATABASE_URL=postgresql://user:password@localhost:5432/agro_ai
+OPENAI_API_KEY=sk-...
 ENVIRONMENT=development
 PORT=8000
 ```
 
-**Iniciar servidor:**
+Inicie o serviço:
 
 ```bash
 uvicorn main:app --reload --port 8000
-# Rodando em http://localhost:8000
+# http://localhost:8000/docs
 ```
 
-### 3️⃣ Frontend React (porta 3000)
+### 4️⃣ Frontend (React – porta 3000)
 
 ```bash
 cd frontend
 npm install
 ```
 
-Crie um arquivo `.env.local` na pasta `frontend/`:
+Crie `.env.local`:
 
 ```env
-# URL do Backend (sem /api no final - rotas adicionam automaticamente)
 REACT_APP_API_URL=http://localhost:3001
-
-# URLs dos maps
-REACT_APP_MAP_TOKEN=seu_token_mapbox_ou_leaflet
+REACT_APP_MAP_TOKEN=seu_token_de_mapa_aqui
 ```
 
-**Iniciar aplicação:**
+Inicie o frontend:
 
 ```bash
 npm start
-# Rodando em http://localhost:3000
+# http://localhost:3000
 ```
 
-## 🔐 Segurança & Variáveis de Ambiente
+---
 
-### ⚠️ IMPORTANTE: Proteção de Secrets
+## 🔐 Segurança
 
-**NUNCA commitar arquivos `.env` no git!** O arquivo `.gitignore` já protege isso.
+- **JWT**:
+  - Usado para proteger rotas do backend e do serviço Python
+  - `JWT_SECRET` **não** deve ser commitado
+- **CORS**:
+  - Backend Node e FastAPI usam CORS; configure origens permitidas para produção
+- **Senhas**:
+  - Senhas de usuário armazenadas com hash (bcrypt)
+- **Auditoria**:
+  - Tabela `AuditLog` prevista para rastrear ações críticas (login, criação de oportunidade, etc.)
 
-### Geração de JWT_SECRET
+---
 
-Execute este comando uma única vez e guarde o resultado:
+## 🧠 RAG – Documentos Agrícolas
 
-```bash
-# Linux/Mac
-openssl rand -base64 32
+A camada de RAG fica em:
 
-# Windows (usando Git Bash ou PowerShell)
-Certutil -randfile 32 dummy.bin && certutil -encode dummy.bin dummy.txt && type dummy.txt
-```
+- `ai-service/services/rag_service.py`
+- `ai-service/services/rag_ingestion.py`
+- Modelo `Document` em `backend/prisma/schema.prisma`
 
-Coloque o resultado no `.env` do backend.
+### Fluxo
 
-### .env vs .env.example
+1. **Ingestão de PDFs**:
+   - Script lê PDFs, extrai texto, gera chunks e embeddings
+   - Salva em tabela `documents` com coluna `embedding (vector(1536))`
 
-- **`.env`** - CONTÉM secrets reais, nunca committed (protegido no .gitignore)
-- **`.env.example`** - EXEMPLO com placeholders, serve como template para desenvolvedores
+2. **Consulta**:
+   - Endpoint `POST /api/v1/chat/ask` recebe `{"question": "..."}`
+   - Gera embedding da pergunta
+   - Faz busca vetorial no Postgres
+   - Envia contexto + pergunta para LLM
+   - Responde em linguagem natural, citando fontes (nome do PDF, página, etc.)
 
-Crie um arquivo `.env.example` em cada pasta:
+---
 
-**backend/.env.example:**
+## 🛰 Integrações Externas
 
-```env
-DATABASE_URL=postgresql://user:password@localhost:5432/agro-ai-dev
-JWT_SECRET=XXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-PYTHON_API_URL=http://localhost:8000
-PORT=3001
-```
+- **Open-Meteo** – previsão e histórico de clima
+- **NASA POWER** – radiação solar diária para análise de fotossíntese / brix
+- **AwesomeAPI** – cotação do dólar em tempo real
+- **CEASA / Agrolink** – dados de preços de hortifrúti (via ETL Python)
 
-**ai-service/.env.example:**
+---
 
-```env
-DATABASE_URL=postgresql://user:password@localhost:5432/agro-ai-dev
-CLIMATE_API_URL=https://api.openweathermap.org/data/2.5
-CONAB_API_URL=https://www.conab.gov.br/api
-CLIMATE_API_KEY=XXXXXXXXXXXXXXXXXXXXXXX
-ENVIRONMENT=development
-PORT=8000
-```
+## 🧪 Testes
 
-**frontend/.env.example:**
+- **Python**:
+  - Arquivos de teste em `ai-service/test_*.py` (ex.: `test_rag_chat.py`, `test_env.py`)
+- **Node**:
+  - Arquivo `backend/test.http` para requests manuais
+- **TODO**:
+  - Formalizar suíte Jest (backend) e Pytest (ai-service)
 
-```env
-REACT_APP_API_URL=http://localhost:3001
-REACT_APP_MAP_TOKEN=XXXXXXXXXXXXXXXXX
-```
+---
 
-### Como as Variáveis Funcionam
+## 🗺 Roadmap
 
-**Backend (Node.js):**
+- [ ] Refinar camada de RAG para cobrir múltiplos PDFs de tomate (Embrapa/UFG/ZARC)
+- [ ] Adicionar reranking e filtros por metadata (estado, tipo de risco, fase da cultura)
+- [ ] Integrar PostGIS para queries geoespaciais avançadas (raio, rotas)
+- [ ] Implementar notificações (WhatsApp / SMS) para oportunidades críticas
+- [ ] Evoluir scheduler de ETL para Celery + Redis
+- [ ] Multi-tenant architecture para suportar múltiplas organizações
+- [ ] Mobile app com React Native + offline-first
+- [ ] Integração Blockchain para rastreabilidade de lote
 
-```javascript
-require("dotenv").config();
-const port = process.env.PORT || 3001;
-const jwtSecret = process.env.JWT_SECRET;
-```
+---
 
-**AI Service (Python):**
+## 📄 Contribuindo
 
-```python
-from dotenv import load_dotenv
-import os
+Pull requests são bem-vindas! Para mudanças maiores:
 
-load_dotenv()
-db_url = os.getenv('DATABASE_URL')
-```
+1. Faça um fork do repositório
+2. Crie uma branch (`git checkout -b feature/AmazingFeature`)
+3. Commit suas mudanças (`git commit -m 'Add AmazingFeature'`)
+4. Push para a branch (`git push origin feature/AmazingFeature`)
+5. Abra um Pull Request
 
-**Frontend (React):**
-
-```javascript
-const apiUrl = process.env.REACT_APP_API_URL;
-```
-
-⚠️ **Regra de Ouro:** Frontend NUNCA recebe secrets! Apenas URLs públicas com `REACT_APP_` prefix.
-
-## 🔐 Credenciais de Acesso (Demo)
-
-Para acessar o ambiente de teste:
-
-```
-Email: paulo@agro.com
-Senha: 123456
-```
-
-## 🛰️ Integrações e APIs
-
-O sistema utiliza uma arquitetura híbrida de dados para garantir precisão e disponibilidade:
-
-| Serviço                  | Função                                                                  | Fallback / Segurança                      |
-| :----------------------- | :---------------------------------------------------------------------- | :---------------------------------------- |
-| **OpenMeteo Forecast**   | Previsão do tempo (16 dias) para tomada de decisão tática.              | Se falhar, IA usa médias históricas.      |
-| **OpenMeteo Historical** | Histórico real de chuvas (5 anos) da fazenda específica.                | Cache LRU + Fallback para média estadual. |
-| **NASA POWER**           | Radiação Solar (MJ/m²) para análise de qualidade (Brix) e fotossíntese. | Cache LRU + Fallback para média nacional. |
-| **AwesomeAPI**           | Cotação do Dólar em tempo real para commodities.                        | Valor fixo seguro em caso de erro.        |
-
-### 🛡️ Robustez e Segurança
-
-- **Validação de Coordenadas:** Proteção contra inputs geográficos inválidos.
-- **Cache Inteligente (LRU):** Minimiza chamadas de API, reduzindo latência e evitando rate-limits.
-- **Timeouts Configuráveis:** Nenhuma chamada externa trava o sistema por mais de 5 segundos.
-
-## 🗺️ Roadmap - Próximos Passos (Fase 2)
-
-- [ ] **Machine Learning Avançado**
-
-  - Treinar modelos com histórico de 5 anos da CONAB
-  - Previsões com 90%+ de acurácia
-
-- [ ] **PostGIS Integration**
-
-  - Implementar buscas por raio geográfico
-  - Exemplo: Fazendas a 50km de um ponto
-  - Otimização de rotas com A\*
-
-- [ ] **Sistema de Notificações**
-
-  - Alertas via WhatsApp/SMS para oportunidades urgentes
-  - Notificações push em tempo real
-  - Webhooks customizáveis
-
-- [ ] **Mobile App**
-  - Versão React Native para iOS/Android
-  - Acesso offline com sincronização
-
-## 📚 Documentação
-
-Para documentação completa:
-
-- 📖 [Docs](./docs) - Guias e tutoriais
-- 🔌 [API Reference](./docs/API.md) - Endpoints disponíveis
-- 🐍 [AI Service Docs](./docs/AI_SERVICE.md) - Modelos e algoritmos
-- 🔐 [Guia de Segurança](./docs/SECURITY.md) - Boas práticas de segurança
+---
 
 ## 📄 Licença
 
-Este projeto está sob licença MIT. Veja o arquivo [LICENSE](./LICENSE) para mais detalhes.
+Licença MIT – ver arquivo `LICENSE` na raiz do projeto.
 
-## 👨‍💻 Desenvolvedor
+---
 
-Desenvolvido por **Gabriel Rodrigues**
+## 📞 Contato
 
-- 🔗 GitHub: [@Gabriel-Rdrgs](https://github.com/Gabriel-Rdrgs)
-- 💼 LinkedIn: [Gabriel Rodrigues](https://www.linkedin.com/in/gabriel-soares-rodrigues-030121231/)
-- 🌐 Portfolio: [gabriel-dev.com](https://gabriel-dev.com/)
+- **Desenvolvedor**: Gabriel Rodrigues
+- **GitHub**: [@Gabriel-Rdrgs](https://github.com/Gabriel-Rdrgs)
+- **Email**: gabriel.rdrgs@example.com (opcional)
 
-## 📞 Suporte
+---
 
-Tem dúvidas? Abra uma [Issue](https://github.com/Gabriel-Rdrgs/agro-ai-prototype/issues) ou entre em contato!
-
-**⭐ Se este projeto foi útil, deixe uma star!**
+**Última atualização**: Dezembro de 2025
