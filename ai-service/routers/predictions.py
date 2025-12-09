@@ -76,8 +76,9 @@ async def predict_batch(request: BatchPredictionRequest):
                 "d7": {"sellPrice": round(d7_price, 2), "roi": round(((d7_price - buy)/buy)*100, 1)},
                 "d30": {"sellPrice": round(d30_price, 2), "roi": round(((d30_price - buy)/buy)*100, 1)}
             }
-        except:
-            # Fallback seguro
+        except Exception as e:
+            # Fallback seguro com log para debug
+            logger.warning(f"⚠️ Erro ao processar item {item.id}: {e}", exc_info=True)
             results[item.id] = {"d7": {"sellPrice": 0, "roi": 0}, "d30": {"sellPrice": 0, "roi": 0}}
     return results
 

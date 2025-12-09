@@ -244,12 +244,12 @@ class MarketIntelligence:
         final_price = base_price * volatility_markup
         return round(final_price, 2)
     
-def get_predicted_market_price(
+    def get_predicted_market_price(
         self, 
         product: str, 
         state: str, 
         month: int,
-        meteo_data: dict = None # <--- 1. NOVO ARGUMENTO
+        meteo_data: dict = None
     ) -> float:
         """
         Calcula preço futuro = Preço Base (banco) × Fator Sazonal × Volatilidade Climática.
@@ -290,9 +290,9 @@ def get_predicted_market_price(
             # 3. 🌩️ APLICA A REGRA DA CHUVA (AQUI ESTÁ A NOVIDADE)
             if meteo_data:
                 rain = meteo_data.get('rain_mm', 0)
-                # Chama a função nova que criamos na etapa anterior
-                predicted_price = self.apply_weather_volatility(predicted_price, rain)
-            
+                meteo_risk = meteo_data.get('risk_score', 0.0)  # Adiciona cálculo de risco se não fornecido
+                # Chama a função com os 3 parâmetros corretos
+                predicted_price = self.apply_weather_volatility(predicted_price, meteo_risk, rain)
             logger.debug(
                 f"💰 {product}/{state}: Base R${base_price_kg:.2f} -> Final R${predicted_price:.2f}"
             )

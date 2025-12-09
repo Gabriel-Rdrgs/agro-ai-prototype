@@ -322,7 +322,7 @@ app.post('/api/ai/batch', verifyToken, async (req, res) => {
 
     if (sanitizedItems.length === 0) return res.json({});
 
-    const response = await axios.post(`${PYTHON_API_URL}/predict/batch`, { items: sanitizedItems }, { timeout: 60000 });
+    const response = await axios.post(`${PYTHON_API_URL}/api/v1/predict/batch`, { items: sanitizedItems }, { timeout: 60000 });
     res.json(response.data);
 
   } catch (error) {
@@ -338,7 +338,7 @@ app.post('/api/ai/batch', verifyToken, async (req, res) => {
 // 3. Preços de Combustível GERAL (Para Dashboard principal)
 app.get('/api/fuel/current-prices', verifyToken, async (req, res) => {
   try {
-    const response = await axios.get(`${PYTHON_API_URL}/predict/fuel`);
+    const response = await axios.get(`${PYTHON_API_URL}/api/v1/predict/fuel`);
     // O Dashboard espera array ou objeto, mandamos direto
     res.json(response.data);
   } catch (error) {
