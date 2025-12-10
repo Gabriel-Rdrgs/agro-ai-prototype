@@ -34,6 +34,7 @@ from dotenv import load_dotenv
 # Imports locais
 from config.settings import get_settings
 from routers import predictions_router, calculations_router, admin_router
+from routers import projections as projections_router
 from utils.database import test_connection
 
 
@@ -243,6 +244,11 @@ app.include_router(
     calculations_router,
     prefix="/api/v1/calc", 
     tags=["💰 Calculadoras"]
+)
+
+app.include_router(
+    projections_router.router,
+    tags=["📊 Validação de Projeções"]
 )
 
 app.include_router(

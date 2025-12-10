@@ -58,17 +58,17 @@ def get_cache_stats():
 @router.post('/etl/market-prices')
 def run_market_etl():
     """
-    🚜 Executa ETL de preços de mercado (CEASA + Agrolink).
+    🚜 Executa ETL de preços de mercado (CEASA-PR, Agrolink, CONAB, Outras CEASAs).
     """
     try:
-        logger.info("🚜 Iniciando ETL de mercado...")
+        logger.info("🚜 Iniciando ETL de preços de mercado...")
         
         result = market_scraper.run_etl()
         
         if result['success']:
             return {
                 'status': 'success',
-                'message': 'ETL concluído com sucesso',
+                'message': 'ETL de preços concluído com sucesso',
                 'records': result['records'],
                 'sources': result['sources'],
                 'timestamp': result['timestamp']
@@ -83,6 +83,108 @@ def run_market_etl():
     
     except Exception as e:
         logger.error(f"❌ Erro no ETL: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post('/etl/ibge-production')
+def run_ibge_etl(years_back: int = 2):
+    """
+    📊 Executa ETL IBGE (dados de produção agrícola).
+    
+    Args:
+        years_back: Quantos anos de histórico coletar (padrão: 2)
+    """
+    try:
+        logger.info(f"📊 Iniciando ETL IBGE (últimos {years_back} anos)...")
+        
+        from services.data_sync.ibge_scraper import ibge_scraper
+        result = ibge_scraper.run_etl(years_back=years_back)
+        
+        if result['success']:
+            return {
+                'status': 'success',
+                'message': 'ETL IBGE concluído com sucesso',
+                'records': result['records'],
+                'saved': result['saved'],
+                'source': result['source'],
+                'timestamp': result['timestamp']
+            }
+        else:
+            return {
+                'status': 'warning',
+                'message': 'ETL IBGE concluído com avisos',
+                'error': result.get('error'),
+                'note': result.get('note'),
+                'timestamp': datetime.now().isoformat()
+            }
+    
+    except Exception as e:
+        logger.error(f"❌ Erro no ETL IBGE: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post('/etl/all')
+def run_all_etl(skip_ibge: bool = False):
+    """
+    🚀 Executa ETL completo (Preços + Produção IBGE).
+    
+    Args:
+        skip_ibge: Se True, pula o ETL IBGE (padrão: False)
+    """
+    try:
+        logger.info("🚀 Iniciando ETL completo...")
+        
+        results = {
+            'market': None,
+            'ibge': None,
+            'success': True,
+            'total_records': 0,
+            'sources': []
+        }
+        
+        # 1. ETL de Preços
+        try:
+            market_result = market_scraper.run_etl()
+            results['market'] = market_result
+            
+            if market_result['success']:
+                results['total_records'] += market_result['records']
+                results['sources'].extend(market_result.get('sources', []))
+            else:
+                results['success'] = False
+        except Exception as e:
+            logger.error(f"❌ Erro no ETL de preços: {e}")
+            results['success'] = False
+        
+        # 2. ETL IBGE
+        if not skip_ibge:
+            try:
+                from services.data_sync.ibge_scraper import ibge_scraper
+                ibge_result = ibge_scraper.run_etl(years_back=2)
+                results['ibge'] = ibge_result
+                
+                if ibge_result['success']:
+                    results['total_records'] += ibge_result['records']
+                    results['sources'].append('IBGE')
+            except Exception as e:
+                logger.warning(f"⚠️ Erro no ETL IBGE: {e}")
+        else:
+            logger.info("⏭️  ETL IBGE pulado")
+        
+        return {
+            'status': 'success' if results['success'] else 'warning',
+            'message': 'ETL completo concluído',
+            'total_records': results['total_records'],
+            'sources': results['sources'],
+            'details': {
+                'market': results['market'],
+                'ibge': results['ibge']
+            },
+            'timestamp': datetime.now().isoformat()
+        }
+    
+    except Exception as e:
+        logger.error(f"❌ Erro no ETL completo: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

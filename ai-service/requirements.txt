@@ -14,6 +14,7 @@ pandas==2.2.3
 numpy==1.26.4
 scikit-learn==1.5.2
 prophet==1.1.5
+openpyxl==3.1.2  # Para ler arquivos Excel (.xlsx) da CONAB
 # RAG e LLM
 openai==1.55.0
 langchain==0.3.7

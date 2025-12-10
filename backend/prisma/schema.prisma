@@ -134,11 +134,16 @@ model CeasaPrice {
   price_date DateTime
   sync_timestamp DateTime @default(now())
   
+  // ✅ NOVO: Indica se é projeção ou histórico
+  is_projection Boolean @default(false)
+  data_type String? // "historical" ou "projection"
+  
   // Índices para queries rápidas
   @@unique([ceasa_region, product_name, price_date])
   @@index([product_name])
   @@index([ceasa_region])
   @@index([price_date])
+  @@index([is_projection]) // ✅ NOVO: Índice para filtrar projeções
 }
 
 model CeasaSyncLog {
