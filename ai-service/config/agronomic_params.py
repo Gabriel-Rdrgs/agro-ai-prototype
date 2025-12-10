@@ -1,57 +1,78 @@
 # ai-service/config/agronomic_params.py
 """
 PARÂMETROS AGRONÔMICOS CIENTÍFICOS
-Fonte da Verdade baseada em:
-- document (1).pdf: Custo de Armazenagem
-- document.pdf: Clima e Produção
-- document (2).pdf: Épocas de Plantio
+Fonte da Verdade: Importa de mathematical_formulas.py (fonte única)
+
+Este arquivo mantém compatibilidade com código legado, mas TODOS os valores
+vêm de mathematical_formulas.py para garantir consistência.
 """
+
+# ✅ FONTE ÚNICA DA VERDADE
+from .mathematical_formulas import (
+    TEMPERATURE_THRESHOLDS,
+    MIN_SOLAR_RADIATION,
+    RAINFALL_THRESHOLDS,
+    PLANTING_CALENDAR,
+    MONTHLY_LOSS_RATE,
+    DAILY_LOSS_RATE
+)
+
+# Extrai valores de armazenagem da fórmula oficial
+# (Estes valores são usados pela função calculate_storage_cost)
+STORAGE_PARAMS = {
+    "fixed_cost_monthly": 1700.0,  # R$ 1500 (aluguel) + R$ 200 (seguro)
+    "energy_cost_per_kg_day": 0.025,  # R$ 0,025/kg/dia
+    "packaging_cost_per_kg": 0.10,  # R$ 0,10/kg
+    "daily_loss_rate": DAILY_LOSS_RATE,  # 0.002 (0.2%/dia)
+    "monthly_loss_rate": MONTHLY_LOSS_RATE  # 0.06 (6%/mês)
+}
+
+# Extrai thresholds de temperatura (usa vegetative_growth como padrão)
+CLIMATE_THRESHOLDS = {
+    "min_maturation_temp": TEMPERATURE_THRESHOLDS["maturation"]["min"],
+    "risk_germination_temp": TEMPERATURE_THRESHOLDS["germination"]["min"],
+    "ideal_min": TEMPERATURE_THRESHOLDS["vegetative_growth"]["optimal_min"],
+    "ideal_max": TEMPERATURE_THRESHOLDS["vegetative_growth"]["optimal_max"],
+    "critical_heat": TEMPERATURE_THRESHOLDS["critical"]["max_critical"]
+}
+
+# Converte PLANTING_CALENDAR para formato legado (start/end)
+def _convert_planting_calendar():
+    """Converte PLANTING_CALENDAR para formato start/end."""
+    windows = {}
+    for key, value in PLANTING_CALENDAR.items():
+        months = value["months"]
+        if months:
+            start = months[0]
+            # Se atravessa o ano (ex: [8,9,10,11,12,1]), end = último mês
+            if months[-1] < months[0]:
+                end = months[-1]
+            else:
+                end = months[-1]
+            windows[key] = {"start": start, "end": end, "desc": value["description"]}
+    return windows
 
 TOMATO_SPECS = {
     # ========================================
-    # 📦 ARMAZENAGEM & CUSTOS (Fonte: document-1.pdf)
+    # 📦 ARMAZENAGEM & CUSTOS
+    # ✅ Importado de mathematical_formulas.py
     # ========================================
-    "storage": {
-        # Custos Fixos Mensais (Aluguel R$ 1500 + Seguro R$ 200)
-        "fixed_cost_monthly": 1700.00,  #
-        
-        # Custos Variáveis
-        "energy_cost_per_kg_day": 0.025, # R$ 0,025 por kg ao dia
-        "packaging_cost_per_kg": 0.10,   # R$ 0,10 por kg (Embalagem)
-        
-        # Perdas Biológicas (Taxa de deterioração diária)
-        # Estimado em 0.2% ao dia para cálculo do Cp (Custo de Perda)
-        "daily_loss_rate": 0.002 #
-    },
+    "storage": STORAGE_PARAMS,
 
     # ========================================
-    # 🌡️ GATILHOS CLIMÁTICOS (Fonte: document.pdf)
+    # 🌡️ GATILHOS CLIMÁTICOS
+    # ✅ Importado de mathematical_formulas.py
     # ========================================
-    "climate_thresholds": {
-        "min_maturation_temp": 10.0,     # < 10°C: Maturação paralisa (Perda de valor)
-        "risk_germination_temp": 11.0,   # < 11°C: Risco para mudas
-        "ideal_min": 18.0,               # Início da faixa ideal
-        "ideal_max": 27.0,               # Fim da faixa ideal
-        "critical_heat": 34.0            # > 34°C: Dano severo (Abortamento/Queima)
-    },
+    "climate_thresholds": CLIMATE_THRESHOLDS,
+    
+    # Radiação solar mínima
+    "min_solar_mj": MIN_SOLAR_RADIATION,  # 8.4 MJ/m²/dia
 
     # ========================================
-    # 🗓️ CALENDÁRIO DE PLANTIO (Fonte: document-2.pdf)
+    # 🗓️ CALENDÁRIO DE PLANTIO
+    # ✅ Importado de mathematical_formulas.py
     # ========================================
-    # Mês 1 = Janeiro, Mês 12 = Dezembro
-    "planting_windows": {
-        # Sudeste Alta Altitude (>800m): Agosto(8) a Janeiro(1)
-        "SE_HIGH_ALT": {"start": 8, "end": 1, "desc": "Sudeste (Serra/Frio)"}, #
-        
-        # Sudeste Baixa Altitude: Fevereiro(2) a Julho(7)
-        "SE_LOW_ALT":  {"start": 2, "end": 7, "desc": "Sudeste (Baixada/Quente)"}, #
-        
-        # Oeste Paulista: Fevereiro(2) a Junho(6) - Fugir da chuva de Jan
-        "SP_WEST":     {"start": 2, "end": 6, "desc": "Oeste Paulista"}, #
-        
-        # Sul: Agosto(8) a Janeiro(1) - Fugir da geada de Julho
-        "SOUTH":       {"start": 8, "end": 1, "desc": "Sul (Primavera/Verão)"} #
-    },
+    "planting_windows": _convert_planting_calendar(),
     
     # ========================================
     # 📊 DADOS GERAIS (Mantidos do sistema anterior para compatibilidade)

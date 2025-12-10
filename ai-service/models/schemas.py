@@ -149,3 +149,23 @@ class FuelPriceData(BaseModel):
     data_coleta: str
     fonte: str = "Petrobras"
     confidence: float = 0.98
+
+# ========================================
+# PRICE FORECAST MODELS
+# ========================================
+
+class PriceForecastItem(BaseModel):
+    """Item individual de previsão de preço"""
+    date: str
+    price: float
+    lower: float  # Intervalo inferior (80% confiança)
+    upper: float   # Intervalo superior (80% confiança)
+
+class PriceForecastResponse(BaseModel):
+    """Resposta completa de previsão de preços"""
+    status: str
+    forecast: List[PriceForecastItem]
+    forecast_model: Optional[str] = None  # 'prophet' ou 'polynomial_regression_fallback'
+    metrics: Optional[Dict[str, Any]] = None
+    message: Optional[str] = None
+    suggestion: Optional[str] = None

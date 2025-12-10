@@ -122,10 +122,18 @@ export const OpportunityService = {
               params: { lat, lng }
           });
           
-          // Retorna os dados diretos (o Python já manda no formato { data: ... })
-          return response.data; 
+          // Valida a estrutura da resposta
+          if (response.data && response.data.status === 'success' && response.data.data) {
+              return response.data;
+          } else if (response.data && (response.data.data || response.data.daily)) {
+              // Fallback: se não tiver status, mas tiver data
+              return response.data;
+          } else {
+              console.warn("⚠️ Estrutura de resposta inválida:", response.data);
+              return null;
+          }
       } catch (error) {
-          console.error("Erro getForecast (IA):", error);
+          console.error("❌ Erro getForecast (IA):", error.response?.data || error.message);
           return null;
       }
   },

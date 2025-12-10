@@ -17,7 +17,11 @@ const ceasaRoutes = require('./routes/ceasa');
 
 // 3. INICIALIZAÇÃO
 const app = express();
-const prisma = new PrismaClient();
+
+// ✅ Prisma Singleton (otimizado para pool de conexões)
+// Usa singleton pattern para evitar múltiplas instâncias e controlar pool
+const prisma = require('./utils/prisma');
+const { dbCircuitBreaker } = require('./utils/circuitBreaker');
 
 // 4. VARIÁVEIS DE AMBIENTE
 const PORT = process.env.PORT || 3001;
@@ -41,7 +45,29 @@ app.use(cors({
 
 // Rota para o Railway saber que o app está vivo
 app.get('/', (req, res) => res.send('Backend Agro-AI Online 🚀'));
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
+
+// Health check com verificação de banco e circuit breaker
+app.get('/health', async (req, res) => {
+  try {
+    // Testa conexão com banco (com circuit breaker)
+    await dbCircuitBreaker.execute(async () => {
+      await prisma.$queryRaw`SELECT 1`;
+    });
+    
+    res.json({ 
+      status: 'ok',
+      database: 'connected',
+      circuit_breaker: dbCircuitBreaker.getState()
+    });
+  } catch (error) {
+    res.status(503).json({ 
+      status: 'degraded',
+      database: 'disconnected',
+      error: error.message,
+      circuit_breaker: dbCircuitBreaker.getState()
+    });
+  }
+});
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 // --- 🕵️‍♂️ MIDDLEWARE DE DEBUG (RAIO-X) ---
@@ -119,9 +145,11 @@ if (authController) {
 // 1. Listar Oportunidades (Com Dólar em Tempo Real)
 app.get('/api/opportunities', verifyToken, async (req, res) => {
   try {
-    // Busca Oportunidades e Dólar em paralelo
+    // Busca Oportunidades e Dólar em paralelo (com circuit breaker)
     const [opportunities, dollarRate] = await Promise.all([
-        prisma.opportunity.findMany({ orderBy: { createdAt: 'desc' } }),
+        dbCircuitBreaker.execute(async () => {
+          return await prisma.opportunity.findMany({ orderBy: { createdAt: 'desc' } });
+        }),
         getDollarRate() // Função que já existe no seu arquivo
     ]);
     
@@ -410,7 +438,7 @@ app.post('/calc/production', verifyToken, async (req, res) => {
         expected_sell_price: parseFloat(req.body.expected_sell_price) || 0
     };
 
-    const response = await axios.post(`${PYTHON_API_URL}/calc/production`, safePayload);
+    const response = await axios.post(`${PYTHON_API_URL}/api/v1/calc/production`, safePayload);
     res.json(response.data);
   } catch (error) {
     console.error("Erro Ponte Produção:", error.message);
@@ -432,7 +460,7 @@ app.post('/calc/arbitrage', verifyToken, async (req, res) => {
     };
 
     console.log(`📤 [Node -> Python] Arbitragem: ${safePayload.origin_state} -> ${safePayload.destination_state}`);
-    const response = await axios.post(`${PYTHON_API_URL}/calc/arbitrage`, safePayload);
+    const response = await axios.post(`${PYTHON_API_URL}/api/v1/calc/arbitrage`, safePayload);
     res.json(response.data);
 
   } catch (error) {
@@ -444,7 +472,7 @@ app.post('/calc/arbitrage', verifyToken, async (req, res) => {
 // 6. Radar de Mercado
 app.post('/market/scan', verifyToken, async (req, res) => {
   try {
-    const response = await axios.post(`${PYTHON_API_URL}/predict/market/scan`, req.body);
+    const response = await axios.post(`${PYTHON_API_URL}/api/v1/predict/market/scan`, req.body);
     res.json(response.data);
   } catch (error) {
     console.error("Erro Ponte Radar:", error.message);
@@ -452,10 +480,10 @@ app.post('/market/scan', verifyToken, async (req, res) => {
   }
 });
 
-// 7. Admin: Correção de Dados
-app.post('/api/admin/fix-data', verifyToken, async (req, res) => {
+// 7. Admin: Correção de Dados (PROTEGIDO COM RBAC)
+app.post('/api/admin/fix-data', verifyToken, checkRole(['admin']), async (req, res) => {
   try {
-    console.log("🔧 Solicitando correção de dados ao Python...");
+    console.log(`🔧 Admin ${req.user.email} solicitando correção de dados ao Python...`);
     const response = await axios.post(`${PYTHON_API_URL}/admin/fix-market-data`);
     res.json(response.data);
   } catch (error) {

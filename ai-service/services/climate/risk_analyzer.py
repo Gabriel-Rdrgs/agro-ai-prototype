@@ -1,12 +1,9 @@
 # services/climate/risk_analyzer.py
 """
 Analisador de risco climático para culturas.
-Implementa regras agronômicas baseadas em document.pdf.
+✅ FONTE ÚNICA DA VERDADE: config.mathematical_formulas
 
-CORREÇÕES APLICADAS:
-- Radiação solar: 8.4 MJ/m² threshold (era 15 ❌)
-- Chuva: 35mm/7dias ideal, 70mm crítico (era 80mm ❌)
-- Umidade: 80% crítico (PDF)
+Todas as avaliações climáticas usam as funções padronizadas dos PDFs base.
 """
 
 import logging
@@ -15,6 +12,13 @@ from datetime import datetime
 
 from .intelligence import climate_api
 from config.crops import CROPS_SPECS
+from config.mathematical_formulas import (
+    evaluate_temperature_risk,
+    evaluate_solar_radiation,
+    evaluate_rainfall,
+    MIN_SOLAR_RADIATION,
+    TEMPERATURE_THRESHOLDS
+)
 from utils.database import get_engine
 from sqlalchemy import text
 
@@ -52,64 +56,63 @@ class TomatoRiskAnalyzer:
         reasons = []
         
         # ========================================
-        # 1. RADIAÇÃO SOLAR (document.pdf pág 3)
+        # 1. RADIAÇÃO SOLAR
+        # ✅ USA: evaluate_solar_radiation() de mathematical_formulas.py
         # ========================================
-        # ✅ CORRIGIDO: Mínimo 8.4 MJ/m²/dia (era 15 ❌)
-        min_solar = self.specs['min_solar_mj']  # 8.4 MJ/m²/dia
         radiation = meteo_data.get('radiation_mj', 18.0)
+        solar_eval = evaluate_solar_radiation(radiation)
         
-        if radiation < min_solar:
-            deficit = (min_solar - radiation) / min_solar
-            risk_penalty = deficit * 0.3  # Até 30% de penalização
+        if not solar_eval["adequate"]:
+            # Converte score (0-1) para penalty (0-0.3)
+            risk_penalty = (1.0 - solar_eval["score"]) * 0.3
             risk_score += risk_penalty
-            reasons.append(
-                f"Insolação Deficiente ({radiation:.1f} MJ < {min_solar} MJ ideal)"
-            )
-            logger.warning(f"⚠️ Radiação baixa: {radiation:.1f} MJ (ideal: ≥{min_solar})")
+            reasons.append(solar_eval["message"])
+            logger.warning(f"⚠️ {solar_eval['message']}")
         
         # ========================================
-        # 2. CHUVA (document.pdf pág 2)
+        # 2. PRECIPITAÇÃO
+        # ✅ USA: evaluate_rainfall() de mathematical_formulas.py
         # ========================================
-        # ✅ CORRIGIDO: 35mm/7dias ideal, 70mm crítico (era 80mm ❌)
-        # PDF: 400-600mm/ciclo (120 dias) = 5mm/dia ideal
+        # Converte chuva 7 dias para mm/ciclo (aproximação: 7 dias = 7/120 do ciclo)
         rain_7days = meteo_data.get('rain_mm', 0)
+        rain_per_cycle = rain_7days * (120 / 7)  # Projeta para ciclo completo
         
-        ideal_7days = 35.0  # 5mm/dia × 7 dias
-        critical_7days = 70.0  # 10mm/dia × 7 dias (chuva forte)
-        
-        if rain_7days > critical_7days:
-            excess = (rain_7days - critical_7days) / critical_7days
-            risk_penalty = min(excess * 0.4, 0.4)  # Máximo 40% penalização
-            risk_score += risk_penalty
-            reasons.append(
-                f"Excesso de Chuva ({rain_7days:.1f}mm/7d > {critical_7days}mm crítico)"
-            )
-            logger.warning(f"⚠️ Chuva excessiva: {rain_7days:.1f}mm em 7 dias")
-        
-        elif rain_7days > ideal_7days:
-            # Chuva moderada (não crítica, mas não ideal)
-            excess = (rain_7days - ideal_7days) / ideal_7days
-            risk_penalty = min(excess * 0.2, 0.2)  # Máximo 20%
-            risk_score += risk_penalty
-            reasons.append(f"Chuva Moderada ({rain_7days:.1f}mm/7d)")
-        
-        # ========================================
-        # 3. UMIDADE RELATIVA (document.pdf pág 2)
-        # ========================================
-        # PDF: Ideal 50-70%, Crítico > 75% (doenças fúngicas)
         humidity = meteo_data.get('humidity_pct', 65.0)
+        rain_eval = evaluate_rainfall(rain_per_cycle, humidity)
         
-        critical_humidity = self.specs.get('critical_humidity', 75.0)  # 75% (PDF)
-        ideal_max_humidity = self.specs.get('ideal_humidity_max', 70.0)
-        
-        if humidity > critical_humidity:
-            excess = (humidity - ideal_max_humidity) / 30  # Normaliza até 100%
-            risk_penalty = min(excess * 0.3, 0.3)  # Máximo 30%
+        if not rain_eval["rainfall_adequate"]:
+            # Converte score (0-1) para penalty (0-0.4)
+            risk_penalty = (1.0 - rain_eval["rainfall_score"]) * 0.4
             risk_score += risk_penalty
-            reasons.append(
-                f"Umidade Alta ({humidity:.0f}% > {critical_humidity:.0f}% crítico) - Risco Fúngico"
-            )
-            logger.warning(f"⚠️ Umidade elevada: {humidity:.0f}%")
+            reasons.append(rain_eval["rainfall_message"])
+            logger.warning(f"⚠️ {rain_eval['rainfall_message']}")
+        
+        # Avalia umidade se disponível
+        if "humidity_score" in rain_eval and rain_eval["humidity_score"] < 0.8:
+            risk_penalty = (1.0 - rain_eval["humidity_score"]) * 0.3
+            risk_score += risk_penalty
+            reasons.append(rain_eval["humidity_message"])
+        
+        # ========================================
+        # 3. TEMPERATURA
+        # ✅ USA: evaluate_temperature_risk() de mathematical_formulas.py
+        # ========================================
+        temp_avg = meteo_data.get('temp_avg', 22.0)
+        if 'temp_avg' not in meteo_data:
+            # Tenta calcular média se tiver min/max
+            temp_max = meteo_data.get('temp_max', 25.0)
+            temp_min = meteo_data.get('temp_min', 18.0)
+            temp_avg = (temp_max + temp_min) / 2.0
+        
+        # Avalia para fase de desenvolvimento vegetativo (padrão)
+        temp_eval = evaluate_temperature_risk(temp_avg, "vegetative_growth")
+        
+        if temp_eval["risk_level"] in ["moderate", "high", "critical"]:
+            # Converte score (0-1) para penalty
+            risk_penalty = (1.0 - temp_eval["score"]) * 0.3
+            risk_score += risk_penalty
+            reasons.append(temp_eval["message"])
+            logger.warning(f"⚠️ {temp_eval['message']}")
         
         # ========================================
         # 4. RESULTADO FINAL

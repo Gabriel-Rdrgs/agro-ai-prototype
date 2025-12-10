@@ -1,4 +1,8 @@
 # ai-service/services/storage_advisor.py
+"""
+Motor de Armazenagem usando Fórmula Oficial dos PDFs.
+Fonte Única da Verdade: config.mathematical_formulas.calculate_storage_cost()
+"""
 import numpy as np
 from datetime import datetime, timedelta
 import logging
@@ -7,6 +11,7 @@ import math
 
 from models.schemas import SimulationRequest
 from config.crops import get_crop_specs
+from config.mathematical_formulas import calculate_storage_cost, DAILY_LOSS_RATE
 from services.market_intelligence import get_predicted_market_price, get_seasonality_factor
 from utils.database import get_engine
 
@@ -46,7 +51,7 @@ class StorageAdvisor:
         
         return normalized_decay
 
-    def analyze(self, data: SimulationRequest) -> dict:
+    async def analyze(self, data: SimulationRequest) -> dict:
         # 1. SETUP DE DADOS
         specs = get_crop_specs(data.product)
         unit_weight = specs.get('unit_weight_kg', 20.0)
@@ -69,6 +74,44 @@ class StorageAdvisor:
 
         # Recupera dados climáticos reais
         forecast_rain = data.daily_rain or []
+        
+        # ✅ BUSCA AUTOMÁTICA: Se não há dados climáticos, busca usando coordenadas/estado
+        if not forecast_rain or len(forecast_rain) < 16:
+            try:
+                from services.climate.intelligence import climate_api
+                
+                # Tenta usar coordenadas fornecidas
+                lat = data.lat if data.lat and data.lat != 0.0 else None
+                lng = data.lng if data.lng and data.lng != 0.0 else None
+                
+                # Se não tem coordenadas, usa coordenadas do estado
+                if not lat or not lng:
+                    from config.constants import STATE_COORDS
+                    state_coords = STATE_COORDS.get(data.state, STATE_COORDS.get('SP'))
+                    lat, lng = state_coords
+                
+                logger.info(f"🌤️ Buscando dados climáticos para {data.state} ({lat}, {lng})")
+                # Busca forecast estendido (16 dias) - agora usando await diretamente
+                try:
+                    forecast_data = await climate_api.get_extended_forecast(lat, lng)
+                    
+                    if forecast_data and 'rain_sum' in forecast_data:
+                        # Formato retornado pelo get_extended_forecast: {rain_sum: [...]}
+                        forecast_rain = list(forecast_data.get('rain_sum', []))[:16]
+                        logger.info(f"✅ Dados climáticos obtidos: {len(forecast_rain)} dias de previsão para {data.state}")
+                    elif forecast_data and 'precipitation_sum' in forecast_data:
+                        # Formato alternativo
+                        forecast_rain = list(forecast_data.get('precipitation_sum', []))[:16]
+                        logger.info(f"✅ Dados climáticos obtidos: {len(forecast_rain)} dias de previsão para {data.state}")
+                    else:
+                        logger.warning(f"⚠️ Formato inesperado de dados climáticos para {data.state}: {list(forecast_data.keys()) if forecast_data else 'None'}")
+                        forecast_rain = data.daily_rain or []
+                except Exception as e:
+                    logger.warning(f"⚠️ Erro ao buscar clima para {data.state}: {e}", exc_info=True)
+                    forecast_rain = data.daily_rain or []
+            except Exception as e:
+                logger.warning(f"⚠️ Erro ao buscar clima: {e}, usando dados fornecidos")
+                forecast_rain = data.daily_rain or []
         
         # 2. ANÁLISE MACRO (Contexto de Mercado)
         # Busca a tendência sazonal histórica para o mês atual e próximo
@@ -102,7 +145,8 @@ class StorageAdvisor:
             
             # 1. Componente Climático (O "Choque")
             # Olha a previsão REAL do dia (se disponível) ou projeta estatisticamente
-            rain_today = forecast_rain[day] if day < len(forecast_rain) else 0.0
+            has_climate_data = day < len(forecast_rain) and len(forecast_rain) > 0
+            rain_today = forecast_rain[day] if has_climate_data else 0.0
             
             # Acumula dias de chuva consecutivos (Stress Logístico)
             if rain_today > 10.0:
@@ -125,17 +169,24 @@ class StorageAdvisor:
                 jump_factor = 0.02
                 volatility = 0.03
             
-            elif macro_trend_daily > 0:
-                # Se não chove, segue a tendência sazonal (ex: entressafra)
+            elif has_climate_data and macro_trend_daily > 0:
+                # Se TEM dados climáticos E tendência sazonal positiva, segue a tendência
                 jump_factor = macro_trend_daily 
+            
+            elif not has_climate_data:
+                # ⚠️ SEM DADOS CLIMÁTICOS: Usa volatilidade neutra (sem viés de alta/baixa)
+                # Aplica apenas ruído aleatório simétrico (pode subir ou descer)
+                jump_factor = random.uniform(-0.005, 0.005)  # Simétrico em torno de zero
+                volatility = 0.015  # Volatilidade um pouco maior quando sem dados
             
             else:
                 # Tempo bom na safra = Pressão de baixa (muita oferta)
-                jump_factor = random.uniform(-0.01, 0.005)
+                jump_factor = random.uniform(-0.01, 0.0)  # Ajustado para não ter viés positivo
 
             # Equação Estocástica: Preço Amanhã = Preço Hoje * e^(Drift + Volatilidade)
-            # Drift = Tendência Macro + Choque Climático
-            drift = macro_trend_daily + jump_factor
+            # Drift = Tendência Macro (só se tiver dados) + Choque Climático
+            # Se não tiver dados climáticos, drift = 0 (sem tendência sistemática)
+            drift = (macro_trend_daily if has_climate_data else 0.0) + jump_factor
             shock = volatility * np.random.normal() # Distribuição Gaussiana
             
             current_market_sim *= math.exp(drift + shock)
@@ -157,20 +208,38 @@ class StorageAdvisor:
             my_sell_price = current_market_sim * quality_index
 
             # --- C. CUSTOS REAIS (ACUMULADOS) ---
-            # Custo fixo diário (Geladeira/Armazém)
-            daily_storage_cost = data.storage_cost_per_day or 0.03
-            accumulated_ops_cost = b_price + (daily_storage_cost * day)
+            # ✅ USA FÓRMULA OFICIAL: C(x,t) = Cf + Cv + Cp
+            # IMPORTANTE: Calcula custo por kg para manter consistência com preços (R$/kg)
+            # Usa quantidade padrão de 10000 kg (10 toneladas) para distribuir custo fixo de forma mais realista
+            # Câmaras frias comerciais geralmente armazenam volumes maiores, reduzindo custo fixo por kg
+            quantity_standard_kg = 10000.0  # 10 toneladas (quantidade padrão comercial)
+            time_months = (day + 1) / 30.0  # Converte dias para meses (dia+1 para incluir o dia atual)
             
-            # Taxas de Saída (Incidem sobre o valor de venda)
-            commission = my_sell_price * 0.17  # 17% CEASA
-            packaging = 0.175 # R$ 3,50 / 20kg
+            # Calcula custo de armazenagem para quantidade padrão
+            storage_costs = calculate_storage_cost(
+                quantity_kg=quantity_standard_kg,
+                time_months=time_months,
+                price_per_kg=c_price
+            )
             
-            total_exit_cost = accumulated_ops_cost + commission + packaging
+            # Normaliza custo para R$/kg (divide pela quantidade padrão)
+            # Isso distribui o custo fixo (R$ 1700/mês) entre mais kg, reduzindo o custo unitário
+            storage_cost_per_kg = storage_costs["total_cost"] / quantity_standard_kg
+            
+            # Custo por kg = preço de compra + custos de armazenagem por kg até o dia
+            accumulated_ops_cost_per_kg = b_price + storage_cost_per_kg
+            
+            # Taxas de Saída (Incidem sobre o valor de venda por kg)
+            commission_per_kg = my_sell_price * 0.17  # 17% CEASA sobre preço de venda
+            packaging_per_kg = storage_costs["packaging_cost"] / quantity_standard_kg  # R$ 0,10/kg (normalizado)
+            
+            # Custo total por kg = custo de compra + armazenagem + taxas
+            total_exit_cost_per_kg = accumulated_ops_cost_per_kg + commission_per_kg + packaging_per_kg
 
-            # Salva os pontos
+            # Salva os pontos (todos em R$/kg para consistência)
             prices_market.append(round(current_market_sim, 2))
             prices_my_product.append(round(my_sell_price, 2))
-            costs.append(round(total_exit_cost, 2))
+            costs.append(round(total_exit_cost_per_kg, 2))  # Agora em R$/kg, não R$ total
 
         # 4. INTELIGÊNCIA DE DECISÃO
         # Encontra o ponto ótimo onde (Meu Preço - Custo) é máximo

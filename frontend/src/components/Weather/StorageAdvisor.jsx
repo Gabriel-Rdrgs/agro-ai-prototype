@@ -16,7 +16,7 @@ import '../../styles/StorageAdvisor.css';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
-const StorageAdvisor = ({ currentPrice, rainData, rain, product, state }) => {
+const StorageAdvisor = ({ currentPrice, rainData, rain, product, state, lat, lng }) => {
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -41,7 +41,10 @@ const StorageAdvisor = ({ currentPrice, rainData, rain, product, state }) => {
         buy_price: price * 0.6, 
         storage_cost_per_day: 0.03,
         accumulated_rainfall: parseFloat(rain) || 0,
-        daily_rain: rainData || []
+        daily_rain: Array.isArray(rainData) ? rainData : [],
+        // ✅ Coordenadas para buscar dados climáticos reais por estado
+        lat: parseFloat(lat) || 0,
+        lng: parseFloat(lng) || 0
       };
 
       const data = await StorageService.simulateScenario(payload);

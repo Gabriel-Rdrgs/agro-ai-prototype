@@ -1,74 +1,120 @@
 # config/calendar.py
 """
 Calendário regional de plantio baseado em análise climática.
+✅ FONTE ÚNICA DA VERDADE: config.mathematical_formulas.PLANTING_CALENDAR
 
-Fontes:
-- document-2.pdf: Épocas de Plantio e Métricas de Decisão (Tabela 1)
-- Embrapa, UFG, ZARC (Zoneamento Agrícola de Risco Climático)
-
-Critérios de definição:
-1. Temperatura média mensal > 15°C
-2. Precipitação < 150mm/mês concentrado
-3. Radiação solar > 8 MJ/m²/dia
-4. Evita geadas, chuvas torrenciais e calor extremo
-
-Última atualização: 2025-12-04
+Este arquivo mapeia regiões científicas para estados brasileiros,
+mas os dados vêm de mathematical_formulas.py.
 """
 
-from .agronomic_params import TOMATO_SPECS
+from .mathematical_formulas import PLANTING_CALENDAR
 
-def _get_months(window_data):
-    """Converte start/end do agronomic_params para lista de meses [1, 2, 3...]"""
-    start = window_data['start']
-    end = window_data['end']
-    if start <= end:
-        return list(range(start, end + 1))
-    # Caso atravesse o ano (ex: Ago a Jan)
-    return list(range(start, 13)) + list(range(1, end + 1))
+def _get_months_from_calendar(region_key: str) -> list:
+    """Converte PLANTING_CALENDAR para lista de meses [1, 2, 3...]"""
+    if region_key not in PLANTING_CALENDAR:
+        return []
+    return PLANTING_CALENDAR[region_key]["months"]
 
 PLANTING_CALENDAR = {
 'Tomate': {
-        # Mapeando Regiões Científicas para Estados (Adapter)
+        # ✅ MAPEAMENTO: Regiões Científicas → Estados Brasileiros
+        # Dados vêm de mathematical_formulas.PLANTING_CALENDAR
         
         # SP: Usa dados do Oeste Paulista (SP_WEST)
         'SP': {
-            'ideal': _get_months(TOMATO_SPECS['planting_windows']['SP_WEST']),
+            'ideal': _get_months_from_calendar('SP_WEST'),
             'risk': [1, 12], # Janeiro/Dezembro (Chuvas excessivas)
-            'notes': TOMATO_SPECS['planting_windows']['SP_WEST']['desc'],
-            'source': 'Document-2.pdf'
+            'notes': PLANTING_CALENDAR['SP_WEST']['description'],
+            'source': 'mathematical_formulas.py (Épocas de Plantio PDF)'
         },
         
         # MG, RJ, ES: Usam dados de Baixa Altitude (SE_LOW_ALT)
         'MG': {
-            'ideal': _get_months(TOMATO_SPECS['planting_windows']['SE_LOW_ALT']),
+            'ideal': _get_months_from_calendar('SE_LOW_ALT'),
             'risk': [12, 1],
-            'notes': TOMATO_SPECS['planting_windows']['SE_LOW_ALT']['desc'],
-            'source': 'Document-2.pdf'
+            'notes': PLANTING_CALENDAR['SE_LOW_ALT']['description'],
+            'source': 'mathematical_formulas.py'
         },
         'RJ': {
-            'ideal': _get_months(TOMATO_SPECS['planting_windows']['SE_LOW_ALT']),
+            'ideal': _get_months_from_calendar('SE_LOW_ALT'),
             'risk': [12, 1],
-            'notes': 'Região Serrana pode seguir calendário de Alta Altitude.'
+            'notes': 'Região Serrana pode seguir calendário de Alta Altitude (SE_HIGH_ALT).'
+        },
+        'ES': {
+            'ideal': _get_months_from_calendar('SE_LOW_ALT'),
+            'risk': [12, 1],
+            'notes': PLANTING_CALENDAR['SE_LOW_ALT']['description']
         },
         
         # Sul (RS, SC, PR): Usa dados SOUTH
         'PR': {
-            'ideal': _get_months(TOMATO_SPECS['planting_windows']['SOUTH']),
+            'ideal': _get_months_from_calendar('SOUTH'),
             'risk': [6, 7], # Inverno rigoroso
-            'notes': TOMATO_SPECS['planting_windows']['SOUTH']['desc'],
-            'source': 'Document-2.pdf'
+            'notes': PLANTING_CALENDAR['SOUTH']['description'],
+            'source': 'mathematical_formulas.py'
         },
         'RS': {
-            'ideal': _get_months(TOMATO_SPECS['planting_windows']['SOUTH']),
+            'ideal': _get_months_from_calendar('SOUTH'),
             'risk': [6, 7],
-            'notes': 'Evitar geadas severas.'
+            'notes': 'Evitar geadas severas (junho-setembro).'
+        },
+        'SC': {
+            'ideal': _get_months_from_calendar('SOUTH'),
+            'risk': [6, 7],
+            'notes': PLANTING_CALENDAR['SOUTH']['description']
         },
         
-        # Fallback para outros estados (GO, BA) - Mantemos lógica segura
-        'default': {
-            'ideal': [4, 5, 6, 7, 8], # Meses secos no cerrado/nordeste
+        # Centro-Oeste: Usa dados CENTER_WEST
+        'GO': {
+            'ideal': _get_months_from_calendar('CENTER_WEST'),
+            'risk': [1, 2], # Chuvas intensas
+            'notes': PLANTING_CALENDAR['CENTER_WEST']['description']
+        },
+        'MT': {
+            'ideal': _get_months_from_calendar('CENTER_WEST'),
+            'risk': [1, 2],
+            'notes': PLANTING_CALENDAR['CENTER_WEST']['description']
+        },
+        'MS': {
+            'ideal': _get_months_from_calendar('CENTER_WEST'),
+            'risk': [1, 2],
+            'notes': PLANTING_CALENDAR['CENTER_WEST']['description']
+        },
+        
+        # Nordeste: Usa dados NORTHEAST
+        'BA': {
+            'ideal': _get_months_from_calendar('NORTHEAST'),
             'risk': [],
-            'notes': 'Calendário genérico (Estação Seca).'
+            'notes': PLANTING_CALENDAR['NORTHEAST']['description']
+        },
+        'CE': {
+            'ideal': _get_months_from_calendar('NORTHEAST'),
+            'risk': [],
+            'notes': 'Polos serranos (ex: Ibiapaba) com condições ideais.'
+        },
+        'PE': {
+            'ideal': _get_months_from_calendar('NORTHEAST'),
+            'risk': [],
+            'notes': 'Semiárido requer irrigação.'
+        },
+        
+        # Norte: Usa dados NORTH
+        'PA': {
+            'ideal': _get_months_from_calendar('NORTH'),
+            'risk': [11, 12, 1, 2], # Estação chuvosa
+            'notes': PLANTING_CALENDAR['NORTH']['description']
+        },
+        'AM': {
+            'ideal': _get_months_from_calendar('NORTH'),
+            'risk': [11, 12, 1, 2],
+            'notes': 'Cultivo protegido recomendado fora da época seca.'
+        },
+        
+        # Fallback para estados não mapeados
+        'default': {
+            'ideal': [4, 5, 6, 7, 8], # Meses secos genéricos
+            'risk': [],
+            'notes': 'Calendário genérico (Estação Seca). Consulte ZARC para região específica.'
         }
     },
     

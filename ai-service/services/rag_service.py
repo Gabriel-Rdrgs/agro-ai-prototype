@@ -16,23 +16,43 @@ class RagService:
     def __init__(self):
         api_key = os.getenv("OPENAI_API_KEY")
         
-        # 1. Modelo de Embeddings
-        self.embeddings = OpenAIEmbeddings(
-            model="text-embedding-3-small",
-            openai_api_key=api_key
-        )
+        if not api_key:
+            logger.warning("⚠️ OPENAI_API_KEY não encontrada! Chat IA não funcionará.")
+            self.embeddings = None
+            self.llm = None
+            return
         
-        # 2. LLM (Cérebro)
-        self.llm = ChatOpenAI(
-            model="gpt-4o-mini",
-            temperature=0,
-            openai_api_key=api_key
-        )
+        try:
+            # 1. Modelo de Embeddings
+            self.embeddings = OpenAIEmbeddings(
+                model="text-embedding-3-small",
+                openai_api_key=api_key
+            )
+            
+            # 2. LLM (Cérebro)
+            self.llm = ChatOpenAI(
+                model="gpt-4o-mini",
+                temperature=0,
+                openai_api_key=api_key
+            )
+            logger.info("✅ OpenAI configurado com sucesso")
+        except Exception as e:
+            logger.error(f"❌ Erro ao configurar OpenAI: {e}")
+            self.embeddings = None
+            self.llm = None
 
     def ask(self, question: str) -> dict:
         """
         Recebe uma pergunta, busca contexto e retorna a resposta.
         """
+        # Verifica se OpenAI está configurado
+        if not self.llm or not self.embeddings:
+            return {
+                "answer": "⚠️ **Serviço de IA não configurado.**\n\nA chave de API da OpenAI (OPENAI_API_KEY) não foi encontrada ou está inválida. Por favor, configure a variável de ambiente.",
+                "sources": [],
+                "error_type": "not_configured"
+            }
+        
         try:
             # A. Buscar Contexto Relevante
             relevant_docs = self._retrieve_context(question)
@@ -87,8 +107,38 @@ class RagService:
             }
 
         except Exception as e:
-            logger.error(f"Erro no RAG: {e}", exc_info=True)
-            return {"answer": "Erro ao processar sua pergunta.", "sources": []}
+            error_str = str(e).lower()
+            error_type = type(e).__name__
+            
+            # Detecta erros específicos da OpenAI
+            if "insufficient_quota" in error_str or "quota" in error_str:
+                logger.error(f"❌ OpenAI: Créditos insuficientes ou quota excedida: {e}")
+                return {
+                    "answer": "⚠️ **Créditos da OpenAI esgotados ou quota excedida.**\n\nPor favor, verifique sua conta OpenAI e adicione créditos se necessário. A funcionalidade de chat IA está temporariamente indisponível.",
+                    "sources": [],
+                    "error_type": "insufficient_quota"
+                }
+            elif "rate_limit" in error_str or "429" in error_str:
+                logger.error(f"❌ OpenAI: Rate limit excedido: {e}")
+                return {
+                    "answer": "⚠️ **Muitas requisições em pouco tempo.**\n\nPor favor, aguarde alguns segundos e tente novamente.",
+                    "sources": [],
+                    "error_type": "rate_limit"
+                }
+            elif "invalid" in error_str and "key" in error_str or "401" in error_str or "authentication" in error_str:
+                logger.error(f"❌ OpenAI: Chave de API inválida ou ausente: {e}")
+                return {
+                    "answer": "⚠️ **Chave de API da OpenAI inválida ou não configurada.**\n\nVerifique se a variável OPENAI_API_KEY está configurada corretamente no ambiente.",
+                    "sources": [],
+                    "error_type": "invalid_api_key"
+                }
+            else:
+                logger.error(f"❌ Erro no RAG ({error_type}): {e}", exc_info=True)
+                return {
+                    "answer": f"Erro ao processar sua pergunta: {str(e)[:200]}",
+                    "sources": [],
+                    "error_type": error_type
+                }
 
     def _retrieve_context(self, question: str, k=8):
         """

@@ -9,6 +9,8 @@ generator client {
 datasource db {
   provider   = "postgresql"
   url        = env("DATABASE_URL")
+  // ✅ Prisma gerencia o pool automaticamente
+  // Para limitar conexões, use connection_limit na URL ou configure no PrismaClient
   // Adicionado 'vector' para suporte a IA/Embeddings
   extensions = [postgis, vector]
 }

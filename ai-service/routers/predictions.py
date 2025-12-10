@@ -1,10 +1,14 @@
 # ai-service/routers/predictions.py
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 import math
-from models.schemas import BatchPredictionRequest, MarketScanRequest, SimulationRequest, ArbitrageRequest
+from models.schemas import (
+    BatchPredictionRequest, MarketScanRequest, SimulationRequest, ArbitrageRequest,
+    PriceForecastResponse
+)
 from services.fuel_pricing import fuel_api
 from services.arbitrage_calculator import arbitrage_calculator
 from services.logistics import logistics_service
+from services.price_forecast import price_forecast_service
 from config.constants import STATE_COORDS
 import logging
 from datetime import datetime, timedelta
@@ -27,7 +31,70 @@ MAJOR_HUBS = {
     'RS': {'name': 'CEASA - RS (P. Alegre)', 'lat': -30.0346, 'lng': -51.2177},
 }
 
-# --- 1. ROTA DE COMBUSTÍVEL (Diesel) ---
+# --- 1. ROTA DE PREVISÃO DE PREÇOS (Prophet) ---
+@router.get("/price-forecast", response_model=PriceForecastResponse)
+async def get_price_forecast(
+    product: str = Query(..., description="Nome do produto (ex: 'Tomate', 'Soja', 'Milho')"),
+    region: str = Query(None, description="Código UF (ex: 'SP', 'MG'). Opcional, usa todos se não informado"),
+    days: int = Query(30, ge=7, le=90, description="Quantos dias à frente prever (7-90)")
+):
+    """
+    🔮 Previsão de preços usando Prophet (séries temporais).
+    
+    Retorna previsões futuras de preços com intervalos de confiança.
+    Usa Prophet quando há dados suficientes, fallback para regressão polinomial.
+    
+    **Exemplo:**
+    ```
+    GET /api/v1/predict/price-forecast?product=Tomate&region=SP&days=30
+    ```
+    
+    **Resposta:**
+    ```json
+    {
+      "status": "success",
+      "forecast": [
+        {
+          "date": "2025-12-10",
+          "price": 4.65,
+          "lower": 4.18,
+          "upper": 5.12
+        },
+        ...
+      ],
+      "model_type": "prophet",
+      "model_metrics": {
+        "data_points": 90,
+        "forecast_days": 30
+      }
+    }
+    ```
+    """
+    try:
+        logger.info(f"🔮 Previsão solicitada: {product}/{region or 'todas'} - {days} dias")
+        
+        result = price_forecast_service.forecast(
+            product=product,
+            region=region,
+            days_ahead=days
+        )
+        
+        if result['status'] == 'error':
+            logger.warning(f"⚠️ Previsão falhou: {result.get('message', 'Erro desconhecido')}")
+            raise HTTPException(
+                status_code=503 if 'Dados insuficientes' in result.get('message', '') else 500,
+                detail=result.get('message', 'Erro ao gerar previsão')
+            )
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Erro crítico na previsão: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
+
+# --- 2. ROTA DE COMBUSTÍVEL (Diesel) ---
 @router.get("/fuel")
 def get_fuel_prices():
     try:
@@ -44,10 +111,17 @@ async def predict_storage(request: SimulationRequest):
     Simula viabilidade de armazenagem usando o StorageAdvisor (Padrão Custo Brasil).
     """
     try:
-        # Delega para o especialista
-        return storage_advisor.analyze(request)
+        # Delega para o especialista (agora assíncrono)
+        return await storage_advisor.analyze(request)
+    except AttributeError as e:
+        # Erro específico de atributo faltando
+        error_msg = str(e)
+        logger.error(f"❌ Erro Storage (AttributeError): {error_msg}")
+        logger.error(f"   Request recebido: product={request.product}, state={request.state}, lat={request.lat}, lng={request.lng}")
+        logger.error(f"   Atributos disponíveis: {[attr for attr in dir(request) if not attr.startswith('_')]}")
+        raise HTTPException(status_code=500, detail=f"Erro de atributo: {error_msg}. Verifique se todos os campos necessários foram enviados.")
     except Exception as e:
-        logger.error(f"❌ Erro Storage: {e}")
+        logger.error(f"❌ Erro Storage: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
     
 # --- 3. ROTA BATCH (Slider Temporal do Mapa) ---
@@ -101,11 +175,11 @@ async def market_scan(request: MarketScanRequest):
         # 3. Importa Hubs da calculadora para não duplicar lista
         from services.arbitrage_calculator import MAJOR_HUBS
         
-        # Define destinos: Hubs + SP + PR (referências de mercado)
-        destinos = set(list(MAJOR_HUBS.keys()) + ['SP', 'PR', 'MG'])
+        # Define destinos: Hubs + SP + PR (referências de mercado) + mercado local
+        destinos = set(list(MAJOR_HUBS.keys()) + ['SP', 'PR', 'MG', origin_uf])
         
         for dest_uf in destinos:
-            if dest_uf == origin_uf: continue # Pula mercado local
+            # ✅ NÃO PULA MERCADO LOCAL: Pode ser vantajoso vender no próprio estado
 
             try:
                 # 4. A MÁGICA DA CENTRALIZAÇÃO ✨
@@ -130,7 +204,8 @@ async def market_scan(request: MarketScanRequest):
                 
                 # Filtros de Sanidade da Calculadora
                 roi = fin['roi']
-                # Ignora prejuízo total (-100%) ou lucro absurdo (>200%)
+                # Ignora apenas prejuízo total extremo (-100%) ou lucro absurdo (>200%)
+                # Mantém ROIs negativos moderados para comparação (ex: -28.7% vs 28.8%)
                 if roi <= -100 or roi > 200: continue 
 
                 ranking.append({
@@ -152,14 +227,23 @@ async def market_scan(request: MarketScanRequest):
             except Exception:
                 continue # Se um destino falhar, tenta o próximo
 
-        # Ordena: Melhor ROI primeiro
+        # Ordena: Melhor ROI primeiro (maior ROI = melhor)
         ranking.sort(key=lambda x: x['roi'], reverse=True)
         
-        # Pega o melhor (Top 1)
+        # ✅ Pega o melhor (Top 1) - deve ser o maior ROI positivo, ou o menos negativo se todos forem negativos
         best = ranking[0] if ranking else None
         
+        # Validação: Se o melhor tem ROI negativo, mas há opções positivas, algo está errado
+        if best and best['roi'] < 0:
+            # Procura se há algum ROI positivo no ranking
+            positive_rois = [r for r in ranking if r['roi'] > 0]
+            if positive_rois:
+                logger.warning(f"⚠️ Melhor ROI é negativo ({best['roi']}%), mas há {len(positive_rois)} opções positivas. Usando a melhor positiva.")
+                best = positive_rois[0]  # Pega o melhor ROI positivo
+        
         if not best:
-            best = {"destination": "Local", "roi": 0, "net_profit": 0}
+            # Fallback: sugere mercado local com ROI conservador
+            best = {"destination": origin_uf, "roi": 0, "net_profit": 0, "destination_name": f"Mercado Local ({origin_uf})"}
             ranking.append(best)
 
         return {

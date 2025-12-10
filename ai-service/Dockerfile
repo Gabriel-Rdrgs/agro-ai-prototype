@@ -14,6 +14,11 @@ COPY requirements.txt .
 # Aumenta timeout para evitar erro em bibliotecas grandes
 RUN pip install --no-cache-dir --default-timeout=100 -r requirements.txt
 
+# 2.1. Instala CmdStanPy e CmdStan (necessário para Prophet)
+RUN pip install --no-cache-dir --upgrade cmdstanpy && \
+    python -c "from cmdstanpy import install_cmdstan; install_cmdstan(verbose=False)" && \
+    pip install --no-cache-dir --upgrade prophet
+
 # 3. Copia o código fonte
 COPY . .
 

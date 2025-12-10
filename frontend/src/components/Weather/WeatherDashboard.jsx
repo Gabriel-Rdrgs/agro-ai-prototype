@@ -61,26 +61,37 @@ const WeatherDashboard = ({ opportunities = [] }) => {
       if (lat && lng) {
           OpportunityService.getForecast(lat, lng)
             .then(data => {
-              setForecast(data);
+              console.log("📊 Dados recebidos do clima:", data);
+              // Garante que temos a estrutura correta
+              if (data && (data.data || data.daily)) {
+                setForecast(data);
+              } else {
+                console.warn("⚠️ Estrutura de dados inválida:", data);
+                setForecast(null);
+              }
               setLoading(false);
             })
             .catch(err => {
-              console.error("Erro ao buscar clima:", err);
+              console.error("❌ Erro ao buscar clima:", err);
+              setForecast(null);
               setLoading(false);
             });
+      } else {
+        console.warn("⚠️ Coordenadas inválidas:", { lat, lng });
+        setLoading(false);
       }
     }
   }, [selectedOpp]);
 
   // --- 2. EXTRAÇÃO SEGURA DE DADOS (16 DIAS) ---
   const fData = forecast?.data || forecast?.daily || {};
-  const time = fData.time || [];
+  const time = Array.isArray(fData.time) ? fData.time : [];
   
-  const tMax = fData.temp_max || fData.temperature_2m_max || [];
-  const tMin = fData.temp_min || fData.temperature_2m_min || [];
-  const rain = fData.rain_sum || fData.precipitation_sum || [];
-  const et0 = fData.et0 || [];
-  const hum = fData.humidity_max || [];
+  const tMax = Array.isArray(fData.temp_max) ? fData.temp_max : (Array.isArray(fData.temperature_2m_max) ? fData.temperature_2m_max : []);
+  const tMin = Array.isArray(fData.temp_min) ? fData.temp_min : (Array.isArray(fData.temperature_2m_min) ? fData.temperature_2m_min : []);
+  const rain = Array.isArray(fData.rain_sum) ? fData.rain_sum : (Array.isArray(fData.precipitation_sum) ? fData.precipitation_sum : []);
+  const et0 = Array.isArray(fData.et0) ? fData.et0 : [];
+  const hum = Array.isArray(fData.humidity_max) ? fData.humidity_max : [];
 
   // --- 3. CONFIGURAÇÃO DO GRÁFICO (MEMOIZED) ---
   const chartData = useMemo(() => {
@@ -261,7 +272,7 @@ const WeatherDashboard = ({ opportunities = [] }) => {
                      <div style={{ background: '#15192c', padding: '15px', borderRadius: '12px', borderLeft: '4px solid #00d9ff' }}>
                         <small style={{ color: '#94a3b8', textTransform: 'uppercase' }}>Chuva Total</small>
                         <div style={{ fontSize: '24px', color: '#fff', fontWeight: 'bold' }}>
-                            {rain.reduce((a, b) => a + b, 0).toFixed(1)} mm
+                            {rain.length > 0 ? rain.reduce((a, b) => (a || 0) + (b || 0), 0).toFixed(1) : '0.0'} mm
                         </div>
                         <small style={{ color: '#00d9ff' }}>Acumulado 16 dias</small>
                      </div>
@@ -269,7 +280,7 @@ const WeatherDashboard = ({ opportunities = [] }) => {
                      <div style={{ background: '#15192c', padding: '15px', borderRadius: '12px', borderLeft: '4px solid #ff6b6b' }}>
                         <small style={{ color: '#94a3b8', textTransform: 'uppercase' }}>Temp Média</small>
                         <div style={{ fontSize: '24px', color: '#fff', fontWeight: 'bold' }}>
-                            {(tMax.reduce((a, b) => a + b, 0) / time.length).toFixed(1)}°C
+                            {tMax.length > 0 && time.length > 0 ? (tMax.reduce((a, b) => (a || 0) + (b || 0), 0) / time.length).toFixed(1) : '0.0'}°C
                         </div>
                         <small style={{ color: '#ff6b6b' }}>Máximas</small>
                      </div>
@@ -277,7 +288,7 @@ const WeatherDashboard = ({ opportunities = [] }) => {
                      <div style={{ background: '#15192c', padding: '15px', borderRadius: '12px', borderLeft: '4px solid #d97706' }}>
                         <small style={{ color: '#94a3b8', textTransform: 'uppercase' }}>Umidade Máx (Méd)</small>
                         <div style={{ fontSize: '24px', color: '#fff', fontWeight: 'bold' }}>
-                            {(hum.reduce((a, b) => a + b, 0) / time.length).toFixed(0)}%
+                            {hum.length > 0 && time.length > 0 ? (hum.reduce((a, b) => (a || 0) + (b || 0), 0) / time.length).toFixed(0) : '0'}%
                         </div>
                         <small style={{ color: '#d97706' }}>Risco Fúngico</small>
                      </div>
@@ -285,7 +296,7 @@ const WeatherDashboard = ({ opportunities = [] }) => {
                      <div style={{ background: '#15192c', padding: '15px', borderRadius: '12px', borderLeft: '4px solid #facc15' }}>
                         <small style={{ color: '#94a3b8', textTransform: 'uppercase' }}>ET₀ Acumulado</small>
                         <div style={{ fontSize: '24px', color: '#fff', fontWeight: 'bold' }}>
-                            {et0.reduce((a, b) => a + b, 0).toFixed(1)} mm
+                            {et0.length > 0 ? et0.reduce((a, b) => (a || 0) + (b || 0), 0).toFixed(1) : '0.0'} mm
                         </div>
                         <small style={{ color: '#facc15' }}>Demanda Hídrica</small>
                      </div>
@@ -303,38 +314,45 @@ const WeatherDashboard = ({ opportunities = [] }) => {
                       paddingBottom: '15px' 
                   }}>
                     {time.map((dateStr, i) => {
-                      const dateObj = new Date(dateStr + 'T12:00:00');
-                      const isRainy = (rain[i] || 0) > 5;
-                      const et0Val = et0[i] || 0;
-                      
-                      return (
-                        <div key={i} style={{ 
-                            minWidth: '130px', 
-                            background: '#15192c', 
-                            padding: '15px', 
-                            borderRadius: '12px', 
-                            border: '1px solid rgba(0, 217, 255, 0.1)',
-                            textAlign: 'center',
-                            flexShrink: 0 
-                        }}>
-                          <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '5px' }}>
-                            {dateObj.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit' })}
-                          </div>
-                          
-                          <div style={{ fontSize: '28px', marginBottom: '10px' }}>
-                            {isRainy ? '🌧️' : ((tMax[i] || 0) > 30 ? '☀️' : '⛅')}
-                          </div>
+                      try {
+                        const dateObj = new Date(dateStr + 'T12:00:00');
+                        const isRainy = (rain[i] || 0) > 5;
+                        const et0Val = et0[i] || 0;
+                        const tMaxVal = tMax[i] || 0;
+                        const tMinVal = tMin[i] || 0;
+                        
+                        return (
+                          <div key={i} style={{ 
+                              minWidth: '130px', 
+                              background: '#15192c', 
+                              padding: '15px', 
+                              borderRadius: '12px', 
+                              border: '1px solid rgba(0, 217, 255, 0.1)',
+                              textAlign: 'center',
+                              flexShrink: 0 
+                          }}>
+                            <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '5px' }}>
+                              {dateObj.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit' })}
+                            </div>
+                            
+                            <div style={{ fontSize: '28px', marginBottom: '10px' }}>
+                              {isRainy ? '🌧️' : (tMaxVal > 30 ? '☀️' : '⛅')}
+                            </div>
 
-                          <div style={{ fontWeight: 'bold', color: '#fff', marginBottom: '8px' }}>
-                            {tMax[i]?.toFixed(0)}° <span style={{color:'#666', fontSize:'0.9em'}}>{tMin[i]?.toFixed(0)}°</span>
+                            <div style={{ fontWeight: 'bold', color: '#fff', marginBottom: '8px' }}>
+                              {tMaxVal.toFixed(0)}° <span style={{color:'#666', fontSize:'0.9em'}}>{tMinVal.toFixed(0)}°</span>
+                            </div>
+                            
+                            <div style={{ fontSize: '11px', display:'flex', flexDirection:'column', gap:'4px' }}>
+                                <span style={{ color: '#00d9ff' }}>💧 {(rain[i] || 0).toFixed(1)} mm</span>
+                                {et0Val > 0 && <span style={{ color: '#facc15' }}>♨️ {et0Val.toFixed(1)} mm</span>}
+                            </div>
                           </div>
-                          
-                          <div style={{ fontSize: '11px', display:'flex', flexDirection:'column', gap:'4px' }}>
-                              <span style={{ color: '#00d9ff' }}>💧 {(rain[i] || 0).toFixed(1)} mm</span>
-                              {et0Val > 0 && <span style={{ color: '#facc15' }}>♨️ {et0Val.toFixed(1)} mm</span>}
-                          </div>
-                        </div>
-                      )
+                        );
+                      } catch (err) {
+                        console.error(`Erro ao renderizar dia ${i}:`, err);
+                        return null;
+                      }
                     })}
                   </div>
               </div>
@@ -347,6 +365,8 @@ const WeatherDashboard = ({ opportunities = [] }) => {
                      rain={rain.reduce((a, b) => a + b, 0)} 
                      product={selectedOpp.product}
                      state={selectedOpp.origin.state}
+                     lat={selectedOpp.coords?.lat}
+                     lng={selectedOpp.coords?.lng}
                   />
               </div>
 

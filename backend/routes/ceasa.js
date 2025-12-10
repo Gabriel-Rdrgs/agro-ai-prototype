@@ -2,10 +2,9 @@
 
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
-const { verifyToken } = require('../authMiddleware');
-
-const prisma = new PrismaClient();
+const prisma = require('../utils/prisma');
+const { dbCircuitBreaker } = require('../utils/circuitBreaker');
+const { verifyToken, checkRole } = require('../authMiddleware');
 
 // ============================================
 // 📈 ROTAS DE CEASA
@@ -251,12 +250,12 @@ router.get('/stats/products', verifyToken, async (req, res) => {
 });
 
 /**
- * POST /api/ceasa/import (Futuro - para sincronização)
+ * POST /api/ceasa/import (PROTEGIDO COM RBAC - APENAS ADMIN)
  * Importa novos preços de CEASA
  */
-router.post('/import', verifyToken, async (req, res) => {
+router.post('/import', verifyToken, checkRole(['admin']), async (req, res) => {
   try {
-    console.log('🔄 Iniciando importação de preços...');
+    console.log(`🔄 Admin ${req.user.email} iniciando importação de preços...`);
     
     // Validação básica
     const { prices } = req.body;

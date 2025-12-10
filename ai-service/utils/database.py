@@ -44,14 +44,31 @@ def get_engine():
     global _engine
     if _engine is None:
         url = get_database_url()
+        
+        # ✅ OTIMIZAÇÃO CRÍTICA: Pool reduzido para evitar esgotamento
+        # Supabase Session mode tem limite de 15-20 conexões totais
+        # Python: 3+2 = 5 conexões máximas
+        # Node.js: 5 conexões (via Prisma)
+        # Total: ~10 conexões (dentro do limite seguro)
+        pool_size = 3  # Reduzido de 5 para 3 (mais conservador)
+        max_overflow = 2  # Reduzido de 5 para 2 (total máximo: 5 conexões)
+        pool_timeout = 20  # Timeout menor (20s em vez de 30s)
+        pool_recycle = 1800  # Recicla após 30 min (mais agressivo - evita conexões stale)
+        
         _engine = create_engine(
             url,
-            pool_size=10,
-            max_overflow=20,
-            pool_pre_ping=True,
+            pool_size=pool_size,
+            max_overflow=max_overflow,
+            pool_timeout=pool_timeout,
+            pool_recycle=pool_recycle,
+            pool_pre_ping=True,  # Testa conexão antes de usar
+            connect_args={
+                'connect_timeout': 10,  # Timeout de conexão inicial
+                'application_name': 'agro_ai_python'  # Identifica no Supabase
+            },
             echo=False
         )
-        logger.info("✅ Database engine criado")
+        logger.info(f"✅ Database engine criado (pool_size={pool_size}, max_overflow={max_overflow})")
     return _engine
 
 def get_session_factory():
@@ -69,31 +86,82 @@ def get_session_factory():
 @contextmanager
 def get_db_session():
     """
-    Context manager para sessões de banco.
+    Context manager para sessões de banco (com retry para pool esgotado).
     Uso:
         with get_db_session() as session:
             ...
     """
+    import time
+    max_retries = 3
+    retry_delay = 1  # segundos
+    
     SessionLocal = get_session_factory()
-    session = SessionLocal()
-    try:
-        yield session
-        session.commit()
-    except Exception as e:
-        session.rollback()
-        logger.error(f"❌ Erro na sessão: {e}")
-        raise
-    finally:
-        session.close()
+    session = None
+    
+    for attempt in range(max_retries):
+        try:
+            session = SessionLocal()
+            yield session
+            session.commit()
+            return  # Sucesso, sai do loop
+        except Exception as e:
+            error_str = str(e).lower()
+            
+            # Fecha sessão em caso de erro
+            if session:
+                try:
+                    session.rollback()
+                    session.close()
+                except:
+                    pass
+                session = None
+            
+            # Detecta pool esgotado e tenta novamente
+            if ("maxclients" in error_str or "max clients" in error_str or "pool" in error_str) and attempt < max_retries - 1:
+                wait_time = retry_delay * (attempt + 1)
+                logger.warning(f"⚠️ Pool esgotado ao obter sessão (tentativa {attempt + 1}/{max_retries}). Aguardando {wait_time}s...")
+                time.sleep(wait_time)
+                continue
+            else:
+                logger.error(f"❌ Erro na sessão: {e}")
+                raise
+        finally:
+            # Garante que a sessão seja fechada
+            if session:
+                try:
+                    session.close()
+                except:
+                    pass
 
 def test_connection() -> bool:
-    """Testa conexão com banco"""
-    try:
-        engine = get_engine()
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        logger.info("✅ Conexão com banco OK")
-        return True
-    except Exception as e:
-        logger.error(f"❌ Falha na conexão: {e}")
-        return False
+    """Testa conexão com banco (com retry para pool esgotado)"""
+    import time
+    max_retries = 3
+    retry_delay = 2  # segundos
+    
+    for attempt in range(max_retries):
+        try:
+            engine = get_engine()
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            logger.info("✅ Conexão com banco OK")
+            return True
+        except Exception as e:
+            error_str = str(e).lower()
+            
+            # Detecta pool esgotado
+            if "maxclients" in error_str or "max clients" in error_str or "pool" in error_str:
+                if attempt < max_retries - 1:
+                    wait_time = retry_delay * (attempt + 1)
+                    logger.warning(f"⚠️ Pool esgotado (tentativa {attempt + 1}/{max_retries}). Aguardando {wait_time}s...")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    logger.error(f"❌ Pool de conexões esgotado após {max_retries} tentativas")
+                    logger.error("   💡 Solução: Aguarde alguns minutos ou aumente pool_size no Supabase")
+                    return False
+            else:
+                logger.error(f"❌ Falha na conexão: {e}")
+                return False
+    
+    return False

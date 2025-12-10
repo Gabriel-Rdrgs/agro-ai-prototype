@@ -2,10 +2,9 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto'); // Nativo do Node, para gerar tokens aleatórios
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('./utils/prisma');
+const { dbCircuitBreaker } = require('./utils/circuitBreaker');
 const { logAction } = require('./services/auditService');
-
-const prisma = new PrismaClient();
 // O CÓDIGO NOVO (SEGURO - TIPO SÉNIOR) ✅
 const SECRET_KEY = process.env.JWT_SECRET;
 
@@ -60,7 +59,16 @@ exports.login = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    const user = await prisma.user.findUnique({ where: { email } });
+    // ✅ Usa Circuit Breaker para proteger contra pool esgotado
+    let user;
+    try {
+      user = await dbCircuitBreaker.execute(async () => {
+        return await prisma.user.findUnique({ where: { email } });
+      });
+    } catch (dbError) {
+      // Circuit breaker já trata retries e backoff
+      throw dbError;
+    }
     if (!user || !(await bcrypt.compare(password, user.password))) {
       return res.status(401).json({ error: 'Credenciais inválidas.' });
     }
@@ -73,13 +81,15 @@ exports.login = async (req, res) => {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
 
-    // 3. Salva o Refresh Token no banco
-    await prisma.refreshToken.create({
-      data: {
-        token: refreshToken,
-        userId: user.id,
-        expiresAt: expiresAt
-      }
+    // 3. Salva o Refresh Token no banco (com circuit breaker)
+    await dbCircuitBreaker.execute(async () => {
+      await prisma.refreshToken.create({
+        data: {
+          token: refreshToken,
+          userId: user.id,
+          expiresAt: expiresAt
+        }
+      });
     });
 
     // 4. RASTREABILIDADE (O Novo Log) ✅
