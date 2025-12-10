@@ -86,3 +86,4 @@ Onde:
 6. ⏳ Testar que mapa, clima e simulador retornam mesmos valores
 
 
+

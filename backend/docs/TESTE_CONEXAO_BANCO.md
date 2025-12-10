@@ -47,3 +47,4 @@ Acesse: https://supabase.com/dashboard → Seu projeto → Database → Connecti
 ✅ Pool reduzido no Python (pool_size=5)
 
 
+

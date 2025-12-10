@@ -19,7 +19,8 @@ import sys
 import logging
 import time
 import schedule
-import scripts.run_etl
+# Importação do ETL removida do nível superior para evitar erros no deploy
+# O ETL será importado apenas quando necessário (lazy import)
 from threading import Thread
 from datetime import datetime
 from contextlib import asynccontextmanager

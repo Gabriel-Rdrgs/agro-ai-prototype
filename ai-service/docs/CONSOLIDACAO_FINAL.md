@@ -117,3 +117,4 @@ Toda a aplicação agora fala a mesma linguagem. O mapa, o clima e o simulador u
 **Fonte Única da Verdade:** `config/mathematical_formulas.py` ✅
 
 
+

@@ -26,15 +26,17 @@ import time
 from utils.database import get_engine
 from sqlalchemy import text
 
+# Define logger ANTES de tentar importar sidrapy
+logger = logging.getLogger(__name__)
+
 # Tenta importar sidrapy (biblioteca oficial para IBGE SIDRA)
+# Nota: sidrapy é opcional, não é necessário para funcionar
 try:
     import sidrapy
     SIDRAPY_AVAILABLE = True
 except ImportError:
     SIDRAPY_AVAILABLE = False
-    logger.warning("⚠️ sidrapy não instalado. Instale com: pip install sidrapy")
-
-logger = logging.getLogger(__name__)
+    logger.debug("ℹ️ sidrapy não instalado (opcional). Usando API direta do IBGE.")
 
 
 class IBGEScraper:

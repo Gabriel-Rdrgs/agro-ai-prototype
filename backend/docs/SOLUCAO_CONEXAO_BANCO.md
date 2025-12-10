@@ -66,3 +66,4 @@ Se o problema persistir:
 ✅ Tratamento de erros melhorado
 
 
+

@@ -173,3 +173,4 @@ Após consolidação:
 - ✅ **MAPA, CLIMA E SIMULADOR** falam a mesma linguagem
 
 
+
