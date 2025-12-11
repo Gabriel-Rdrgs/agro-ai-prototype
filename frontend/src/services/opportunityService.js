@@ -18,7 +18,7 @@ api.interceptors.request.use((config) => {
 // 🔥 ADICIONE ISTO AQUI (NOVA CONEXÃO SÓ PARA O PYTHON)
 const aiApi = axios.create({
     baseURL: 'http://localhost:8000/api/v1', // Porta 8000 (Python)
-    timeout: 20000 // 20 segundos
+    timeout: 60000 // 60 segundos (operações Python podem demorar)
 });
 
 const handleAuthError = (error) => {
@@ -56,10 +56,15 @@ export const OpportunityService = {
 //CALCULADORAS (Corrigido: scanMarket adicionado!)
   calculateArbitrage: async (data) => {
     try {
-        const response = await api.post('/calc/arbitrage', data);
+        const response = await api.post('/calc/arbitrage', data, {
+          timeout: 90000 // 90 segundos (cálculo completo pode demorar)
+        });
         return response.data;
     } catch (error) {
         console.error("Erro Arbitragem:", error);
+        if (error.code === 'ECONNABORTED') {
+          throw new Error('Tempo de espera esgotado. O cálculo está demorando mais que o esperado. Tente novamente.');
+        }
         throw error;
     }
   },
@@ -95,10 +100,15 @@ export const OpportunityService = {
             daily_rain, daily_temp_max, daily_sun, daily_temp_min,
             lat, lng
         };
-        const response = await api.post('/api/ai/storage', payload);
+        const response = await api.post('/api/ai/storage', payload, {
+          timeout: 90000 // 90 segundos (análise climática pode demorar)
+        });
         return response.data;
     } catch (error) {
         handleAuthError(error);
+        if (error.code === 'ECONNABORTED') {
+          throw new Error('Análise de armazenagem está demorando mais que o esperado. Tente novamente.');
+        }
         throw error;
     }
   },
@@ -106,10 +116,15 @@ export const OpportunityService = {
   // 3. SLIDER TEMPORAL (Mantido 'calculateBatchAI' pois já ajustamos o App.js)
   calculateBatchAI: async (items) => {
     try {
-        const response = await api.post('/api/ai/batch', { items });
+        const response = await api.post('/api/ai/batch', { items }, {
+          timeout: 120000 // 120 segundos (processamento em lote pode demorar)
+        });
         return response.data;
     } catch (error) {
         console.error("Erro Batch AI:", error);
+        if (error.code === 'ECONNABORTED') {
+          console.warn("⚠️ Processamento em lote demorou mais que 2 minutos.");
+        }
         return null;
     }
   },
@@ -119,7 +134,8 @@ export const OpportunityService = {
       try {
           // Usa a conexão 'aiApi' que criamos acima
           const response = await aiApi.get('/weather/forecast', {
-              params: { lat, lng }
+              params: { lat, lng },
+              timeout: 60000 // 60 segundos (busca de dados climáticos pode demorar)
           });
           
           // Valida a estrutura da resposta

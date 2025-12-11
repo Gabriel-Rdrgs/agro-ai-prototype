@@ -124,19 +124,25 @@ const RoiCalculator = () => {
     setLoading(true);
     // Limpa mensagem antiga ao calcular manualmente
     if (!scanning) setScanMessage(null); 
-  
-    const data = await OpportunityService.calculateArbitrage({
-        product: inputs.product,
-        origin_state: inputs.origin_state,
-        destination_state: inputs.destination_state,
-        planting_month: Number(inputs.planting_month),
-        area_ha: Number(inputs.area)
-    });
+    
+    try {
+      const data = await OpportunityService.calculateArbitrage({
+          product: inputs.product,
+          origin_state: inputs.origin_state,
+          destination_state: inputs.destination_state,
+          planting_month: Number(inputs.planting_month),
+          area_ha: Number(inputs.area)
+      });
 
-    if (data) {
-        setResult(data);
+      if (data) {
+          setResult(data);
+      }
+    } catch (error) {
+      console.error("Erro ao calcular:", error);
+      setScanMessage(`❌ Erro ao calcular: ${error.message || 'Tempo de espera esgotado. Tente novamente.'}`);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   // --- Configurações dos Gráficos ---

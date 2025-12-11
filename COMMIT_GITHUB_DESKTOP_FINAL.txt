@@ -1,4 +1,4 @@
-🎯 Consolidação: ROI Unificado, Performance Otimizada e Planejamento Estruturado
+🎯 Consolidação: ROI Unificado, Performance Otimizada, Timeouts Corrigidos e Planejamento Estruturado
 
 📊 RESUMO DAS MUDANÇAS
 
@@ -7,6 +7,7 @@
 • Correção de saltos abruptos nas projeções futuras (ROI futuro agora usa cálculo completo)
 • Normalização de preços corrigida (Python salva em kg, não mais em caixa)
 • Recalculação de todos os ROIs no banco com cálculo unificado
+• ⚡ CORREÇÃO CRÍTICA: Timeouts aumentados e retry logic implementado (resolve problemas em apresentações)
 
 ⚡ PERFORMANCE
 • Cache em memória implementado no backend Node.js (reduz queries ao banco)
@@ -25,6 +26,7 @@
 • Correção do endpoint /batch para usar cálculo completo de ROI nas projeções
 • Sistema de modal com abas criado (FinancialTab, QualityTab, ClimateTab, AITab)
 • Estrutura preparada para preencher tabs com dados do Python
+• ⚡ CORREÇÃO CRÍTICA: Timeouts aumentados e retry logic implementado (resolve problemas em apresentações)
 
 📝 DOCUMENTAÇÃO
 • Remoção de documentação temporária/debug (23 arquivos removidos)
@@ -41,6 +43,7 @@ BACKEND (Node.js)
 • Rotas ETL assíncronas (backend/routes/etl.js)
 • Otimização de queries com SELECT específico
 • Cache invalidation após operações de escrita
+• ⚡ Timeouts adicionados em todas as chamadas Python (60-120s conforme operação)
 
 AI SERVICE (Python)
 • Correção do cálculo de ROI futuro (routers/predictions.py)
@@ -53,6 +56,9 @@ FRONTEND (React)
 • Modal com sistema de abas (OpportunityModal.jsx)
 • Tabs criadas: FinancialTab, QualityTab, ClimateTab, AITab
 • Estrutura preparada para carregar dados do Python
+• ⚡ Timeouts aumentados para operações Python (60-120s)
+• ⚡ Retry logic implementado (WeatherDashboard, StorageAdvisor)
+• ⚡ Tratamento de erro melhorado (mensagens mais claras)
 
 BANCO DE DADOS
 • Índices de performance criados (migration 20251210_add_performance_indexes)
@@ -66,6 +72,8 @@ Performance:
 • Redução de ~70% no tempo de resposta de /api/opportunities (cache hit)
 • ETL não bloqueia mais o frontend (execução assíncrona)
 • Redução significativa de timeouts Supabase (batch processing)
+• ⚡ Timeouts aumentados eliminam falhas durante apresentações
+• ⚡ Retry automático recupera de falhas temporárias
 
 Qualidade:
 • ROI consistente em toda aplicação (mesmo cálculo)
@@ -92,7 +100,7 @@ Semana 1 (Prioridade Máxima):
 📦 ARQUIVOS MODIFICADOS
 
 Backend:
-• backend/server.js (cache, otimização queries)
+• backend/server.js (cache, otimização queries, timeouts Python)
 • backend/routes/etl.js (novo - ETL assíncrono)
 • backend/utils/cache.js (novo - cache em memória)
 • backend/utils/jobQueue.js (novo - job queue)
@@ -111,9 +119,14 @@ Frontend:
 • frontend/src/components/Map/tabs/ClimateTab.jsx (novo)
 • frontend/src/components/Map/tabs/AITab.jsx (novo)
 • frontend/src/components/Map/MapView.jsx (integração modal)
-• frontend/src/components/Calculator/RoiCalculator.jsx (correção unidade)
+• frontend/src/components/Calculator/RoiCalculator.jsx (correção unidade, tratamento erro)
+• frontend/src/components/Weather/WeatherDashboard.jsx (retry logic, timeout aumentado)
+• frontend/src/components/Weather/StorageAdvisor.jsx (retry logic)
 • frontend/src/components/Sidebar/Sidebar.jsx (validação ROI)
 • frontend/src/components/Dashboard/Dashboard.jsx (validação ROI)
+• frontend/src/services/api.js (timeout aumentado)
+• frontend/src/services/opportunityService.js (timeouts aumentados, tratamento erro)
+• frontend/src/services/storageService.js (timeout aumentado, tratamento erro)
 
 Documentação:
 • PLANO_DE_ACAO.md (atualizado com progresso)
@@ -137,6 +150,8 @@ Documentação:
 • ROI unificado validado (mapa, simulador, dashboard consistentes)
 • Projeções futuras corrigidas (sem saltos abruptos)
 • Performance melhorada (tempos de resposta reduzidos)
+• ⚡ Timeouts aumentados (elimina falhas durante apresentações)
+• ⚡ Retry logic funcionando (recupera de falhas temporárias)
 
 ---
 

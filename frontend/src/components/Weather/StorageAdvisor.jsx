@@ -24,31 +24,45 @@ const StorageAdvisor = ({ currentPrice, rainData, rain, product, state, lat, lng
   const fetchAnalysis = useCallback(async () => {
     setLoading(true);
     setError(null);
-    try {
-      const price = parseFloat(currentPrice);
-      
-      const payload = {
-        product: product || 'Tomate',
-        state: state || 'SP',
-        current_price: price,
-        // Lógica de Produtor: Preço de Custo (60%) vs Venda (100%)
-        buy_price: price * 0.6, 
-        storage_cost_per_day: 0.03,
-        accumulated_rainfall: parseFloat(rain) || 0,
-        daily_rain: Array.isArray(rainData) ? rainData : [],
-        // ✅ Coordenadas para buscar dados climáticos reais por estado
-        lat: parseFloat(lat) || 0,
-        lng: parseFloat(lng) || 0
-      };
+    
+    // Retry logic: tenta até 3 vezes com delay crescente
+    let retries = 0;
+    const maxRetries = 3;
+    
+    const fetchWithRetry = async () => {
+      try {
+        const price = parseFloat(currentPrice);
+        
+        const payload = {
+          product: product || 'Tomate',
+          state: state || 'SP',
+          current_price: price,
+          // Lógica de Produtor: Preço de Custo (60%) vs Venda (100%)
+          buy_price: price * 0.6, 
+          storage_cost_per_day: 0.03,
+          accumulated_rainfall: parseFloat(rain) || 0,
+          daily_rain: Array.isArray(rainData) ? rainData : [],
+          // ✅ Coordenadas para buscar dados climáticos reais por estado
+          lat: parseFloat(lat) || 0,
+          lng: parseFloat(lng) || 0
+        };
 
-      const data = await StorageService.simulateScenario(payload);
-      setAnalysis(data);
-    } catch (err) {
-      console.error("Erro no StorageAdvisor:", err);
-      setError("Não foi possível gerar a simulação.");
-    } finally {
-      setLoading(false);
-    }
+        const data = await StorageService.simulateScenario(payload);
+        setAnalysis(data);
+        setLoading(false);
+      } catch (err) {
+        console.error(`Erro no StorageAdvisor (tentativa ${retries + 1}/${maxRetries}):`, err);
+        if (retries < maxRetries) {
+          retries++;
+          setTimeout(fetchWithRetry, 2000 * retries); // Delay crescente: 2s, 4s, 6s
+        } else {
+          setError(`Não foi possível gerar a simulação após ${maxRetries} tentativas. ${err.message || 'Tente novamente.'}`);
+          setLoading(false);
+        }
+      }
+    };
+    
+    fetchWithRetry();
   }, [currentPrice, product, state, rain, lat, lng, rainData]);
 
   useEffect(() => {

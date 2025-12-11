@@ -51,7 +51,7 @@ const WeatherDashboard = ({ opportunities = [] }) => {
 
   const selectedOpp = opportunities.find(o => o.id === parseInt(selectedOppId));
 
-  // Busca de Dados
+  // Busca de Dados (com retry logic)
   useEffect(() => {
     if (selectedOpp) {
       setLoading(true);
@@ -59,23 +59,41 @@ const WeatherDashboard = ({ opportunities = [] }) => {
       const lng = selectedOpp.coords?.lng;
       
       if (lat && lng) {
-          OpportunityService.getForecast(lat, lng)
-            .then(data => {
+          // Retry logic: tenta até 3 vezes com delay crescente
+          let retries = 0;
+          const maxRetries = 3;
+          
+          const fetchWithRetry = async () => {
+            try {
+              const data = await OpportunityService.getForecast(lat, lng);
               console.log("📊 Dados recebidos do clima:", data);
               // Garante que temos a estrutura correta
               if (data && (data.data || data.daily)) {
                 setForecast(data);
+                setLoading(false);
               } else {
                 console.warn("⚠️ Estrutura de dados inválida:", data);
-                setForecast(null);
+                if (retries < maxRetries) {
+                  retries++;
+                  setTimeout(fetchWithRetry, 2000 * retries); // Delay crescente: 2s, 4s, 6s
+                } else {
+                  setForecast(null);
+                  setLoading(false);
+                }
               }
-              setLoading(false);
-            })
-            .catch(err => {
-              console.error("❌ Erro ao buscar clima:", err);
-              setForecast(null);
-              setLoading(false);
-            });
+            } catch (err) {
+              console.error(`❌ Erro ao buscar clima (tentativa ${retries + 1}/${maxRetries}):`, err);
+              if (retries < maxRetries) {
+                retries++;
+                setTimeout(fetchWithRetry, 2000 * retries); // Retry com delay crescente
+              } else {
+                setForecast(null);
+                setLoading(false);
+              }
+            }
+          };
+          
+          fetchWithRetry();
       } else {
         console.warn("⚠️ Coordenadas inválidas:", { lat, lng });
         setLoading(false);

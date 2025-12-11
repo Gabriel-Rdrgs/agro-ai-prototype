@@ -543,7 +543,11 @@ app.post('/api/ai/storage', verifyToken, async (req, res) => {
     };
 
     console.log(`📤 [Node -> Python] Storage: ${safePayload.product} | R$${safePayload.current_price}`);
-    const response = await axios.post(`${PYTHON_API_URL}/predict/storage`, safePayload);
+    const response = await axios.post(
+      `${PYTHON_API_URL}/predict/storage`, 
+      safePayload,
+      { timeout: 60000 } // 60 segundos (análise climática pode demorar)
+    );
     
     // Tratamento da resposta para evitar erro no Front
     const pyData = response.data || {};
@@ -623,7 +627,9 @@ app.get('/api/fuel/price/:state', verifyToken, async (req, res) => {
     const state = req.params.state.toLowerCase();
     
     // 1. Buscamos TODOS os dados do Python (é mais seguro que tentar adivinhar endpoint específico)
-    const response = await axios.get(`${PYTHON_API_URL}/predict/fuel`);
+    const response = await axios.get(`${PYTHON_API_URL}/predict/fuel`, {
+      timeout: 30000 // 30 segundos (busca simples de preços)
+    });
     const data = response.data;
     
     // 2. Filtramos no Node.js
@@ -680,7 +686,11 @@ app.post('/calc/production', verifyToken, async (req, res) => {
         expected_sell_price: parseFloat(req.body.expected_sell_price) || 0
     };
 
-    const response = await axios.post(`${PYTHON_API_URL}/api/v1/calc/production`, safePayload);
+    const response = await axios.post(
+      `${PYTHON_API_URL}/api/v1/calc/production`, 
+      safePayload,
+      { timeout: 60000 } // 60 segundos (cálculo pode demorar)
+    );
     res.json(response.data);
   } catch (error) {
     console.error("Erro Ponte Produção:", error.message);
@@ -702,7 +712,11 @@ app.post('/calc/arbitrage', verifyToken, async (req, res) => {
     };
 
     console.log(`📤 [Node -> Python] Arbitragem: ${safePayload.origin_state} -> ${safePayload.destination_state}`);
-    const response = await axios.post(`${PYTHON_API_URL}/api/v1/calc/arbitrage`, safePayload);
+    const response = await axios.post(
+      `${PYTHON_API_URL}/api/v1/calc/arbitrage`, 
+      safePayload,
+      { timeout: 60000 } // 60 segundos (cálculo pode demorar)
+    );
     res.json(response.data);
 
   } catch (error) {
@@ -714,7 +728,11 @@ app.post('/calc/arbitrage', verifyToken, async (req, res) => {
 // 6. Radar de Mercado
 app.post('/market/scan', verifyToken, async (req, res) => {
   try {
-    const response = await axios.post(`${PYTHON_API_URL}/api/v1/predict/market/scan`, req.body);
+    const response = await axios.post(
+      `${PYTHON_API_URL}/api/v1/predict/market/scan`, 
+      req.body,
+      { timeout: 90000 } // 90 segundos (scan de múltiplos destinos pode demorar)
+    );
     res.json(response.data);
   } catch (error) {
     console.error("Erro Ponte Radar:", error.message);
@@ -726,7 +744,11 @@ app.post('/market/scan', verifyToken, async (req, res) => {
 app.post('/api/admin/fix-data', verifyToken, checkRole(['admin']), async (req, res) => {
   try {
     console.log(`🔧 Admin ${req.user.email} solicitando correção de dados ao Python...`);
-    const response = await axios.post(`${PYTHON_API_URL}/admin/fix-market-data`);
+    const response = await axios.post(
+      `${PYTHON_API_URL}/admin/fix-market-data`,
+      {},
+      { timeout: 120000 } // 120 segundos (operação admin pode demorar muito)
+    );
     res.json(response.data);
   } catch (error) {
     console.error("Erro Admin Fix:", error.message);

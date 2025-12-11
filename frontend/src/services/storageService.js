@@ -29,7 +29,9 @@ export const StorageService = {
       // CORREÇÃO DE ROTA:
       // 1. Removemos '/api/v1' se o backend não tiver esse prefixo global no main.py
       // 2. Corrigimos de '/predictions' para '/predict' (conforme seu main.py)
-      const response = await aiApi.post('/predict/storage', payload);
+      const response = await aiApi.post('/predict/storage', payload, {
+        timeout: 90000 // 90 segundos (análise climática pode demorar)
+      });
       
       console.log("✅ Resposta da IA (Volatilidade):", response.data);
       return response.data;
@@ -39,6 +41,11 @@ export const StorageService = {
       console.error("   Status:", error.response?.status);
       console.error("   Detalhes:", error.response?.data || error.message);
       console.error("   Payload enviado:", payload);
+      
+      // Tratamento específico para timeout
+      if (error.code === 'ECONNABORTED') {
+        throw new Error('Análise de armazenagem está demorando mais que o esperado. Tente novamente.');
+      }
       
       // Retorna erro mais amigável
       const errorMessage = error.response?.data?.detail || error.response?.data?.message || error.message || "Erro desconhecido ao simular armazenagem";
