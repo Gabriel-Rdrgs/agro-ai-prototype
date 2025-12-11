@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, Query
 import math
 from models.schemas import (
     BatchPredictionRequest, MarketScanRequest, SimulationRequest, ArbitrageRequest,
-    PriceForecastResponse
+    PriceForecastResponse, RecommendationRequest
 )
 from services.fuel_pricing import fuel_api
 from services.arbitrage_calculator import arbitrage_calculator, REGIONAL_FACTORS
@@ -14,6 +14,7 @@ import logging
 from datetime import datetime, timedelta
 from config.crops import get_crop_specs
 from services.storage_advisor import storage_advisor
+from services.recommendation_engine import recommendation_engine
 import random
 
 router = APIRouter()
@@ -250,14 +251,63 @@ async def predict_batch(request: BatchPredictionRequest):
             if curr <= 0: curr = 4.00
             if buy <= 0: buy = 2.50
 
-            # Projeções Matemáticas de Preço (conservadoras)
-            d7_price = curr * 1.02  # +2% em 7 dias
-            d30_price = curr * 1.08  # +8% em 30 dias
+            # ✅ NOVO: Usa Prophet para previsões realistas (substitui valores fixos)
+            origin_state = item.state if hasattr(item, 'state') else 'SP'
             
-            # ✅ NOVO: Converte item para dict para usar na função de ROI completo
+            # ✅ OTIMIZADO: Verifica se Prophet está disponível ANTES de tentar usar
+            # Se não estiver, usa fallback conservador imediatamente (evita timeouts)
+            origin_state = item.state if hasattr(item, 'state') else 'SP'
+            d7_price = curr * 1.02   # Fallback conservador: +2% em 7 dias
+            d30_price = curr * 1.08  # Fallback conservador: +8% em 30 dias
+            
+            # Verifica se Prophet está disponível (sem tentar usar ainda)
+            prophet_available = True
+            try:
+                from prophet import Prophet as ProphetClass
+                # Testa se Prophet está funcionando (sem treinar modelo)
+                test_model = ProphetClass()
+            except (AttributeError, ImportError, Exception) as e:
+                if 'stan_backend' in str(e) or 'AttributeError' in str(type(e).__name__):
+                    prophet_available = False
+                    logger.debug(f"⚠️ Prophet não disponível (stan_backend), usando fallback conservador para {item.product}/{origin_state}")
+            
+            # Se Prophet estiver disponível, tenta usar (com fallback já definido)
+            if prophet_available:
+                try:
+                    # Tenta Prophet 7 dias (pode falhar rapidamente se não configurado)
+                    result_7 = price_forecast_service.forecast(
+                        product=item.product,
+                        region=origin_state,
+                        days_ahead=7
+                    )
+                    if result_7.get('status') == 'success' and result_7.get('forecast'):
+                        forecast_7d = result_7['forecast']
+                        if len(forecast_7d) > 0:
+                            d7_price = forecast_7d[-1].get('price', d7_price)
+                            logger.debug(f"✅ Prophet 7d: {item.product}/{origin_state} → R$ {d7_price:.2f}")
+                except Exception as e:
+                    # Fallback já está definido, apenas loga
+                    logger.debug(f"⚠️ Prophet 7d falhou, usando fallback: {d7_price:.2f}")
+                
+                try:
+                    # Tenta Prophet 30 dias
+                    result_30 = price_forecast_service.forecast(
+                        product=item.product,
+                        region=origin_state,
+                        days_ahead=30
+                    )
+                    if result_30.get('status') == 'success' and result_30.get('forecast'):
+                        forecast_30d = result_30['forecast']
+                        if len(forecast_30d) > 0:
+                            d30_price = forecast_30d[-1].get('price', d30_price)
+                            logger.debug(f"✅ Prophet 30d: {item.product}/{origin_state} → R$ {d30_price:.2f}")
+                except Exception as e:
+                    # Fallback já está definido, apenas loga
+                    logger.debug(f"⚠️ Prophet 30d falhou, usando fallback: {d30_price:.2f}")
+            
+            # ✅ Converte item para dict para usar na função de ROI completo
             # O backend envia: id, product, state, lat, lng, current_price, buy_price
             # Não envia destination, então usamos o estado de origem como destino padrão
-            origin_state = item.state if hasattr(item, 'state') else 'SP'
             opportunity_dict = {
                 'product': item.product,
                 'state': origin_state,
@@ -289,7 +339,55 @@ async def predict_batch(request: BatchPredictionRequest):
             results[item.id] = {"d7": {"sellPrice": 0, "roi": 0}, "d30": {"sellPrice": 0, "roi": 0}}
     return results
 
-# --- 4. ROTA SCAN (Botão Sugerir Destino) ---
+# --- 4. ROTA DE RECOMENDAÇÃO AUTOMÁTICA ---
+@router.post("/recommendation")
+async def get_recommendation(request: RecommendationRequest):
+    """
+    🤖 Gera recomendação automática (COMPRAR/NÃO COMPRAR/AGUARDAR) baseada em múltiplos fatores.
+    
+    Analisa:
+    - ROI financeiro (atual e projetado)
+    - Qualidade e shelf-life
+    - Clima e eventos extremos
+    - Safra e época de plantio
+    - Tendências de mercado
+    """
+    try:
+        # Se não tem informações de safra, busca do calendário
+        is_ideal = request.is_ideal_planting_month
+        is_risk = request.is_risk_planting_month
+        
+        if is_ideal is None and is_risk is None:
+            from config.calendar import is_ideal_month, is_risk_month
+            current_month = datetime.now().month
+            is_ideal = is_ideal_month(request.product, request.state, current_month)
+            is_risk = is_risk_month(request.product, request.state, current_month)
+        
+        # Gera recomendação usando o engine
+        recommendation = recommendation_engine.analyze_opportunity(
+            roi=request.roi,
+            roi_d7=request.roi_d7,
+            roi_d30=request.roi_d30,
+            quality_score=request.quality_score,
+            shelf_life_days=request.shelf_life_days,
+            has_extreme_events=request.has_extreme_events,
+            extreme_event_severity=request.extreme_event_severity,
+            is_ideal_planting_month=is_ideal or False,
+            is_risk_planting_month=is_risk or False,
+            market_trend=request.market_trend,
+            current_price=request.current_price,
+            buy_price=request.buy_price
+        )
+        
+        logger.info(f"🤖 Recomendação gerada: {recommendation['recommendation']} (Score: {recommendation['opportunity_score']}/100)")
+        
+        return recommendation
+        
+    except Exception as e:
+        logger.error(f"❌ Erro ao gerar recomendação: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erro ao gerar recomendação: {str(e)}")
+
+# --- 5. ROTA SCAN (Botão Sugerir Destino) ---
 @router.post("/market/scan")
 async def market_scan(request: MarketScanRequest):
     """

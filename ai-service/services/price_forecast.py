@@ -169,6 +169,10 @@ class PriceForecastService:
     
     def _forecast_fallback(self, product: str, region: str = None, days_ahead: int = 30, df: pd.DataFrame = None) -> Dict:
         """
+        Fallback RÁPIDO: usa regressão polinomial simples quando Prophet falha.
+        Otimizado para retornar rapidamente sem demoras.
+        """
+        """
         Fallback: usa regressão polinomial quando Prophet falha.
         
         Args:
@@ -193,36 +197,47 @@ class PriceForecastService:
                     "metrics": {"data_points": 0, "forecast_days": days_ahead}
                 }
             
-            # Usa o método existente de market_intelligence
-            from datetime import datetime
+            # ✅ OTIMIZADO: Fallback rápido usando média histórica + tendência simples
+            # Não usa market_intelligence para evitar demoras
+            from datetime import datetime, timedelta
             today = datetime.now()
             forecast_list = []
             
-            for i in range(1, days_ahead + 1):
-                future_date = today + timedelta(days=i)
-                month = future_date.month
+            # Calcula média e tendência simples dos últimos dados
+            if len(df) >= 3:
+                recent_prices = df['y'].tail(7).values if len(df) >= 7 else df['y'].values
+                avg_price = recent_prices.mean()
+                # Tendência simples: compara últimos 3 dias com 3 anteriores
+                if len(df) >= 6:
+                    trend = (recent_prices[-3:].mean() - recent_prices[:3].mean()) / 3
+                else:
+                    trend = 0
+            else:
+                avg_price = df['y'].mean() if len(df) > 0 else 4.0
+                trend = 0
+            
+            # Gera previsão simples: preço médio + tendência linear
+            for day in range(1, days_ahead + 1):
+                future_date = today + timedelta(days=day)
+                # Preço futuro = média + (tendência * dias)
+                projected_price = avg_price + (trend * day)
+                # Limita variação máxima (±20% da média)
+                projected_price = max(avg_price * 0.8, min(avg_price * 1.2, projected_price))
                 
-                # Usa get_predicted_market_price que já funciona
-                price = market_intelligence.get_predicted_market_price(
-                    product, region or 'SP', month
-                )
-                
-                # Simula intervalo de confiança (±10%)
                 forecast_list.append({
-                    "date": future_date.strftime('%Y-%m-%d'),
-                    "price": round(price, 2),
-                    "lower": round(price * 0.90, 2),
-                    "upper": round(price * 1.10, 2)
+                    "date": future_date.strftime("%Y-%m-%d"),
+                    "price": round(projected_price, 2),
+                    "lower": round(projected_price * 0.95, 2),
+                    "upper": round(projected_price * 1.05, 2)
                 })
+            
+            logger.debug(f"✅ Fallback rápido gerado: {len(forecast_list)} previsões para {product}/{region}")
             
             return {
                 "status": "success",
                 "forecast": forecast_list,
-                "forecast_model": "polynomial_regression_fallback",
-                "metrics": {
-                    "data_points": len(df),
-                    "forecast_days": days_ahead
-                }
+                "forecast_model": "simple_trend_fallback",
+                "metrics": {"data_points": len(df), "forecast_days": days_ahead}
             }
         except Exception as e:
             logger.error(f"❌ Erro no fallback: {e}")

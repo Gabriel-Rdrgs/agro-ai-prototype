@@ -277,6 +277,10 @@ class StorageAdvisor:
             else:
                 risk_msg += " - Degradação supera valorização."
 
+        # Calcula data absoluta para best_day_date (com ano)
+        best_date_absolute = curr_date + timedelta(days=best_day_idx)
+        best_day_date_formatted = best_date_absolute.strftime("%d/%m/%Y")
+        
         return {
             "chart_data": {
                 "labels": labels,
@@ -286,7 +290,8 @@ class StorageAdvisor:
             },
             "recommendation": {
                 "action": action,
-                "best_day_date": labels[best_day_idx],
+                "best_day_date": best_day_date_formatted,  # Data absoluta com ano
+                "best_day_days": best_day_idx,  # Número de dias até a data ideal
                 "projected_profit": round(best_profit, 2),
                 "confidence_score": 0.89,
                 "risk_event": risk_msg

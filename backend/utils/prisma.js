@@ -11,14 +11,27 @@ let prisma;
 // Em produção, cria uma única instância
 // Em desenvolvimento, usa global para hot-reload
 if (process.env.NODE_ENV === 'production') {
-  const databaseUrl = process.env.DIRECT_URL || 
-    process.env.DATABASE_URL?.replace('?pgbouncer=true', '').replace('&pgbouncer=true', '') || 
-    process.env.DATABASE_URL;
+  // ✅ USA POOLER (DATABASE_URL com pgbouncer=true) para evitar bloqueio IPv4
+  // O pooler gerencia múltiplas conexões sem esgotar limite IPv4 do Supabase
+  let databaseUrl = process.env.DATABASE_URL;
+  
+  if (!databaseUrl) {
+    console.error('❌ DATABASE_URL não configurada!');
+    throw new Error('DATABASE_URL não configurada');
+  }
+  
+  // Garante que está usando o pooler (pgbouncer=true)
+  if (!databaseUrl.includes('pgbouncer=true')) {
+    databaseUrl = databaseUrl.includes('?') 
+      ? `${databaseUrl}&pgbouncer=true`
+      : `${databaseUrl}?pgbouncer=true`;
+  }
   
   // Limita conexões para não esgotar pool do Supabase
+  // connection_limit baixo (3) para evitar esgotamento do pooler
   const urlWithParams = databaseUrl.includes('?') 
-    ? `${databaseUrl}&connection_limit=5&pool_timeout=20`
-    : `${databaseUrl}?connection_limit=5&pool_timeout=20`;
+    ? `${databaseUrl}&connection_limit=3&pool_timeout=15&connect_timeout=10`
+    : `${databaseUrl}?connection_limit=3&pool_timeout=15&connect_timeout=10`;
   
   prisma = new PrismaClient({
     log: ['error'],
@@ -29,17 +42,29 @@ if (process.env.NODE_ENV === 'production') {
     }
   });
   
-  console.log('✅ Prisma Client criado (PRODUÇÃO) - connection_limit=5');
+  console.log('✅ Prisma Client criado (PRODUÇÃO) - usando POOLER (pgbouncer) - connection_limit=3');
 } else {
   // Desenvolvimento: usa global para evitar múltiplas instâncias no hot-reload
   if (!global.prisma) {
-    const databaseUrl = process.env.DIRECT_URL || 
-      process.env.DATABASE_URL?.replace('?pgbouncer=true', '').replace('&pgbouncer=true', '') || 
-      process.env.DATABASE_URL;
+    // ✅ USA POOLER (DATABASE_URL com pgbouncer=true)
+    let databaseUrl = process.env.DATABASE_URL;
     
+    if (!databaseUrl) {
+      console.error('❌ DATABASE_URL não configurada!');
+      throw new Error('DATABASE_URL não configurada');
+    }
+    
+    // Garante que está usando o pooler (pgbouncer=true)
+    if (!databaseUrl.includes('pgbouncer=true')) {
+      databaseUrl = databaseUrl.includes('?') 
+        ? `${databaseUrl}&pgbouncer=true`
+        : `${databaseUrl}?pgbouncer=true`;
+    }
+    
+    // connection_limit baixo (3) para evitar esgotamento do pooler
     const urlWithParams = databaseUrl.includes('?') 
-      ? `${databaseUrl}&connection_limit=5&pool_timeout=20`
-      : `${databaseUrl}?connection_limit=5&pool_timeout=20`;
+      ? `${databaseUrl}&connection_limit=3&pool_timeout=15&connect_timeout=10`
+      : `${databaseUrl}?connection_limit=3&pool_timeout=15&connect_timeout=10`;
     
     global.prisma = new PrismaClient({
       log: ['error', 'warn'],
@@ -50,7 +75,7 @@ if (process.env.NODE_ENV === 'production') {
       }
     });
     
-    console.log('✅ Prisma Client criado (DESENVOLVIMENTO) - connection_limit=5');
+    console.log('✅ Prisma Client criado (DESENVOLVIMENTO) - usando POOLER (pgbouncer) - connection_limit=3');
   }
   prisma = global.prisma;
 }

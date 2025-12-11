@@ -299,11 +299,14 @@ class ClimateIntelligence:
                     "temperature_2m_min",
                     "precipitation_sum",
                     "precipitation_probability_max",
-                    "wind_speed_10m_max"
+                    "wind_speed_10m_max",
+                    "weathercode",  # Códigos WMO (inclui granizo em algumas regiões)
+                    "surface_pressure_mean"  # Pressão média diária (para detectar ciclones)
                 ],
-                # 2. Variáveis Horárias (Para Umidade)
+                # 2. Variáveis Horárias (Para Umidade e Granizo)
                 "hourly": [
-                    "relative_humidity_2m"
+                    "relative_humidity_2m",
+                    "weathercode"  # Códigos horários podem ter mais precisão para granizo
                 ]
             }
 
@@ -372,6 +375,9 @@ class ClimateIntelligence:
                     "rain_sum": daily.get("precipitation_sum", []),
                     "rain_prob": daily.get("precipitation_probability_max", []),
                     "wind_max": daily.get("wind_speed_10m_max", []),
+                    "weathercode_daily": daily.get("weathercode", []),  # Códigos diários
+                    "weathercode_hourly": hourly.get("weathercode", []),  # Códigos horários
+                    "pressure": daily.get("surface_pressure_mean", []),  # Pressão média diária (para detectar ciclones)
                     "et0": daily_et0,             # ✅ Calculado (Hargreaves)
                     "humidity_max": daily_hum_max # ✅ API Real
                 }

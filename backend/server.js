@@ -479,7 +479,90 @@ app.get('/api/weather', verifyToken, async (req, res) => {
   }
 });
 
-// 3. Histórico e Tendências (Analytics)
+// Eventos Extremos (Melhorado)
+app.get('/api/weather/extreme-events', verifyToken, async (req, res) => {
+  try {
+    const { lat, lng, days } = req.query;
+    if (!lat || !lng) {
+      return res.status(400).json({ error: 'Lat e Lng são obrigatórios' });
+    }
+    
+    const daysParam = days ? parseInt(days) : 16;
+    
+    const response = await axios.get(
+      `${PYTHON_API_URL}/api/v1/weather/extreme-events`,
+      {
+        params: { lat: parseFloat(lat), lng: parseFloat(lng), days: daysParam },
+        timeout: 30000 // 30 segundos
+      }
+    );
+    
+    res.json(response.data);
+  } catch (error) {
+    console.error("Erro ao buscar eventos extremos:", error.message);
+    res.status(500).json({ 
+      error: 'Erro ao analisar eventos extremos',
+      details: error.message
+    });
+  }
+});
+
+// Eventos Históricos (ex: granizo há 2 dias)
+app.get('/api/weather/extreme-events/historical', verifyToken, async (req, res) => {
+  try {
+    const { lat, lng, days_back } = req.query;
+    if (!lat || !lng) {
+      return res.status(400).json({ error: 'Lat e Lng são obrigatórios' });
+    }
+    
+    const daysBackParam = days_back ? parseInt(days_back) : 7;
+    
+    const response = await axios.get(
+      `${PYTHON_API_URL}/api/v1/weather/extreme-events/historical`,
+      {
+        params: { lat: parseFloat(lat), lng: parseFloat(lng), days_back: daysBackParam },
+        timeout: 30000 // 30 segundos
+      }
+    );
+    
+    res.json(response.data);
+  } catch (error) {
+    console.error("Erro ao buscar eventos históricos:", error.message);
+    res.status(500).json({ 
+      error: 'Erro ao analisar eventos históricos',
+      details: error.message
+    });
+  }
+});
+
+// 3. Calendário de Plantio/Colheita
+app.get('/api/calendar/planting-window', verifyToken, async (req, res) => {
+  try {
+    const { product, state } = req.query;
+    if (!product || !state) {
+      return res.status(400).json({ error: 'Product e state são obrigatórios' });
+    }
+    
+    // Chama Python para buscar informações de calendário
+    const response = await axios.get(
+      `${PYTHON_API_URL}/api/v1/admin/calendar/planting-window`,
+      {
+        params: { product, state },
+        timeout: 30000 // 30 segundos
+      }
+    );
+    
+    res.json(response.data);
+  } catch (error) {
+    console.error("Erro ao buscar calendário:", error.message);
+    res.status(500).json({ 
+      error: 'Erro ao buscar calendário de plantio',
+      details: error.message
+    });
+  }
+});
+
+// 4. Histórico e Tendências (Analytics)
 app.get('/api/analytics/trend', verifyToken, async (req, res) => {
   try {
     const { product, city } = req.query;
@@ -544,17 +627,33 @@ app.post('/api/ai/storage', verifyToken, async (req, res) => {
 
     console.log(`📤 [Node -> Python] Storage: ${safePayload.product} | R$${safePayload.current_price}`);
     const response = await axios.post(
-      `${PYTHON_API_URL}/predict/storage`, 
+      `${PYTHON_API_URL}/api/v1/predict/storage`, 
       safePayload,
       { timeout: 60000 } // 60 segundos (análise climática pode demorar)
     );
     
     // Tratamento da resposta para evitar erro no Front
     const pyData = response.data || {};
+    
+    // Garante que a estrutura está completa
     const formattedData = {
-        ...(pyData.chart_data || {}),
-        recommendation: pyData.recommendation || {}
+        chart_data: pyData.chart_data || {
+            labels: [],
+            prices_market: [],
+            prices_my_product: [],
+            costs: []
+        },
+        recommendation: pyData.recommendation || {
+            action: "VENDER AGORA",
+            best_day_date: null,
+            best_day_days: null,
+            projected_profit: 0,
+            confidence_score: 0,
+            risk_event: "Dados não disponíveis"
+        }
     };
+    
+    console.log("📊 Backend Storage Response:", JSON.stringify(formattedData, null, 2));
 
     res.json(formattedData);
 
@@ -596,7 +695,11 @@ app.post('/api/ai/batch', verifyToken, async (req, res) => {
 
     if (sanitizedItems.length === 0) return res.json({});
 
-    const response = await axios.post(`${PYTHON_API_URL}/api/v1/predict/batch`, { items: sanitizedItems }, { timeout: 60000 });
+    const response = await axios.post(
+      `${PYTHON_API_URL}/api/v1/predict/batch`, 
+      { items: sanitizedItems }, 
+      { timeout: 120000 } // 120 segundos (Prophet pode demorar, mas tem fallback rápido)
+    );
     res.json(response.data);
 
   } catch (error) {
@@ -725,7 +828,44 @@ app.post('/calc/arbitrage', verifyToken, async (req, res) => {
     res.status(500).json({ error: 'Erro cálculo arbitragem', details: errorDetail });
   }
 });
-// 6. Radar de Mercado
+// 6. Recomendação Automática (IA)
+app.post('/api/ai/recommendation', verifyToken, async (req, res) => {
+  try {
+    const safePayload = {
+      product: req.body.product || 'Tomate',
+      state: req.body.state || 'SP',
+      roi: req.body.roi !== undefined ? parseFloat(req.body.roi) : null,
+      roi_d7: req.body.roi_d7 !== undefined ? parseFloat(req.body.roi_d7) : null,
+      roi_d30: req.body.roi_d30 !== undefined ? parseFloat(req.body.roi_d30) : null,
+      quality_score: req.body.quality_score !== undefined ? parseFloat(req.body.quality_score) : null,
+      shelf_life_days: req.body.shelf_life_days !== undefined ? parseInt(req.body.shelf_life_days) : null,
+      has_extreme_events: req.body.has_extreme_events || false,
+      extreme_event_severity: req.body.extreme_event_severity || null,
+      is_ideal_planting_month: req.body.is_ideal_planting_month !== undefined ? req.body.is_ideal_planting_month : null,
+      is_risk_planting_month: req.body.is_risk_planting_month !== undefined ? req.body.is_risk_planting_month : null,
+      market_trend: req.body.market_trend || null,
+      current_price: req.body.current_price !== undefined ? parseFloat(req.body.current_price) : null,
+      buy_price: req.body.buy_price !== undefined ? parseFloat(req.body.buy_price) : null
+    };
+
+    console.log(`📤 [Node -> Python] Recomendação: ${safePayload.product}/${safePayload.state}`);
+    const response = await axios.post(
+      `${PYTHON_API_URL}/api/v1/predict/recommendation`,
+      safePayload,
+      { timeout: 30000 } // 30 segundos
+    );
+    
+    res.json(response.data);
+  } catch (error) {
+    console.error("Erro Ponte Recomendação:", error.message);
+    res.status(500).json({ 
+      error: 'Erro ao gerar recomendação automática',
+      details: error.message
+    });
+  }
+});
+
+// 7. Radar de Mercado
 app.post('/market/scan', verifyToken, async (req, res) => {
   try {
     const response = await axios.post(

@@ -163,6 +163,34 @@ export const OpportunityService = {
       }
   },
 
+  // ✅ NOVO: Obter eventos extremos melhorados
+  getExtremeEvents: async (lat, lng, days = 16) => {
+    try {
+      const response = await api.get('/api/weather/extreme-events', {
+        params: { lat, lng, days },
+        timeout: 30000 // 30 segundos
+      });
+      return response.data;
+    } catch (error) {
+      console.error("Erro ao buscar eventos extremos:", error);
+      return null;
+    }
+  },
+
+  // ✅ NOVO: Verificar eventos históricos (ex: granizo há 2 dias)
+  getHistoricalExtremeEvents: async (lat, lng, daysBack = 7) => {
+    try {
+      const response = await api.get('/api/weather/extreme-events/historical', {
+        params: { lat, lng, days_back: daysBack },
+        timeout: 30000 // 30 segundos
+      });
+      return response.data;
+    } catch (error) {
+      console.error("Erro ao buscar eventos históricos:", error);
+      return null;
+    }
+  },
+
   // 5. DADOS COMPLEMENTARES
   getFuelPrices: async () => {
     try {
@@ -204,6 +232,22 @@ export const OpportunityService = {
       return response.data;
     } catch (error) {
       console.error("Erro ao recalcular ROI:", error);
+      throw error;
+    }
+  },
+
+  // ✅ NOVO: Obter recomendação automática da IA
+  getRecommendation: async (data) => {
+    try {
+      const response = await api.post('/api/ai/recommendation', data, {
+        timeout: 30000 // 30 segundos
+      });
+      return response.data;
+    } catch (error) {
+      console.error("Erro ao obter recomendação:", error);
+      if (error.code === 'ECONNABORTED') {
+        throw new Error('Recomendação está demorando mais que o esperado. Tente novamente.');
+      }
       throw error;
     }
   }

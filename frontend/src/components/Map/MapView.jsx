@@ -82,6 +82,9 @@ const MapView = React.forwardRef((props, ref) => {
 
   // Estado para guardar as previsões reais da IA (Batch)
   const [aiPredictions, setAiPredictions] = useState({});
+  
+  // Estado para eventos extremos por oportunidade
+  const [extremeEventsMap, setExtremeEventsMap] = useState({});
 
   // Carrega previsões
   useEffect(() => {
@@ -96,6 +99,35 @@ const MapView = React.forwardRef((props, ref) => {
             }
         };
         fetchPredictions();
+    }
+  }, [opportunities]);
+  
+  // Carrega eventos extremos para todas as oportunidades
+  useEffect(() => {
+    if (opportunities.length > 0) {
+      const fetchExtremeEvents = async () => {
+        const eventsMap = {};
+        
+        for (const opp of opportunities) {
+          const lat = opp.coords?.lat;
+          const lng = opp.coords?.lng;
+          
+          if (lat && lng) {
+            try {
+              const eventsData = await OpportunityService.getExtremeEvents(lat, lng, 16);
+              if (eventsData?.events && eventsData.events.length > 0) {
+                eventsMap[opp.id] = eventsData;
+              }
+            } catch (err) {
+              // Silencioso - não bloqueia o mapa se falhar
+            }
+          }
+        }
+        
+        setExtremeEventsMap(eventsMap);
+      };
+      
+      fetchExtremeEvents();
     }
   }, [opportunities]);
 
@@ -540,14 +572,29 @@ return (
                 fillOpacity: 0.2
             }}
           >
-           {currentOpportunities.map((opp) => (
+           {currentOpportunities.map((opp) => {
+              // Verifica se há eventos extremos para esta oportunidade
+              const extremeEvents = extremeEventsMap[opp.id];
+              const hasExtremeEvents = extremeEvents?.events && extremeEvents.events.length > 0;
+              const extremeSeverity = hasExtremeEvents 
+                ? extremeEvents.events.some(e => e.severity === 'extreme') ? 'extreme'
+                  : extremeEvents.events.some(e => e.severity === 'high') ? 'high'
+                  : 'moderate'
+                : null;
+              
+              return (
               <Marker
                 key={opp.id}
                 // 1. CORREÇÃO: Coordenadas em 'coords'
                 position={[opp.coords?.lat || 0, opp.coords?.lng || 0]}
                 
-                // 2. CORREÇÃO: Risco e ROI nos novos endereços
-                icon={createRiskIcon(opp.financials?.roi || 0, opp.details?.riskLevel || 1)}
+                // 2. CORREÇÃO: Risco e ROI nos novos endereços + eventos extremos
+                icon={createRiskIcon(
+                  opp.financials?.roi || 0, 
+                  opp.details?.riskLevel || 1,
+                  hasExtremeEvents,
+                  extremeSeverity
+                )}
                 
                 eventHandlers={{
                   click: () => { handleSelection(opp); }
@@ -678,10 +725,35 @@ return (
                     >
                       📋 Ver Detalhes Completos
                     </button>
+                    
+                    {/* Badge de Eventos Extremos no Popup */}
+                    {hasExtremeEvents && (
+                      <div style={{
+                        marginTop: '8px',
+                        padding: '8px',
+                        background: extremeSeverity === 'extreme' ? 'rgba(239, 68, 68, 0.2)' :
+                                    extremeSeverity === 'high' ? 'rgba(251, 146, 60, 0.2)' :
+                                    'rgba(250, 204, 21, 0.2)',
+                        borderRadius: '6px',
+                        border: `1px solid ${
+                          extremeSeverity === 'extreme' ? '#ef4444' :
+                          extremeSeverity === 'high' ? '#fb923c' :
+                          '#facc15'
+                        }`
+                      }}>
+                        <div style={{ fontSize: '11px', fontWeight: 'bold', color: theme.colors.textPrimary, marginBottom: '4px' }}>
+                          ⚠️ Eventos Extremos Detectados
+                        </div>
+                        <div style={{ fontSize: '10px', color: theme.colors.textMuted }}>
+                          {extremeEvents.events.length} evento(s) nos próximos 16 dias
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </Popup>
               </Marker>
-            ))}
+            );
+            })}
           </MarkerClusterGroup>
         )}
 

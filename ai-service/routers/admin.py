@@ -15,6 +15,7 @@ from utils.cache import global_cache
 from utils.database import test_connection, get_engine
 from sqlalchemy import text
 import pandas as pd
+from config.calendar import get_planting_window
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,28 @@ def clear_cache():
     
     except Exception as e:
         logger.error(f"❌ Erro ao limpar cache: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get('/calendar/planting-window')
+def get_planting_window_endpoint(
+    product: str = Query(..., description="Produto (ex: Tomate)"),
+    state: str = Query(..., description="Estado (ex: SP)")
+):
+    """
+    Retorna informações de calendário de plantio para produto/estado.
+    """
+    try:
+        window = get_planting_window(product, state)
+        return {
+            'product': product,
+            'state': state,
+            'ideal': window.get('ideal', []),
+            'risk': window.get('risk', []),
+            'notes': window.get('notes', '')
+        }
+    except Exception as e:
+        logger.error(f"❌ Erro ao buscar calendário: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

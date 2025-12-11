@@ -35,7 +35,7 @@ export const createColoredIcon = (roi) => {
 }
 
 // Ícone para oportunidades de risco alto (adiciona borda vermelha)
-export function createRiskIcon(roi, riskLevel) {
+export function createRiskIcon(roi, riskLevel, hasExtremeEvents = false, extremeEventSeverity = null) {
   let color;
   
   if (roi >= 100) {
@@ -46,8 +46,30 @@ export function createRiskIcon(roi, riskLevel) {
     color = theme.colors.warning; // vermelho
   }
 
-  const strokeColor = riskLevel === 3 ? '#dc2626' : '#fff';
-  const strokeWidth = riskLevel === 3 ? '3' : '2';
+  // Se há eventos extremos, ajusta cor e borda
+  let strokeColor = riskLevel === 3 ? '#dc2626' : '#fff';
+  let strokeWidth = riskLevel === 3 ? '3' : '2';
+  
+  if (hasExtremeEvents) {
+    if (extremeEventSeverity === 'extreme') {
+      strokeColor = '#dc2626'; // Vermelho para extremo
+      strokeWidth = '4';
+    } else if (extremeEventSeverity === 'high') {
+      strokeColor = '#fb923c'; // Laranja para alto
+      strokeWidth = '3';
+    } else {
+      strokeColor = '#facc15'; // Amarelo para moderado
+      strokeWidth = '2';
+    }
+  }
+
+  // Badge de evento extremo (canto superior direito)
+  const extremeBadge = hasExtremeEvents ? `
+    <circle cx="26" cy="8" r="6" fill="${strokeColor}" stroke="#fff" stroke-width="1.5"/>
+    <text x="26" y="11" text-anchor="middle" fill="#fff" font-size="10" font-weight="bold">
+      ${extremeEventSeverity === 'extreme' ? '!' : '⚠'}
+    </text>
+  ` : '';
 
   const svgIcon = `
     <svg width="32" height="42" viewBox="0 0 32 42" xmlns="http://www.w3.org/2000/svg">
@@ -56,6 +78,7 @@ export function createRiskIcon(roi, riskLevel) {
             stroke="${strokeColor}" 
             stroke-width="${strokeWidth}"/>
       <circle cx="16" cy="16" r="6" fill="#fff"/>
+      ${extremeBadge}
     </svg>
   `;
 
