@@ -368,7 +368,7 @@ const RoiCalculator = () => {
                 <div className="metric-card">
                   <label>Preço Venda Estimado</label>
                   <span className="text-green">R$ {result.market.predicted_sell_price}</span>
-                  <small>por Unidade</small>
+                  <small>por kg</small>
                 </div>
                  <div className="metric-card">
                   <label>Custo Logístico</label>

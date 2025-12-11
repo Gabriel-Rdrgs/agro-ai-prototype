@@ -118,3 +118,6 @@ Toda a aplicação agora fala a mesma linguagem. O mapa, o clima e o simulador u
 
 
 
+
+
+

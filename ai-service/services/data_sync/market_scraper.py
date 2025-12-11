@@ -102,74 +102,97 @@ class MarketScraper:
     ) -> None:
         """
         Atualiza preços na tabela Opportunity E salva no PriceHistory.
-        """
-        try:
-            weight = UNIT_WEIGHTS.get(product, 1.0)
-            
-            # Preço de mercado (unidade comercial)
-            market_price_unit = price_kg * weight
-            
-            # Margem variável por produto
-            margin_factor = PRODUCER_MARGINS.get(product, 0.70)
-            producer_price_unit = market_price_unit * margin_factor
-            
-            # Prepara valores decimais (arredondando para evitar erros de float)
-            buy_price = round(producer_price_unit, 2)
-            sell_price = round(market_price_unit, 2)
-
-            with self.engine.begin() as conn:
-                # 1. Verifica se a Oportunidade já existe
-                check_sql = text(
-                    'SELECT id FROM "Opportunity" WHERE product = :p AND state = :s'
-                )
-                existing = conn.execute(check_sql, {"p": product, "s": state}).fetchone()
-                
-                if existing:
-                    opp_id = existing[0]
-                    
-                    # 2. ✅ NOVO: Salvar no Histórico ANTES de atualizar
-                    history_sql = text("""
-                        INSERT INTO "PriceHistory" ("opportunityId", "price", "createdAt")
-                        VALUES (:oid, :price, NOW())
-                    """)
-                    conn.execute(history_sql, {"oid": opp_id, "price": sell_price})
-                    
-                    # 3. Atualiza a tabela principal (Snapshot atual)
-                    update_sql = text("""
-                        UPDATE "Opportunity"
-                        SET "buyPrice" = :buy,
-                            "sellPrice" = :sell,
-                            "climate" = 'Atualizado via Mercado Real',
-                            "createdAt" = NOW() 
-                        WHERE id = :oid
-                    """)
-                    conn.execute(update_sql, {
-                        "buy": buy_price,
-                        "sell": sell_price,
-                        "oid": opp_id
-                    })
-                    
-                    logger.debug(f"🔄 {product}/{state}: Histórico salvo + Atualizado p/ R$ {sell_price}")
-                
-                else:
-                    # 4. Se não existe, cria do zero (Primeira carga)
-                    # Lat/Lng genéricos (-15, -50) apenas para constar no mapa inicialmente
-                    create_sql = text("""
-                        INSERT INTO "Opportunity" 
-                        ("product", "category", "city", "state", "lat", "lng", 
-                         "buyPrice", "sellPrice", "sellLocation", "riskLevel", "bestRoute", "volume", "climate")
-                        VALUES 
-                        (:p, 'Grãos/Horti', 'Capital', :s, -15.0, -50.0, 
-                         :buy, :sell, 'Ceasa Local', 1, false, 0, 'Atualizado via Mercado Real')
-                    """)
-                    conn.execute(create_sql, {
-                        "p": product, "s": state, "buy": buy_price, "sell": sell_price
-                    })
-
-                    logger.info(f"✨ Nova Oportunidade Criada: {product} em {state}")
         
-        except Exception as e:
-            logger.error(f"❌ Erro crítico ao persistir {product}/{state}: {e}")
+        IMPORTANTE: Salva TUDO em R$/kg para consistência.
+        O price_kg já vem normalizado (preço por kg do mercado).
+        """
+        # ✅ CORREÇÃO: price_kg já está em R$/kg (normalizado)
+        # Não precisa multiplicar por weight novamente!
+        
+        # Preço de mercado (já em R$/kg)
+        market_price_kg = price_kg
+        
+        # Margem variável por produto (produtor recebe % do preço de mercado)
+        margin_factor = PRODUCER_MARGINS.get(product, 0.70)
+        producer_price_kg = market_price_kg * margin_factor
+        
+        # Prepara valores decimais (arredondando para evitar erros de float)
+        # ✅ AGORA: Tudo em R$/kg (consistente)
+        buy_price = round(producer_price_kg, 2)  # Preço que produtor recebe (R$/kg)
+        sell_price = round(market_price_kg, 2)   # Preço de venda no mercado (R$/kg)
+
+        # ✅ PERFORMANCE: Retry logic + delay para evitar timeouts
+        max_retries = 3
+        retry_delay = 1  # segundos
+        
+        # ✅ BATCH: Pequeno delay antes de tentar (evita sobrecarga simultânea)
+        time.sleep(0.1)  # 100ms delay
+        
+        for attempt in range(max_retries):
+            try:
+                with self.engine.begin() as conn:
+                    # 1. Verifica se a Oportunidade já existe
+                    check_sql = text(
+                        'SELECT id FROM "Opportunity" WHERE product = :p AND state = :s'
+                    )
+                    existing = conn.execute(check_sql, {"p": product, "s": state}).fetchone()
+                    
+                    if existing:
+                        opp_id = existing[0]
+                        
+                        # 2. ✅ NOVO: Salvar no Histórico ANTES de atualizar
+                        # ✅ CORREÇÃO: PriceHistory também salva em R$/kg (consistente)
+                        history_sql = text("""
+                            INSERT INTO "PriceHistory" ("opportunityId", "price", "createdAt")
+                            VALUES (:oid, :price, NOW())
+                        """)
+                        conn.execute(history_sql, {"oid": opp_id, "price": sell_price})  # sell_price já está em kg
+                        
+                        # 3. Atualiza a tabela principal (Snapshot atual)
+                        update_sql = text("""
+                            UPDATE "Opportunity"
+                            SET "buyPrice" = :buy,
+                                "sellPrice" = :sell,
+                                "climate" = 'Atualizado via Mercado Real',
+                                "createdAt" = NOW() 
+                            WHERE id = :oid
+                        """)
+                        conn.execute(update_sql, {
+                            "buy": buy_price,
+                            "sell": sell_price,
+                            "oid": opp_id
+                        })
+                        
+                        # ✅ Sucesso - sai do loop de retry
+                        logger.debug(f"🔄 {product}/{state}: Histórico salvo + Atualizado p/ R$ {sell_price}")
+                        return  # ✅ Sucesso - retorna imediatamente
+                    
+                    else:
+                        # 4. Se não existe, cria do zero (Primeira carga)
+                        # Lat/Lng genéricos (-15, -50) apenas para constar no mapa inicialmente
+                        create_sql = text("""
+                            INSERT INTO "Opportunity" 
+                            ("product", "category", "city", "state", "lat", "lng", 
+                             "buyPrice", "sellPrice", "sellLocation", "riskLevel", "bestRoute", "volume", "climate")
+                            VALUES 
+                            (:p, 'Grãos/Horti', 'Capital', :s, -15.0, -50.0, 
+                             :buy, :sell, 'Ceasa Local', 1, false, 0, 'Atualizado via Mercado Real')
+                        """)
+                        conn.execute(create_sql, {
+                            "p": product, "s": state, "buy": buy_price, "sell": sell_price
+                        })
+
+                        logger.info(f"✨ Nova Oportunidade Criada: {product} em {state}")
+                        return  # ✅ Sucesso - retorna imediatamente
+            
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    logger.warning(f"⚠️ Tentativa {attempt + 1}/{max_retries} falhou para {product}/{state}: {e}. Aguardando {retry_delay}s...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Backoff exponencial
+                else:
+                    logger.error(f"❌ Erro crítico ao persistir {product}/{state} após {max_retries} tentativas: {e}")
+                    # Não re-raise para não interromper o ETL completo
     
     def fetch_ceasa_pr(self) -> List[Dict]:
         """
@@ -1348,6 +1371,8 @@ class MarketScraper:
         """
         Salva preços coletados na tabela CeasaPrice.
         
+        ✅ PERFORMANCE: Processa em lotes (batch) para evitar timeouts.
+        
         Args:
             prices: Lista de dicionários com estrutura CeasaPrice
             
@@ -1358,51 +1383,120 @@ class MarketScraper:
             return 0
         
         saved_count = 0
+        batch_size = 100  # ✅ BATCH: Processa 100 por vez
+        total_batches = (len(prices) + batch_size - 1) // batch_size
+        
+        logger.info(f"📦 Processando {len(prices)} registros em {total_batches} lotes de {batch_size}")
         
         try:
-            with self.engine.begin() as conn:
-                for price_data in prices:
-                    try:
-                        # Usa upsert (INSERT ... ON CONFLICT) para evitar duplicatas
-                        # Baseado na constraint unique: ceasa_region + product_name + price_date
-                        upsert_sql = text("""
-                            INSERT INTO "CeasaPrice" 
-                            (ceasa_region, ceasa_name, product_name, unit_type, 
-                             price_min, price_max, price_avg, price_date, sync_timestamp,
-                             is_projection, data_type)
-                            VALUES 
-                            (:region, :name, :product, :unit, :min, :max, :avg, :date, NOW(),
-                             :is_projection, :data_type)
-                            ON CONFLICT (ceasa_region, product_name, price_date)
-                            DO UPDATE SET
-                                price_min = EXCLUDED.price_min,
-                                price_max = EXCLUDED.price_max,
-                                price_avg = EXCLUDED.price_avg,
-                                sync_timestamp = NOW(),
-                                is_projection = EXCLUDED.is_projection,
-                                data_type = EXCLUDED.data_type
-                        """)
-                        
-                        conn.execute(upsert_sql, {
-                            "region": price_data["ceasa_region"],
-                            "name": price_data["ceasa_name"],
-                            "product": price_data["product_name"],
-                            "unit": price_data.get("unit_type", "kg"),
-                            "min": float(price_data["price_min"]),
-                            "max": float(price_data["price_max"]),
-                            "avg": float(price_data["price_avg"]),
-                            "date": price_data["price_date"],
-                            "is_projection": price_data.get("is_projection", False),
-                            "data_type": price_data.get("data_type", "historical")
-                        })
-                        
-                        saved_count += 1
-                    
-                    except Exception as e:
-                        logger.warning(f"⚠️ Erro ao salvar preço {price_data.get('product_name', '?')}: {e}")
-                        continue
+            for batch_num in range(total_batches):
+                start_idx = batch_num * batch_size
+                end_idx = min(start_idx + batch_size, len(prices))
+                batch = prices[start_idx:end_idx]
                 
-                logger.info(f"💾 Salvos {saved_count}/{len(prices)} registros na tabela CeasaPrice")
+                try:
+                    with self.engine.begin() as conn:
+                        # ✅ BATCH: Prepara dados para inserção em lote
+                        for price_data in batch:
+                            try:
+                                upsert_sql = text("""
+                                    INSERT INTO "CeasaPrice" 
+                                    (ceasa_region, ceasa_name, product_name, unit_type, 
+                                     price_min, price_max, price_avg, price_date, sync_timestamp,
+                                     is_projection, data_type)
+                                    VALUES 
+                                    (:region, :name, :product, :unit, :min, :max, :avg, :date, NOW(),
+                                     :is_projection, :data_type)
+                                    ON CONFLICT (ceasa_region, product_name, price_date)
+                                    DO UPDATE SET
+                                        price_min = EXCLUDED.price_min,
+                                        price_max = EXCLUDED.price_max,
+                                        price_avg = EXCLUDED.price_avg,
+                                        sync_timestamp = NOW(),
+                                        is_projection = EXCLUDED.is_projection,
+                                        data_type = EXCLUDED.data_type
+                                """)
+                                
+                                conn.execute(upsert_sql, {
+                                    "region": price_data["ceasa_region"],
+                                    "name": price_data["ceasa_name"],
+                                    "product": price_data["product_name"],
+                                    "unit": price_data.get("unit_type", "kg"),
+                                    "min": float(price_data["price_min"]),
+                                    "max": float(price_data["price_max"]),
+                                    "avg": float(price_data["price_avg"]),
+                                    "date": price_data["price_date"],
+                                    "is_projection": price_data.get("is_projection", False),
+                                    "data_type": price_data.get("data_type", "historical")
+                                })
+                                
+                                saved_count += 1
+                            
+                            except Exception as e:
+                                logger.warning(f"⚠️ Erro ao salvar preço {price_data.get('product_name', '?')}: {e}")
+                                continue
+                        
+                        logger.debug(f"✅ Lote {batch_num + 1}/{total_batches}: {len(batch)} registros processados")
+                    
+                    # ✅ BATCH: Delay entre lotes para não sobrecarregar Supabase
+                    if batch_num < total_batches - 1:  # Não espera após o último lote
+                        time.sleep(0.5)  # 500ms entre lotes
+                
+                except Exception as e:
+                    logger.warning(f"⚠️ Erro no lote {batch_num + 1}/{total_batches}: {e}")
+                    # Tenta novamente com retry
+                    max_retries = 2
+                    for retry in range(max_retries):
+                        try:
+                            time.sleep(1 * (retry + 1))  # Backoff
+                            with self.engine.begin() as conn:
+                                # Tenta salvar lote novamente (um por um desta vez)
+                                for price_data in batch:
+                                    try:
+                                        upsert_sql = text("""
+                                            INSERT INTO "CeasaPrice" 
+                                            (ceasa_region, ceasa_name, product_name, unit_type, 
+                                             price_min, price_max, price_avg, price_date, sync_timestamp,
+                                             is_projection, data_type)
+                                            VALUES 
+                                            (:region, :name, :product, :unit, :min, :max, :avg, :date, NOW(),
+                                             :is_projection, :data_type)
+                                            ON CONFLICT (ceasa_region, product_name, price_date)
+                                            DO UPDATE SET
+                                                price_min = EXCLUDED.price_min,
+                                                price_max = EXCLUDED.price_max,
+                                                price_avg = EXCLUDED.price_avg,
+                                                sync_timestamp = NOW(),
+                                                is_projection = EXCLUDED.is_projection,
+                                                data_type = EXCLUDED.data_type
+                                        """)
+                                        conn.execute(upsert_sql, {
+                                            "region": price_data["ceasa_region"],
+                                            "name": price_data["ceasa_name"],
+                                            "product": price_data["product_name"],
+                                            "unit": price_data.get("unit_type", "kg"),
+                                            "min": float(price_data["price_min"]),
+                                            "max": float(price_data["price_max"]),
+                                            "avg": float(price_data["price_avg"]),
+                                            "date": price_data["price_date"],
+                                            "is_projection": price_data.get("is_projection", False),
+                                            "data_type": price_data.get("data_type", "historical")
+                                        })
+                                        saved_count += 1
+                                    except:
+                                        continue
+                            logger.info(f"✅ Lote {batch_num + 1} recuperado após retry")
+                            break
+                        except Exception as retry_error:
+                            if retry == max_retries - 1:
+                                logger.error(f"❌ Lote {batch_num + 1} falhou após {max_retries} tentativas")
+                            continue
+                
+                # Progresso
+                if (batch_num + 1) % 5 == 0 or batch_num == total_batches - 1:
+                    logger.info(f"📊 Progresso: {saved_count}/{len(prices)} registros salvos ({((saved_count / len(prices)) * 100):.1f}%)")
+            
+            logger.info(f"💾 ETL concluído: {saved_count}/{len(prices)} registros salvos na tabela CeasaPrice")
         
         except Exception as e:
             logger.error(f"❌ Erro crítico ao salvar em CeasaPrice: {e}")

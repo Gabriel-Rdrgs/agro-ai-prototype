@@ -168,5 +168,27 @@ export const OpportunityService = {
       console.error("Erro Trend:", error);
       return null;
     }
+  },
+
+  // ✅ NOVO: Calcular todos os ROIs
+  calculateAllROI: async () => {
+    try {
+      const response = await api.post('/api/opportunities/calculate-all-roi');
+      return response.data;
+    } catch (error) {
+      console.error("Erro ao calcular ROI:", error);
+      throw error;
+    }
+  },
+
+  // ✅ NOVO: Recalcular ROI de uma oportunidade específica
+  recalculateROI: async (oppId) => {
+    try {
+      const response = await api.post(`/api/opportunities/${oppId}/recalculate`);
+      return response.data;
+    } catch (error) {
+      console.error("Erro ao recalcular ROI:", error);
+      throw error;
+    }
   }
 };

@@ -48,3 +48,6 @@ Acesse: https://supabase.com/dashboard → Seu projeto → Database → Connecti
 
 
 
+
+
+

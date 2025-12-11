@@ -86,6 +86,97 @@ def run_market_etl():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post('/calculate-all-roi')
+def calculate_all_roi():
+    """
+    🔄 Calcula ROI para todas as oportunidades no banco.
+    
+    Usa o arbitrage_calculator para encontrar a melhor rota e calcular ROI.
+    Atualiza diretamente no banco de dados.
+    """
+    try:
+        logger.info("🔄 Iniciando cálculo massivo de ROI...")
+        
+        from services.arbitrage_calculator import arbitrage_calculator
+        from utils.database import get_engine
+        from sqlalchemy import text
+        
+        engine = get_engine()
+        updates = 0
+        errors = 0
+        
+        with engine.begin() as conn:
+            # Busca todas as oportunidades
+            query = text('SELECT id, product, state, city, "buyPrice", lat, lng FROM "Opportunity"')
+            opportunities = conn.execute(query).fetchall()
+            
+            logger.info(f"📦 Processando {len(opportunities)} oportunidades...")
+            
+            for opp in opportunities:
+                try:
+                    # Normaliza preço se necessário (caixa -> kg)
+                    buy_price = float(opp.buyPrice)
+                    if buy_price > 20:
+                        buy_price /= 20
+                    
+                    # Monta o dicionário que find_best_route espera
+                    opp_dict = {
+                        'state': opp.state,
+                        'product': opp.product,
+                        'buyPrice': buy_price,
+                        'lat': float(opp.lat) if opp.lat else 0.0,
+                        'lng': float(opp.lng) if opp.lng else 0.0
+                    }
+                    
+                    # Chama o Python para calcular
+                    best = arbitrage_calculator.find_best_route(opp_dict)
+                    
+                    if best and best.get('roi', 0) > 0:
+                        # Atualiza o registro no banco
+                        update_query = text("""
+                            UPDATE "Opportunity"
+                            SET "sellLocation" = :dest_name,
+                                "sellPrice" = :sell_price,
+                                "roi" = :roi,
+                                "freight" = :freight,
+                                "bestRoute" = true
+                            WHERE id = :id
+                        """)
+                        
+                        conn.execute(update_query, {
+                            "dest_name": best['destination_name'],
+                            "sell_price": best['sell_price'],
+                            "roi": best['roi'],
+                            "freight": best['freight_cost'],
+                            "id": opp.id
+                        })
+                        
+                        logger.info(f"✅ ID {opp.id}: ROI {best['roi']}%")
+                        updates += 1
+                    else:
+                        logger.warning(f"⚠️ ID {opp.id}: Nenhuma rota lucrativa encontrada")
+                        
+                except Exception as e:
+                    logger.error(f"❌ Erro no ID {opp.id}: {e}")
+                    errors += 1
+        
+        return {
+            'status': 'success',
+            'message': f'Cálculo de ROI concluído',
+            'processed': len(opportunities),
+            'updated': updates,
+            'errors': errors,
+            'timestamp': datetime.now().isoformat()
+        }
+    
+    except Exception as e:
+        logger.error(f"❌ Erro ao calcular ROI em massa: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao calcular ROI: {str(e)}"
+        )
+
+
 @router.post('/etl/ibge-production')
 def run_ibge_etl(years_back: int = 2):
     """

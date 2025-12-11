@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { StorageService } from '../../services/storageService';
 import {
   Chart as ChartJS,
@@ -21,13 +21,7 @@ const StorageAdvisor = ({ currentPrice, rainData, rain, product, state, lat, lng
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    if (currentPrice && product) {
-      fetchAnalysis();
-    }
-  }, [currentPrice, rain, product, state]);
-
-  const fetchAnalysis = async () => {
+  const fetchAnalysis = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -55,7 +49,13 @@ const StorageAdvisor = ({ currentPrice, rainData, rain, product, state, lat, lng
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentPrice, product, state, rain, lat, lng, rainData]);
+
+  useEffect(() => {
+    if (currentPrice && product) {
+      fetchAnalysis();
+    }
+  }, [currentPrice, product, state, rain, fetchAnalysis]);
 
   // --- CONFIGURAÇÃO DAS 3 LINHAS ---
   const chartData = analysis ? {

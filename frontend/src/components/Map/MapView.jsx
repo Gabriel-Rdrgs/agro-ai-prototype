@@ -6,6 +6,7 @@ import L from 'leaflet';
 import theme from '../../styles/theme';
 import { createRiskIcon } from '../../data/mapIcons';
 import { OpportunityService } from '../../services/opportunityService';
+import OpportunityModal from './OpportunityModal';
 import "../../styles/mapview.css"; 
 
 // Fix Leaflet icon
@@ -60,14 +61,18 @@ const MapView = React.forwardRef((props, ref) => {
   const [mapZoom, setMapZoom] = useState(4);
   const [mapBounds, setMapBounds] = useState(null);
   
-  const [activeMarkerId, setActiveMarkerId] = useState(null);
+  // eslint-disable-next-line no-unused-vars
+  const [activeMarkerId, setActiveMarkerId] = useState(null); // Mantido para uso futuro
   
   const [selectedOpportunity, setSelectedOpportunity] = useState(null);
   const [selectedState, setSelectedState] = useState(null);
   const [legendVisible, setLegendVisible] = useState(false); 
   
   const [weatherData, setWeatherData] = useState(null);
-  const [weatherLoading, setWeatherLoading] = useState(false);
+  
+  // Modal state
+  const [modalOpportunity, setModalOpportunity] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   
   // 1. Estado para saber se o mouse está em cima da linha
   const [hoveredFlowId, setHoveredFlowId] = useState(null);
@@ -131,15 +136,15 @@ const MapView = React.forwardRef((props, ref) => {
                 const predictedRoi = typeof predData === 'object' ? predData.roi : predData;
 
                 if (predictedRoi !== undefined && predictedRoi !== null) {
-                    // 1. Atualiza o ROI na simulação
+                    // 1. Atualiza o ROI na simulação (vem do Python)
                     newFinancials.roi = parseFloat(predictedRoi);
 
-                    // 2. Recalcula o Preço de Venda Estimado
-                    // Fórmula: Venda = Custo * (1 + ROI/100)
-                    const buyPrice = newFinancials.buyPrice || 0;
-                    if (buyPrice > 0) {
-                        newFinancials.sellPrice = buyPrice * (1 + newFinancials.roi / 100);
+                    // 2. ✅ SellPrice também vem do Python (não recalcula no frontend)
+                    // Se o Python retornou sellPrice, usa ele. Caso contrário, mantém o original
+                    if (typeof predData === 'object' && predData.sellPrice) {
+                        newFinancials.sellPrice = parseFloat(predData.sellPrice);
                     }
+                    // Se não tiver sellPrice do Python, mantém o que já existe (vem do banco)
 
                     // 3. Marca visualmente como "Projeção"
                     newDetails.isOptimized = true; 
@@ -562,11 +567,29 @@ return (
                     </div>
 
                     {/* 4. CORREÇÃO: ROI */}
-                    <div style={{background:(opp.financials?.roi || 0)>=100?'#dcfce7':(opp.financials?.roi || 0)>=50?'#fef3c7':'#fee2e2',padding:'8px 12px',borderRadius:'6px',marginBottom:'12px',textAlign:'center'}}>
-                      <span style={{fontSize:'20px',fontWeight:'bold',color:(opp.financials?.roi || 0)>=100?'#15803d':(opp.financials?.roi || 0)>=50?'#b45309':'#dc2626'}}>
-                        🎯 {(opp.financials?.roi || 0).toFixed(1)}% ROI
-                      </span>
-                    </div>
+                    {(() => {
+                      const roiValue = opp.financials?.roi;
+                      const roi = (roiValue !== null && roiValue !== undefined && !isNaN(roiValue) && typeof roiValue === 'number') 
+                        ? parseFloat(roiValue) 
+                        : null;
+                      const bgColor = roi !== null && !isNaN(roi) 
+                        ? (roi >= 100 ? '#dcfce7' : roi >= 50 ? '#fef3c7' : '#fee2e2')
+                        : '#e0e7ff';
+                      const textColor = roi !== null && !isNaN(roi)
+                        ? (roi >= 100 ? '#15803d' : roi >= 50 ? '#b45309' : '#dc2626')
+                        : '#6366f1';
+                      const roiText = roi !== null && !isNaN(roi) && typeof roi === 'number'
+                        ? `${roi.toFixed(1)}% ROI`
+                        : '⏳ ROI não calculado';
+                      
+                      return (
+                        <div style={{background: bgColor, padding:'8px 12px', borderRadius:'6px', marginBottom:'12px', textAlign:'center'}}>
+                          <span style={{fontSize:'20px', fontWeight:'bold', color: textColor}}>
+                            🎯 {roiText}
+                          </span>
+                        </div>
+                      );
+                    })()}
 
                     <div style={{marginBottom:'12px'}}>
                       <div style={{display:'flex',justifyContent:'space-between',marginBottom:'8px',padding:'6px',background:`${theme.colors.background}99`,borderRadius:'4px'}}>
@@ -621,6 +644,40 @@ return (
                         <span>📂 {opp.details?.volume}</span>
                         <span>📅 {opp.details?.season}</span>
                     </div>
+
+                    {/* Botão para abrir modal com detalhes */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setModalOpportunity(opp);
+                        setIsModalOpen(true);
+                      }}
+                      style={{
+                        width: '100%',
+                        marginTop: '12px',
+                        padding: '10px',
+                        background: `linear-gradient(135deg, ${theme.colors.accent} 0%, ${theme.colors.secondary} 100%)`,
+                        border: 'none',
+                        borderRadius: '8px',
+                        color: theme.colors.background,
+                        fontSize: '13px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        transition: theme.transition,
+                        fontFamily: theme.font,
+                        letterSpacing: '0.5px'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.target.style.transform = 'translateY(-2px)';
+                        e.target.style.boxShadow = '0 4px 12px rgba(0, 217, 255, 0.4)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.transform = 'translateY(0)';
+                        e.target.style.boxShadow = 'none';
+                      }}
+                    >
+                      📋 Ver Detalhes Completos
+                    </button>
                   </div>
                 </Popup>
               </Marker>
@@ -629,6 +686,16 @@ return (
         )}
 
       </MapContainer>
+
+      {/* Modal com Abas */}
+      <OpportunityModal
+        opportunity={modalOpportunity}
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setModalOpportunity(null);
+        }}
+      />
     </div>
   );
 });

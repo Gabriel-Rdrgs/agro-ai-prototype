@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import '../../styles/sidebar.css';
+import { OpportunityService } from '../../services/opportunityService';
 
 // RECEBE 'opportunities' DO PAI AGORA
-const Sidebar = ({ onSelectOpportunity, hideHeader = false, opportunities = [] }) => {
+const Sidebar = ({ onSelectOpportunity, hideHeader = false, opportunities = [], onRefresh }) => {
   const [filter, setFilter] = useState('all');
   const [sortBy, setSortBy] = useState('roi');
   const [searchTerm, setSearchTerm] = useState('');
+  const [calculatingROI, setCalculatingROI] = useState(false);
 
 const getFilteredOpportunities = () => {
     let filtered = Array.isArray(opportunities) ? [...opportunities] : [];
@@ -51,13 +53,64 @@ const getFilteredOpportunities = () => {
     }).format(price);
 
   const getROIColor = (roi) => {
+    if (roi === null || isNaN(roi) || typeof roi !== 'number') return 'low';
     if (roi >= 100) return 'high';
     if (roi >= 50) return 'medium';
     return 'low';
   };
 
+  // Verifica se há oportunidades sem ROI
+  const hasOpportunitiesWithoutROI = opportunities.some(opp => 
+    !opp.financials?.roi || opp.financials.roi === 0 || opp.financials.roi === null
+  );
+
+  const handleCalculateAllROI = async () => {
+    setCalculatingROI(true);
+    try {
+      await OpportunityService.calculateAllROI();
+      alert('✅ ROIs calculados com sucesso! Recarregue a página para ver os resultados.');
+      if (onRefresh) onRefresh();
+    } catch (error) {
+      alert('❌ Erro ao calcular ROIs: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setCalculatingROI(false);
+    }
+  };
+
   return (
     <>
+      {/* Botão para calcular ROIs se necessário */}
+      {hasOpportunitiesWithoutROI && (
+        <div style={{
+          padding: '12px',
+          marginBottom: '12px',
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          borderRadius: '8px',
+          textAlign: 'center'
+        }}>
+          <p style={{ margin: '0 0 8px 0', color: '#fff', fontSize: '0.9rem' }}>
+            ⚠️ Algumas oportunidades não têm ROI calculado
+          </p>
+          <button
+            onClick={handleCalculateAllROI}
+            disabled={calculatingROI}
+            style={{
+              background: calculatingROI ? '#94a3b8' : '#fff',
+              color: calculatingROI ? '#64748b' : '#667eea',
+              border: 'none',
+              padding: '8px 16px',
+              borderRadius: '6px',
+              cursor: calculatingROI ? 'not-allowed' : 'pointer',
+              fontWeight: 'bold',
+              fontSize: '0.9rem',
+              width: '100%'
+            }}
+          >
+            {calculatingROI ? '🔄 Calculando...' : '🚀 Calcular Todos os ROIs'}
+          </button>
+        </div>
+      )}
+
       {/* Busca */}
       <div className="sidebar-search">
         <input
@@ -125,11 +178,16 @@ const getFilteredOpportunities = () => {
             const details = opp.details || {};
             
             // Valores com fallback para evitar erros (NaN ou undefined)
-            const roi = financials.roi || 0;
+            // Garante que roi seja um número válido ou null
+            const roiRaw = financials.roi;
+            const roi = (roiRaw !== null && roiRaw !== undefined && !isNaN(roiRaw) && typeof roiRaw === 'number') 
+              ? parseFloat(roiRaw) 
+              : null;
             const buyPrice = financials.buyPrice || 0;
             const sellPrice = financials.sellPrice || 0;
             const riskLevel = details.riskLevel || 1;
             const volume = details.volume || 'N/A';
+            const needsCalculation = financials.needsCalculation || roi === null || roi === 0;
 
             return (
               <div
@@ -149,8 +207,8 @@ const getFilteredOpportunities = () => {
                   </div>
                   
                   {/* Agora usa a variável 'roi' extraída acima */}
-                  <div className={`roi-badge ${getROIColor(roi)}`}>
-                    {roi.toFixed(1)}%
+                  <div className={`roi-badge ${roi !== null && !isNaN(roi) ? getROIColor(roi) : 'low'}`}>
+                    {roi !== null && !isNaN(roi) && typeof roi === 'number' ? `${roi.toFixed(1)}%` : '⏳ N/A'}
                   </div>
                 </div>
 

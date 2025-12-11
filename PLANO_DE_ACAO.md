@@ -21,10 +21,11 @@
   - Modelo `AuditLog` criado
   - ⚠️ **FALTA:** Aplicar RBAC em todas as rotas administrativas
 
-- ⚠️ **Engenharia de Dados (ETL)**
-  - ETL básico para CEASA-PR e Agrolink funcionando
-  - ⚠️ **FALTA:** ETL real para CONAB (atualmente mockado)
-  - ⚠️ **FALTA:** ETL para IBGE
+- ✅ **Engenharia de Dados (ETL)**
+  - ✅ ETL CEASA-PR e Agrolink funcionando
+  - ✅ **ETL CONAB implementado** (com projeções marcadas)
+  - ✅ **ETL IBGE implementado** (produção/safra)
+  - ✅ Performance otimizada (batch processing, retry logic)
 
 ### FASE 2 - Inteligência Artificial (Parcialmente Completa)
 
@@ -33,10 +34,13 @@
   - Conexão Python ↔ PostgreSQL funcionando
   - Cache em memória (LRU) implementado
 
-- ⚠️ **Modelagem Preditiva**
-  - Regressão polinomial funcionando
-  - ⚠️ **FALTA:** Prophet/ARIMA para séries temporais (biblioteca instalada, mas não usada)
-  - Algoritmo de risco climático básico implementado
+- ✅ **Modelagem Preditiva**
+  - ✅ Regressão polinomial funcionando
+  - ✅ **Prophet implementado** (`price_forecast.py`)
+  - ⚠️ **FALTA:** Integrar Prophet no endpoint `/batch` (substituir valores fixos)
+  - ✅ Algoritmo de risco climático básico implementado
+  - ✅ Storage Advisor (qualidade, shelf-life)
+  - ✅ ROI unificado (cálculo completo)
 
 - ⚠️ **Integração de Inteligência**
   - Endpoints Node.js consumindo Python funcionando
@@ -47,8 +51,10 @@
 - ✅ **Mapa Básico**
   - Leaflet integrado
   - Visualização de oportunidades no mapa
+  - ✅ **Modal com abas criado** (FinancialTab, QualityTab, ClimateTab, AITab)
+  - ⚠️ **FALTA:** Preencher tabs com dados do Python (REQUISITO CLIENTE)
   - ⚠️ **FALTA:** Filtros complexos (ROI, chuva, etc.)
-  - ⚠️ **FALTA:** Heatmaps de densidade
+  - ⚠️ **FALTA:** Heatmaps de densidade/regiões comprometidas (REQUISITO CLIENTE)
 
 - ✅ **Dashboard**
   - Gráficos básicos funcionando
@@ -124,16 +130,24 @@
 
 ---
 
-## 📊 STATUS GERAL DO PROJETO
+## 📊 STATUS GERAL DO PROJETO (ATUALIZADO)
 
-| Fase | Status | Progresso |
-|------|--------|-----------|
-| Fase 1 - Fundação | 🟡 Em Progresso | ~70% |
-| Fase 2 - IA | 🟡 Em Progresso | ~60% |
-| Fase 3 - Frontend | 🟡 Em Progresso | ~50% |
-| Fase 4 - Qualidade | 🔴 Não Iniciado | ~0% |
+| Fase | Status | Progresso | Requisitos Cliente |
+|------|--------|-----------|-------------------|
+| Fase 1 - Fundação | 🟢 Avançado | **~85%** | ✅ ETL completo |
+| Fase 2 - IA | 🟡 Avançado | **~75%** | ⚠️ 4 requisitos pendentes |
+| Fase 3 - Frontend | 🟡 Médio | **~60%** | ⚠️ 6 requisitos pendentes |
+| Fase 4 - Qualidade | 🔴 Inicial | **~10%** | - |
 
-**Progresso Geral: ~50%**
+**Progresso Geral: ~65%** (atualizado de 50%)
+
+### **Requisitos do Cliente Pendentes:**
+1. ⚠️ Preencher QualityTab (qualidade, frete, dias, safra)
+2. ⚠️ Preencher ClimateTab (chuva, eventos extremos, safra)
+3. ⚠️ Preencher AITab (recomendações automáticas)
+4. ⚠️ Integrar Prophet no `/batch` (previsões reais)
+5. ⚠️ Melhorar detecção de eventos extremos
+6. ⚠️ Criar análise de regiões comprometidas
 
 ---
 

@@ -1,8 +1,9 @@
 # 🎯 PLANO DE EXECUÇÃO - AGRO-AI PROTOTYPE
 
 **Data de Criação:** Dezembro 2025  
-**Status Atual:** ~50% Completo  
-**Próxima Revisão:** Semanal
+**Status Atual:** ~65% Completo (atualizado)  
+**Próxima Revisão:** Semanal  
+**Última Atualização:** Dezembro 2025 (incorporando requisitos do cliente)
 
 ---
 
@@ -10,26 +11,40 @@
 
 ### ✅ O QUE JÁ ESTÁ PRONTO
 
-#### Fase 1 - Fundação (~70%)
+#### Fase 1 - Fundação (~85%)
 - ✅ Docker Compose configurado
 - ✅ PostgreSQL + PostGIS + pgvector funcionando
 - ✅ Arquitetura de microsserviços (Node.js + Python)
 - ✅ Autenticação JWT + Refresh Tokens implementada
 - ✅ Middleware RBAC (`checkRole`) criado
 - ✅ Modelo `AuditLog` no banco
-- ✅ ETL básico CEASA-PR e Agrolink funcionando
+- ✅ **ETL CONAB implementado** (com projeções)
+- ✅ **ETL IBGE implementado** (produção/safra)
+- ✅ ETL CEASA-PR e Agrolink funcionando
+- ✅ Performance otimizada (cache, async ETL, batch)
 
-#### Fase 2 - IA (~60%)
+#### Fase 2 - IA (~75%)
 - ✅ FastAPI Python configurado
-- ✅ **Prophet já implementado!** (`price_forecast.py`)
+- ✅ **Prophet implementado** (`price_forecast.py`)
 - ✅ Conexão Python ↔ PostgreSQL funcionando
 - ✅ Cache em memória (LRU) implementado
 - ✅ Algoritmo de risco climático básico
+- ✅ **Storage Advisor** (qualidade, shelf-life)
+- ✅ **Arbitrage Calculator** (ROI completo unificado)
+- ✅ **Climate Intelligence** (dados históricos)
+- ✅ **Calendar** (época de plantio/colheita)
+- ⚠️ **FALTA:** Integrar Prophet no `/batch` (REQUISITO CLIENTE)
+- ⚠️ **FALTA:** Sistema de recomendação automática (REQUISITO CLIENTE)
 
-#### Fase 3 - Frontend (~50%)
+#### Fase 3 - Frontend (~60%)
 - ✅ Mapa Leaflet integrado
 - ✅ Dashboard com gráficos básicos
 - ✅ Visualização de oportunidades
+- ✅ **Modal com abas criado** (FinancialTab, QualityTab, ClimateTab, AITab)
+- ⚠️ **FALTA:** Preencher tabs com dados do Python (REQUISITO CLIENTE)
+- ⚠️ **FALTA:** Comparação de chuva visual (REQUISITO CLIENTE)
+- ⚠️ **FALTA:** Eventos extremos no mapa (REQUISITO CLIENTE)
+- ⚠️ **FALTA:** Regiões comprometidas (heatmap) (REQUISITO CLIENTE)
 
 ---
 
@@ -103,17 +118,18 @@
 - [x] Testar permissões de cada role
 - [x] Documentar políticas de acesso
 
-**Dia 3-4: ETL CONAB**
-- [ ] Pesquisar API/scraper CONAB
-- [ ] Implementar coletor de dados CONAB
-- [ ] Integrar com pipeline ETL existente
-- [ ] Testar coleta de dados históricos
+**Dia 3-4: ETL CONAB** ✅ **COMPLETO**
+- [x] Pesquisar API/scraper CONAB
+- [x] Implementar coletor de dados CONAB
+- [x] Integrar com pipeline ETL existente
+- [x] Testar coleta de dados históricos
+- [x] Implementar marcação de projeções
 
-**Dia 5: ETL IBGE**
-- [ ] Pesquisar API IBGE SIDRA
-- [ ] Implementar coletor IBGE
-- [ ] Integrar dados de produção/safra
-- [ ] Testar integração
+**Dia 5: ETL IBGE** ✅ **COMPLETO**
+- [x] Pesquisar API IBGE SIDRA
+- [x] Implementar coletor IBGE
+- [x] Integrar dados de produção/safra
+- [x] Testar integração
 
 **Dia 6-7: Backup Automático**
 - [ ] Script de backup PostgreSQL

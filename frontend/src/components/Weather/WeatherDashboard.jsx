@@ -149,7 +149,7 @@ const WeatherDashboard = ({ opportunities = [] }) => {
         }
       ],
     };
-  }, [time, metrics, fData, tMax, tMin, rain, et0, hum]);
+  }, [time, metrics, tMax, tMin, rain, et0, hum]);
 
   const chartOptions = useMemo(() => ({
     responsive: true,

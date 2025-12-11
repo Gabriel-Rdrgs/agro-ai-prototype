@@ -6,7 +6,7 @@ from models.schemas import (
     PriceForecastResponse
 )
 from services.fuel_pricing import fuel_api
-from services.arbitrage_calculator import arbitrage_calculator
+from services.arbitrage_calculator import arbitrage_calculator, REGIONAL_FACTORS
 from services.logistics import logistics_service
 from services.price_forecast import price_forecast_service
 from config.constants import STATE_COORDS
@@ -125,10 +125,118 @@ async def predict_storage(request: SimulationRequest):
         raise HTTPException(status_code=500, detail=str(e))
     
 # --- 3. ROTA BATCH (Slider Temporal do Mapa) ---
+def _calculate_complete_roi(opportunity: dict, projected_sell_price: float) -> float:
+    """
+    Calcula ROI completo de produção usando preço futuro projetado.
+    
+    Usa a mesma lógica do arbitrage_calculator.find_best_route, mas com preço futuro.
+    Considera: produção, frete, embalagem, taxas de mercado (17%), quebra técnica.
+    
+    Args:
+        opportunity: Dict com dados da oportunidade (product, state, lat, lng, buyPrice, etc.)
+        projected_sell_price: Preço de venda futuro projetado (R$/kg)
+    
+    Returns:
+        ROI completo (float) ou 0.0 se erro
+    """
+    try:
+        import math
+        from config.crops import get_crop_specs
+        # REGIONAL_FACTORS já importado no topo, MAJOR_HUBS definido neste arquivo
+        
+        product_name = opportunity.get('product', 'Tomate')
+        origin_state = opportunity.get('state', 'SP')
+        buy_price_kg = float(opportunity.get('buyPrice', 0))
+        
+        # Normaliza buyPrice se necessário
+        if buy_price_kg > 15:
+            buy_price_kg /= 20
+        
+        if buy_price_kg <= 0:
+            buy_price_kg = 2.50
+        
+        # 1. Configuração de produção
+        specs = get_crop_specs(product_name)
+        region_factor = REGIONAL_FACTORS.get(origin_state, REGIONAL_FACTORS['DEFAULT'])
+        
+        area_ha_standard = 10.0
+        base_prod_cx = specs.get('base_productivity', 300)
+        unit_weight = specs.get('unit_weight_kg', 20.0)
+        
+        real_productivity_kg_ha = base_prod_cx * region_factor * unit_weight
+        total_volume_kg = area_ha_standard * real_productivity_kg_ha
+        
+        # Custo de produção unitário (R$/kg)
+        base_cost_ha = specs.get('base_cost_ha', 25000)
+        production_cost_unit = base_cost_ha / real_productivity_kg_ha
+        total_production_cost = total_volume_kg * production_cost_unit
+        
+        # 2. Logística (usa destino atual da oportunidade ou melhor destino)
+        orig_lat = float(opportunity.get('lat', -15.7))
+        orig_lng = float(opportunity.get('lng', -47.9))
+        
+        # Tenta usar o destino salvo na oportunidade
+        destination_state = opportunity.get('destination', {}).get('state') or opportunity.get('sellLocation', 'SP')
+        dest_info = MAJOR_HUBS.get(destination_state, MAJOR_HUBS.get('SP', {'lat': -23.55, 'lng': -46.63}))
+        
+        route = logistics_service.calculate_freight(
+            orig_lat, orig_lng, 
+            dest_info['lat'], dest_info['lng']
+        )
+        
+        truck_capacity_kg = 15000.0
+        trips_needed = math.ceil(total_volume_kg / truck_capacity_kg)
+        total_freight_cost = route['total_cost'] * trips_needed
+        
+        # 3. Cálculo completo de ROI (mesma lógica do find_best_route)
+        distance_km = route['distance_km']
+        breakage_pct = 0.05 + (distance_km / 50000)
+        if breakage_pct > 0.15:
+            breakage_pct = 0.15
+        
+        volume_lost = total_volume_kg * breakage_pct
+        effective_volume_sold = total_volume_kg - volume_lost
+        
+        # Receita bruta com preço futuro
+        gross_revenue = effective_volume_sold * projected_sell_price
+        
+        # Custos de comercialização (17% CEASA)
+        market_fees_pct = 0.17
+        market_cost = gross_revenue * market_fees_pct
+        
+        # Custo de embalagem
+        packaging_cost = (total_volume_kg / unit_weight) * 3.50
+        
+        # Custo total operacional
+        total_op_cost = (
+            total_production_cost +
+            total_freight_cost +
+            packaging_cost +
+            market_cost
+        )
+        
+        # Lucro líquido e ROI
+        net_profit = gross_revenue - total_op_cost
+        roi = (net_profit / total_op_cost) * 100 if total_op_cost > 0 else 0
+        
+        # Filtro de sanidade (ROI > 300% é suspeito)
+        if roi > 300:
+            logger.warning(f"⚠️ ROI futuro suspeito ({roi:.1f}%) para {product_name}/{origin_state}. Limitando a 300%.")
+            roi = 300.0
+        
+        return round(roi, 1)
+        
+    except Exception as e:
+        logger.error(f"❌ Erro calculando ROI completo futuro: {e}", exc_info=True)
+        return 0.0
+
 @router.post("/batch")
 async def predict_batch(request: BatchPredictionRequest):
     """
     Processa previsões rápidas para múltiplos itens (Mapa).
+    
+    ✅ CORRIGIDO: Agora usa cálculo completo de ROI de produção (mesmo do "hoje")
+    em vez de fórmula simples de arbitragem.
     """
     results = {}
     for item in request.items:
@@ -142,14 +250,39 @@ async def predict_batch(request: BatchPredictionRequest):
             if curr <= 0: curr = 4.00
             if buy <= 0: buy = 2.50
 
-            # Projeções Matemáticas
-            d7_price = curr * 1.02 # +2% em 7 dias
-            d30_price = curr * 1.08 # +8% em 30 dias
+            # Projeções Matemáticas de Preço (conservadoras)
+            d7_price = curr * 1.02  # +2% em 7 dias
+            d30_price = curr * 1.08  # +8% em 30 dias
+            
+            # ✅ NOVO: Converte item para dict para usar na função de ROI completo
+            # O backend envia: id, product, state, lat, lng, current_price, buy_price
+            # Não envia destination, então usamos o estado de origem como destino padrão
+            origin_state = item.state if hasattr(item, 'state') else 'SP'
+            opportunity_dict = {
+                'product': item.product,
+                'state': origin_state,
+                'lat': item.lat if hasattr(item, 'lat') else -15.7,
+                'lng': item.lng if hasattr(item, 'lng') else -47.9,
+                'buyPrice': buy,
+                'destination': {'state': origin_state},  # Usa origem como destino padrão
+                'sellLocation': origin_state
+            }
+            
+            # ✅ NOVO: Calcula ROI completo usando preço futuro projetado
+            roi_d7 = _calculate_complete_roi(opportunity_dict, d7_price)
+            roi_d30 = _calculate_complete_roi(opportunity_dict, d30_price)
             
             results[item.id] = {
-                "d7": {"sellPrice": round(d7_price, 2), "roi": round(((d7_price - buy)/buy)*100, 1)},
-                "d30": {"sellPrice": round(d30_price, 2), "roi": round(((d30_price - buy)/buy)*100, 1)}
+                "d7": {
+                    "sellPrice": round(d7_price, 2),
+                    "roi": roi_d7  # ROI completo de produção
+                },
+                "d30": {
+                    "sellPrice": round(d30_price, 2),
+                    "roi": roi_d30  # ROI completo de produção
+                }
             }
+            
         except Exception as e:
             # Fallback seguro com log para debug
             logger.warning(f"⚠️ Erro ao processar item {item.id}: {e}", exc_info=True)

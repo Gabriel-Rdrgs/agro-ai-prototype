@@ -140,11 +140,35 @@ class ArbitrageCalculator:
                     trips_needed = math.ceil(total_volume_kg / truck_capacity_kg)
                     total_freight_cost = route['total_cost'] * trips_needed
                     
-                    # 5. Financeiro
-                    gross_revenue = total_volume_kg * sell_price_kg
-                    total_production_cost = total_volume_kg * production_cost_unit
-                    total_op_cost = total_production_cost + total_freight_cost
+                    # 5. Financeiro (✅ UNIFICADO: Mesmo cálculo do simulador - produção completa)
+                    # A. Quebra Técnica (Perda física na viagem)
+                    distance_km = route['distance_km']
+                    breakage_pct = 0.05 + (distance_km / 50000)  # Ex: 1000km = 0.05 + 0.02 = 7%
+                    if breakage_pct > 0.15: breakage_pct = 0.15  # Teto de 15%
                     
+                    volume_lost = total_volume_kg * breakage_pct
+                    effective_volume_sold = total_volume_kg - volume_lost
+                    
+                    # B. Receita Bruta (Só recebe sobre o que chegou inteiro)
+                    gross_revenue = effective_volume_sold * sell_price_kg
+                    
+                    # C. Custos de Comercialização (Comissão do Box/Ceasa 17% + Descarga)
+                    market_fees_pct = 0.17
+                    market_cost = gross_revenue * market_fees_pct
+                    
+                    # D. Custo de Embalagem (Caixa K custa ~R$ 3,50 para 20kg)
+                    packaging_cost = (total_volume_kg / unit_weight) * 3.50
+                    
+                    # E. Custo Total Operacional (Produção + Frete + Embalagem + Taxas de Mercado)
+                    total_production_cost = total_volume_kg * production_cost_unit
+                    total_op_cost = (
+                        total_production_cost + 
+                        total_freight_cost + 
+                        packaging_cost + 
+                        market_cost
+                    )
+                    
+                    # F. Lucro Líquido e ROI
                     net_profit = gross_revenue - total_op_cost
                     roi = (net_profit / total_op_cost) * 100 if total_op_cost > 0 else 0
 
@@ -168,7 +192,11 @@ class ArbitrageCalculator:
                             'sell_price': round(sell_price_kg, 2),
                             'freight_cost': round(total_freight_cost / total_volume_kg, 2),
                             'distance_km': int(route['distance_km']),
-                            'roi': round(roi, 1)
+                            'roi': round(roi, 1),
+                            # ✅ NOVO: Informações adicionais do cálculo completo
+                            'breakage_pct': round(breakage_pct * 100, 1),
+                            'market_fees': round(market_cost, 2),
+                            'packaging_cost': round(packaging_cost, 2)
                         }
                 except Exception as e:
                     logger.error(f"❌ Erro calculando {dest_uf}: {e}")

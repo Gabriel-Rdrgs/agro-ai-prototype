@@ -148,7 +148,10 @@ const Dashboard = () => {
     const dashboardData = {
         kpis: {
             total: stats.opportunitiesCount,
-            avgROI: (opportunities.reduce((acc, curr) => acc + curr.roi, 0) / (opportunities.length || 1)).toFixed(1),
+            avgROI: (opportunities.reduce((acc, curr) => {
+              const roi = curr.financials?.roi;
+              return acc + (roi !== null && !isNaN(roi) && typeof roi === 'number' ? parseFloat(roi) : 0);
+            }, 0) / (opportunities.length || 1)).toFixed(1),
             highRisk: opportunities.filter(o => o.riskLevel >= 2).length,
             volume: totalVolume // Agora vai como número limpo
         },
@@ -311,7 +314,10 @@ const Dashboard = () => {
     // Valores com fallback para evitar o crash do .toFixed
     const buyPrice = financial.buyPrice || 0;
     const sellPrice = financial.sellPrice || 0;
-    const roi = financial.roi || 0;
+    const roiRaw = financial.roi;
+    const roi = (roiRaw !== null && roiRaw !== undefined && !isNaN(roiRaw) && typeof roiRaw === 'number') 
+      ? parseFloat(roiRaw) 
+      : 0;
     
     // Cálculo de lucro estimado (Baseado em 1000kg/1ton)
     const estimatedProfit = (sellPrice - buyPrice) * 1000;
@@ -350,7 +356,7 @@ const Dashboard = () => {
                     fontWeight: 'bold',
                     fontSize: '0.8rem'
                 }}>
-                    {roi}%
+                    {roi !== null && !isNaN(roi) ? `${roi.toFixed(1)}%` : 'N/A'}
                 </span>
             </td>
         </tr>

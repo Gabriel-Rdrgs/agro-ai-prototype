@@ -14,6 +14,9 @@ const { PrismaClient } = require('@prisma/client');
 const authController = require('./authController');
 const { verifyToken, checkRole } = require('./authMiddleware');
 const ceasaRoutes = require('./routes/ceasa');
+const etlRoutes = require('./routes/etl'); // ✅ ETL ASSÍNCRONO
+const cache = require('./utils/cache'); // ✅ CACHE URGENTE
+const jobQueue = require('./utils/jobQueue'); // ✅ JOBS ASSÍNCRONOS
 
 // 3. INICIALIZAÇÃO
 const app = express();
@@ -143,12 +146,46 @@ if (authController) {
 // ============================================
 
 // 1. Listar Oportunidades (Com Dólar em Tempo Real)
+// ✅ PERFORMANCE: Cache agressivo (5 minutos)
 app.get('/api/opportunities', verifyToken, async (req, res) => {
   try {
+    // ✅ CACHE: Verifica cache primeiro
+    const cacheKey = 'opportunities:all';
+    const cached = cache.get(cacheKey);
+    
+    if (cached) {
+      console.log('⚡ Cache HIT: /api/opportunities');
+      return res.json(cached);
+    }
+
+    console.log('🔍 Cache MISS: /api/opportunities - Buscando do banco...');
+    
+    // ✅ PERFORMANCE: Select apenas campos necessários (não busca tudo)
     // Busca Oportunidades e Dólar em paralelo (com circuit breaker)
     const [opportunities, dollarRate] = await Promise.all([
         dbCircuitBreaker.execute(async () => {
-          return await prisma.opportunity.findMany({ orderBy: { createdAt: 'desc' } });
+          return await prisma.opportunity.findMany({
+            select: {
+              id: true,
+              product: true,
+              category: true,
+              city: true,
+              state: true,
+              lat: true,
+              lng: true,
+              buyPrice: true,
+              sellPrice: true,
+              sellLocation: true,
+              roi: true,
+              freight: true,
+              bestRoute: true,
+              volume: true,
+              riskLevel: true,
+              season: true,
+              createdAt: true
+            },
+            orderBy: { createdAt: 'desc' }
+          });
         }),
         getDollarRate() // Função que já existe no seu arquivo
     ]);
@@ -160,21 +197,31 @@ const formattedOpportunities = opportunities.map(opp => {
       let sellPrice = parseFloat(opp.sellPrice);
       
       // --- CORREÇÃO DE UNIDADE (Defesa em Camada) ---
-      // Se o preço do "quilo" for maior que R$ 20,00, com certeza é Caixa de 20kg ou 25kg.
-      // Normalizamos dividindo por 20 para padronizar tudo em Kg.
-      if (buyPrice > 20) buyPrice /= 20;
-      if (sellPrice > 20) sellPrice /= 20;
+      // ⚠️ ATENÇÃO: Python agora salva TUDO em R$/kg
+      // Mas pode haver dados antigos no banco em caixa (legado)
+      // Se o preço for muito alto (> 20), provavelmente está em caixa e precisa normalizar
+      // Se o preço for razoável (< 20), já está em kg
+      if (buyPrice > 20) {
+          // Dados antigos em caixa - normaliza para kg
+          console.warn(`⚠️ [${opp.id}] buyPrice normalizado de caixa para kg: ${opp.buyPrice} -> ${buyPrice / 20}`);
+          buyPrice /= 20;
+      }
+      if (sellPrice > 20) {
+          // Dados antigos em caixa - normaliza para kg
+          console.warn(`⚠️ [${opp.id}] sellPrice normalizado de caixa para kg: ${opp.sellPrice} -> ${sellPrice / 20}`);
+          sellPrice /= 20;
+      }
 
-      // Fallback Inteligente de ROI
-      let roi = opp.roi ? parseFloat(opp.roi) : 0;
-      let freight = opp.freight ? parseFloat(opp.freight) : 0;
-
-      if (roi === 0 && buyPrice > 0) {
-          // Estimativa se não tiver ROI gravado
-          const estimatedCost = buyPrice * 1.2;
-          const profit = sellPrice - estimatedCost;
-          roi = (profit / estimatedCost) * 100;
-          freight = buyPrice * 0.15;
+      // ✅ ROI e Freight DEVEM vir do Python (via banco ou cálculo em tempo real)
+      // ❌ REMOVIDO: Fallback que calculava ROI no Node.js
+      // Se ROI não existir, será null/0 e o frontend pode solicitar recálculo
+      let roi = opp.roi ? parseFloat(opp.roi) : null;  // null se não calculado pelo Python
+      let freight = opp.freight ? parseFloat(opp.freight) : null;  // null se não calculado pelo Python
+      
+      // ✅ SellPrice também deve vir do Python (via banco)
+      // Se não existir, mantém o valor do banco ou null
+      if (!sellPrice || sellPrice === 0) {
+          sellPrice = null;  // Indica que precisa ser calculado pelo Python
       }
 
       return {
@@ -196,10 +243,11 @@ const formattedOpportunities = opportunities.map(opp => {
         
         financials: {
             buyPrice: parseFloat(buyPrice.toFixed(2)),   // Agora normalizado
-            sellPrice: parseFloat(sellPrice.toFixed(2)), // Agora normalizado
-            freight: parseFloat(freight.toFixed(2)),
-            roi: parseFloat(roi.toFixed(1)),
-            currency: "BRL"
+            sellPrice: sellPrice ? parseFloat(sellPrice.toFixed(2)) : null, // Vem do Python ou null
+            freight: freight ? parseFloat(freight.toFixed(2)) : null,       // Vem do Python ou null
+            roi: roi ? parseFloat(roi.toFixed(1)) : null,                  // Vem do Python ou null
+            currency: "BRL",
+            needsCalculation: !roi || !sellPrice || !freight  // Flag: precisa calcular pelo Python?
         },
         
         coords: { 
@@ -216,10 +264,204 @@ const formattedOpportunities = opportunities.map(opp => {
       };
     });
     
+    // ✅ CACHE: Salva resultado no cache (5 minutos)
+    cache.set(cacheKey, formattedOpportunities, 300);
+    console.log(`💾 Cache SET: /api/opportunities (${formattedOpportunities.length} oportunidades)`);
+    
     res.json(formattedOpportunities);
   } catch (error) {
     console.error("❌ Erro opportunities:", error);
     res.status(500).json({ error: 'Erro interno' });
+  }
+});
+
+// ✅ NOVO: Endpoint para recalcular ROI pelo Python
+app.post('/api/opportunities/:id/recalculate', verifyToken, async (req, res) => {
+  try {
+    const oppId = parseInt(req.params.id);
+    
+    // Busca a oportunidade no banco
+    const opportunity = await prisma.opportunity.findUnique({
+      where: { id: oppId }
+    });
+    
+    if (!opportunity) {
+      return res.status(404).json({ error: 'Oportunidade não encontrada' });
+    }
+    
+    // Normaliza preço se necessário
+    let buyPrice = parseFloat(opportunity.buyPrice);
+    if (buyPrice > 20) buyPrice /= 20;
+    
+    // Chama Python para recalcular
+    const payload = {
+      product: opportunity.product,
+      state: opportunity.state,
+      city: opportunity.city,
+      buyPrice: buyPrice,
+      lat: parseFloat(opportunity.lat) || 0,
+      lng: parseFloat(opportunity.lng) || 0
+    };
+    
+    console.log(`🔄 Recalculando ROI pelo Python para oportunidade ${oppId}...`);
+    const response = await axios.post(
+      `${PYTHON_API_URL}/api/v1/calc/opportunity/recalculate`,
+      payload
+    );
+    
+    const pythonData = response.data;
+    
+    // Atualiza no banco
+          await prisma.opportunity.update({
+            where: { id: oppId },
+            data: {
+              roi: pythonData.roi,
+              sellPrice: pythonData.sell_price,
+              freight: pythonData.freight,
+              sellLocation: pythonData.destination_name,
+              bestRoute: true
+            }
+          });
+          
+          // ✅ CACHE: Invalida cache após update
+          cache.invalidatePattern('opportunities:*');
+    
+    console.log(`✅ ROI recalculado: ${pythonData.roi}%`);
+    
+    res.json({
+      success: true,
+      message: 'ROI recalculado com sucesso',
+      data: pythonData
+    });
+    
+  } catch (error) {
+    console.error("❌ Erro ao recalcular ROI:", error.message);
+    res.status(500).json({ 
+      error: 'Erro ao recalcular ROI',
+      details: error.response?.data?.detail || error.message
+    });
+  }
+});
+
+// ✅ NOVO: Endpoint para calcular TODOS os ROIs (chama Python diretamente)
+app.post('/api/opportunities/calculate-all-roi', verifyToken, async (req, res) => {
+  try {
+    console.log("🔄 Iniciando cálculo massivo de ROI pelo Python...");
+    
+    // Chama o endpoint Python que processa todas as oportunidades de uma vez
+    const response = await axios.post(
+      `${PYTHON_API_URL}/api/v1/admin/calculate-all-roi`,
+      {},
+      { timeout: 300000 }  // 5 minutos (pode demorar para muitas oportunidades)
+    );
+    
+    const result = response.data;
+    
+    console.log(`✅ Cálculo concluído: ${result.updated} atualizados, ${result.errors} erros`);
+    
+    // ✅ CACHE: Invalida cache após cálculo em massa
+    cache.invalidatePattern('opportunities:*');
+    
+    res.json({
+      success: true,
+      message: 'Cálculo de ROI concluído',
+      ...result
+    });
+    
+  } catch (error) {
+    console.error("❌ Erro ao calcular ROI em massa:", error.message);
+    res.status(500).json({ 
+      error: 'Erro ao calcular ROI',
+      details: error.response?.data?.detail || error.message
+    });
+  }
+});
+
+// ✅ NOVO: Endpoint para enriquecer oportunidades sem ROI (processa uma por uma)
+app.post('/api/opportunities/enrich', verifyToken, async (req, res) => {
+  try {
+    // Busca oportunidades sem ROI ou com ROI = 0
+    const opportunities = await prisma.opportunity.findMany({
+      where: {
+        OR: [
+          { roi: null },
+          { roi: 0 }
+        ]
+      },
+      take: 50  // Limita a 50 por vez para não sobrecarregar
+    });
+    
+    if (opportunities.length === 0) {
+      // ✅ CACHE: Invalida cache após cálculo em massa
+      cache.invalidatePattern('opportunities:*');
+      
+      return res.json({
+        success: true,
+        message: 'Todas as oportunidades já têm ROI calculado',
+        processed: 0
+      });
+    }
+    
+    console.log(`🔄 Enriquecendo ${opportunities.length} oportunidades...`);
+    
+    let processed = 0;
+    let errors = 0;
+    
+    for (const opp of opportunities) {
+      try {
+        let buyPrice = parseFloat(opp.buyPrice);
+        if (buyPrice > 20) buyPrice /= 20;
+        
+        const payload = {
+          product: opp.product,
+          state: opp.state,
+          city: opp.city,
+          buyPrice: buyPrice,
+          lat: parseFloat(opp.lat) || 0,
+          lng: parseFloat(opp.lng) || 0
+        };
+        
+        const response = await axios.post(
+          `${PYTHON_API_URL}/api/v1/calc/opportunity/recalculate`,
+          payload,
+          { timeout: 10000 }  // 10 segundos por oportunidade
+        );
+        
+        const pythonData = response.data;
+        
+        await prisma.opportunity.update({
+          where: { id: opp.id },
+          data: {
+            roi: pythonData.roi,
+            sellPrice: pythonData.sell_price,
+            freight: pythonData.freight,
+            sellLocation: pythonData.destination_name,
+            bestRoute: true
+          }
+        });
+        
+        processed++;
+        
+      } catch (error) {
+        console.error(`❌ Erro ao processar oportunidade ${opp.id}:`, error.message);
+        errors++;
+      }
+    }
+    
+    res.json({
+      success: true,
+      message: `Processamento concluído`,
+      processed,
+      errors,
+      total: opportunities.length
+    });
+    
+  } catch (error) {
+    console.error("❌ Erro ao enriquecer oportunidades:", error.message);
+    res.status(500).json({ 
+      error: 'Erro ao enriquecer oportunidades',
+      details: error.message
+    });
   }
 });
 
@@ -496,6 +738,7 @@ app.post('/api/admin/fix-data', verifyToken, checkRole(['admin']), async (req, r
 // 🥬 ROTAS ESPECÍFICAS (CEASA)
 // ============================================
 app.use('/api/ceasa', ceasaRoutes);
+app.use('/api/admin/etl', etlRoutes); // ✅ ETL ASSÍNCRONO
 
 // ============================================
 // 🚀 INICIALIZAÇÃO DO SERVIDOR
