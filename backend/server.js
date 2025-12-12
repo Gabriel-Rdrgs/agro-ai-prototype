@@ -894,9 +894,14 @@ app.use('/api/ceasa', ceasaRoutes);
 app.use('/api/admin/etl', etlRoutes); // ✅ ETL ASSÍNCRONO
 
 // ============================================
-// 🚀 INICIALIZAÇÃO DO SERVIDOR
+// 🚀 INICIALIZAÇÃO DO SERVIDOR (CORRIGIDA)
 // ============================================
-app.listen(PORT, () => {
-  console.log('🔥 BACKEND AGRO-AI - MODO TECH LEAD ATIVADO NA PORTA ' + PORT);
+// Ouvimos em 0.0.0.0 para garantir que o Docker/Railway consiga acessar
+// Se ouvirmos apenas em localhost, o deploy falha com "Application failed to respond"
+app.listen(PORT, '0.0.0.0', () => {
+  console.log('==================================================');
+  console.log(`🔥 BACKEND ONLINE EM: http://0.0.0.0:${PORT}`);
+  console.log(`🌍 URL Externa esperada: ${process.env.RAILWAY_STATIC_URL || 'Não definida'}`);
   console.log(`🔗 Conectado ao Python em: ${PYTHON_API_URL}`);
+  console.log('==================================================');
 });
