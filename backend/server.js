@@ -71,7 +71,7 @@ app.use(cors({
 }));
 
 // Força o Express a responder as requisições OPTIONS (Preflight) corretamente
-app.options('*', cors());
+app.options(/.*/, cors());
 // ============================================
 // 🛠️ FUNÇÕES AUXILIARES (HELPER FUNCTIONS)
 // ============================================
