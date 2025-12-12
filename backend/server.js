@@ -40,43 +40,38 @@ if (!JWT_SECRET) {
 
 // 5. MIDDLEWARES
 // ============================================
-// 🛡️ CONFIGURAÇÃO DE CORS BLINDADA (PRODUÇÃO v2)
+// 🛡️ CONFIGURAÇÃO DE CORS DINÂMICA
 // ============================================
 
-const allowedOrigins = [
-  process.env.FRONTEND_URL,           // https://agro-ai-prototype.vercel.app
-  'http://localhost:3000',            // React Local
-  'http://localhost:3001'             // Testes Locais
-];
-
-console.log('🛡️ CORS Allowed Origins:', allowedOrigins);
-
-// Definimos a configuração UMA VEZ para usar em todo lugar
+// Função que valida e permite a origem dinamicamente
 const corsOptions = {
   origin: function (origin, callback) {
-    // Permite requisições sem origem (mobile/postman)
+    // Log para sabermos EXATAMENTE quem está tentando entrar
+    console.log(`📡 CORS Check | Origin recebida: '${origin}'`);
+
+    // Permite conexões sem origem (Apps, Postman, Server-to-Server)
     if (!origin) return callback(null, true);
-    
-    // Verifica se a origem está na lista
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      console.error(`🚫 Bloqueado por CORS: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
+
+    // ✅ MODO PERMISSIVO: Aceita o Frontend da Vercel e Localhost
+    // Se a origem contiver "agro-ai-prototype" ou "localhost", deixa passar.
+    if (origin.includes('agro-ai-prototype') || origin.includes('localhost') || origin.includes('vercel.app')) {
+      return callback(null, true);
     }
+
+    // Se chegou aqui, bloqueia (mas loga o erro)
+    console.error(`🚫 Bloqueado por CORS: ${origin}`);
+    callback(new Error(`CORS blocked for origin: ${origin}`));
   },
-  credentials: true, // Importante: Permite Cookies/Headers de Auth
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
-  maxAge: 86400 // Cache do preflight por 24h (reduz requisições OPTIONS)
 };
 
-// Aplica a configuração para todas as rotas
+// Aplica o CORS
 app.use(cors(corsOptions));
 
-// Aplica a MESMA configuração para o Preflight (OPTIONS)
-// O erro anterior acontecia porque aqui estava "cors()" vazio
-app.options(/.*/, cors(corsOptions));
+// Trata o Preflight (OPTIONS) usando Regex seguro
+app.options(/^.*$/, cors(corsOptions));
 // ============================================
 // 🛠️ FUNÇÕES AUXILIARES (HELPER FUNCTIONS)
 // ============================================
