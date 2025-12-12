@@ -40,24 +40,24 @@ if (!JWT_SECRET) {
 
 // 5. MIDDLEWARES
 // ============================================
-// 🛡️ CONFIGURAÇÃO DE CORS BLINDADA (PRODUÇÃO)
+// 🛡️ CONFIGURAÇÃO DE CORS BLINDADA (PRODUÇÃO v2)
 // ============================================
 
-// Lista de origens permitidas
 const allowedOrigins = [
-  process.env.FRONTEND_URL,           // URL do Vercel (https://agro-ai-prototype.vercel.app)
+  process.env.FRONTEND_URL,           // https://agro-ai-prototype.vercel.app
   'http://localhost:3000',            // React Local
   'http://localhost:3001'             // Testes Locais
 ];
 
 console.log('🛡️ CORS Allowed Origins:', allowedOrigins);
 
-app.use(cors({
+// Definimos a configuração UMA VEZ para usar em todo lugar
+const corsOptions = {
   origin: function (origin, callback) {
-    // 1. Permite requisições sem origem (ex: Postman, Mobile Apps, Server-to-Server)
+    // Permite requisições sem origem (mobile/postman)
     if (!origin) return callback(null, true);
     
-    // 2. Verifica se a origem está na lista permitida
+    // Verifica se a origem está na lista
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
@@ -65,13 +65,18 @@ app.use(cors({
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true, // Permite cookies/sessões
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-}));
+  credentials: true, // Importante: Permite Cookies/Headers de Auth
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  maxAge: 86400 // Cache do preflight por 24h (reduz requisições OPTIONS)
+};
 
-// Força o Express a responder as requisições OPTIONS (Preflight) corretamente
-app.options(/.*/, cors());
+// Aplica a configuração para todas as rotas
+app.use(cors(corsOptions));
+
+// Aplica a MESMA configuração para o Preflight (OPTIONS)
+// O erro anterior acontecia porque aqui estava "cors()" vazio
+app.options(/.*/, cors(corsOptions));
 // ============================================
 // 🛠️ FUNÇÕES AUXILIARES (HELPER FUNCTIONS)
 // ============================================
