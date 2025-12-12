@@ -15,10 +15,13 @@ api.interceptors.request.use((config) => {
 });
 // -----------------------------------
 
-// 🔥 ADICIONE ISTO AQUI (NOVA CONEXÃO SÓ PARA O PYTHON)
+// 🔥 CONEXÃO DIRETA COM A IA (PYTHON)
+// Em produção, usa a variável do Vercel. Localmente, usa localhost.
+const PYTHON_URL = process.env.REACT_APP_PYTHON_API_URL || 'http://localhost:8000';
+
 const aiApi = axios.create({
-    baseURL: 'http://localhost:8000/api/v1', // Porta 8000 (Python)
-    timeout: 60000 // 60 segundos (operações Python podem demorar)
+    baseURL: `${PYTHON_URL}/api/v1`, 
+    timeout: 60000 
 });
 
 const handleAuthError = (error) => {
