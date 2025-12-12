@@ -39,48 +39,39 @@ if (!JWT_SECRET) {
 }
 
 // 5. MIDDLEWARES
-// 🚨 INSERÇÃO START: Configuração para Deploy 🚨
+// ============================================
+// 🛡️ CONFIGURAÇÃO DE CORS BLINDADA (PRODUÇÃO)
+// ============================================
+
+// Lista de origens permitidas
+const allowedOrigins = [
+  process.env.FRONTEND_URL,           // URL do Vercel (https://agro-ai-prototype.vercel.app)
+  'http://localhost:3000',            // React Local
+  'http://localhost:3001'             // Testes Locais
+];
+
+console.log('🛡️ CORS Allowed Origins:', allowedOrigins);
+
 app.use(cors({
-  origin: true,       // Reflete a origem da requisição (aceita tudo)
-  credentials: true,  // Permite cookies/headers de auth
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+  origin: function (origin, callback) {
+    // 1. Permite requisições sem origem (ex: Postman, Mobile Apps, Server-to-Server)
+    if (!origin) return callback(null, true);
+    
+    // 2. Verifica se a origem está na lista permitida
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.error(`🚫 Bloqueado por CORS: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true, // Permite cookies/sessões
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
-// Rota para o Railway saber que o app está vivo
-app.get('/', (req, res) => res.send('Backend Agro-AI Online 🚀'));
-
-// Health check com verificação de banco e circuit breaker
-app.get('/health', async (req, res) => {
-  try {
-    // Testa conexão com banco (com circuit breaker)
-    await dbCircuitBreaker.execute(async () => {
-      await prisma.$queryRaw`SELECT 1`;
-    });
-    
-    res.json({ 
-      status: 'ok',
-      database: 'connected',
-      circuit_breaker: dbCircuitBreaker.getState()
-    });
-  } catch (error) {
-    res.status(503).json({ 
-      status: 'degraded',
-      database: 'disconnected',
-      error: error.message,
-      circuit_breaker: dbCircuitBreaker.getState()
-    });
-  }
-});
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
-// --- 🕵️‍♂️ MIDDLEWARE DE DEBUG (RAIO-X) ---
-app.use((req, res, next) => {
-  console.log(`\n📨 [DEBUG] Requisição recebida: ${req.method} ${req.url}`);
-  console.log('🔑 Headers Content-Type:', req.headers['content-type']);
-  console.log('📦 Body Recebido:', req.body);
-  console.log('--------------------------------------------------');
-  next();
-});
+// Força o Express a responder as requisições OPTIONS (Preflight) corretamente
+app.options('*', cors());
 // ============================================
 // 🛠️ FUNÇÕES AUXILIARES (HELPER FUNCTIONS)
 // ============================================
