@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
+import { supabase } from '../../services/supabase'; // Importamos o cliente que acabamos de criar
 import theme from '../../styles/theme';
-
-// URL Base padronizada (Raiz do servidor)
-const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
 
 const Login = ({ onLogin }) => {
   const [email, setEmail] = useState('');
@@ -16,33 +14,43 @@ const Login = ({ onLogin }) => {
     setLoading(true);
 
     try {
-      // 🚀 CORREÇÃO: Adicionamos /api aqui para casar com o server.js
-      const response = await fetch(`${BASE_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
+      // 🚀 LOGIN VIA SUPABASE (Padrão Moderno)
+      // O frontend fala direto com o Auth Provider, sem sobrecarregar seu backend
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email,
+        password: password,
       });
 
-      const data = await response.json();
+      if (error) {
+        throw error;
+      }
 
-      if (response.ok) {
-        // Sucesso! Salva o token
-        localStorage.setItem('token', data.accessToken); // Backend retorna 'accessToken'
+      if (data.user && data.session) {
+        // Sucesso! O token JWT do Supabase é o que seu backend espera agora
+        const token = data.session.access_token;
         
-        // Se tiver refresh token, salva também
-        if (data.refreshToken) {
-            localStorage.setItem('refreshToken', data.refreshToken);
+        // Salvamos no localStorage para persistência
+        localStorage.setItem('token', token);
+        
+        // Opcional: Salvar refresh token se precisar
+        if (data.session.refresh_token) {
+          localStorage.setItem('refreshToken', data.session.refresh_token);
         }
+
+        console.log("✅ Login realizado com sucesso:", data.user.email);
         
-        onLogin(data.user); 
-      } else {
-        setError(data.error || 'Falha na autenticação');
+        // Atualiza o estado global da aplicação
+        onLogin({
+            id: data.user.id,
+            email: data.user.email,
+            role: data.user.user_metadata?.role || 'user'
+        });
       }
     } catch (err) {
-      console.error("Erro de conexão:", err);
-      setError('Erro ao conectar com o servidor. Verifique se o Backend está rodando.');
+      console.error("Erro de login:", err.message);
+      setError(err.message === 'Invalid login credentials' 
+        ? 'E-mail ou senha incorretos.' 
+        : 'Erro ao fazer login. Tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -71,7 +79,7 @@ const Login = ({ onLogin }) => {
         <div style={{ marginBottom: '30px' }}>
           <div style={{ fontSize: '40px', marginBottom: '10px' }}>🚀</div>
           <h1 style={{ margin: 0, fontSize: '24px', color: theme.colors.textPrimary }}>AgroArbitrage AI</h1>
-          <p style={{ color: theme.colors.textMuted, marginTop: '5px' }}>Acesso Corporativo</p>
+          <p style={{ color: theme.colors.textMuted, marginTop: '5px' }}>Acesso via Supabase</p>
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -81,7 +89,7 @@ const Login = ({ onLogin }) => {
               type="email" 
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@agro.com"
+              placeholder="seu@email.com"
               required
               style={{
                 width: '100%',
@@ -139,7 +147,7 @@ const Login = ({ onLogin }) => {
               opacity: loading ? 0.7 : 1
             }}
           >
-            {loading ? 'Entrando...' : 'Acessar Sistema'}
+            {loading ? 'Validando...' : 'Entrar'}
           </button>
         </form>
       </div>

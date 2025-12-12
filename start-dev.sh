@@ -1,28 +1,19 @@
 #!/usr/bin/env bash
 
-echo "🚀 Iniciando ambiente de desenvolvimento Agro-AI..."
+echo "==========================================="
+echo " AGRO-ARBITRAGE AI - INICIANDO SISTEMA"
+echo "==========================================="
+echo
 
-# 1) AI service (Python)
-cd "$(dirname "$0")/ai-service"
-source venv/bin/activate
-uvicorn main:app --reload &
-AI_PID=$!
-echo "🧠 AI service rodando (PID $AI_PID)"
+# 1. Sobe containers (Node + Python) em background
+echo "[1/3] Subindo containers (Node + Python)..."
+docker compose up -d
 
-# 2) Backend (Node)
-cd ../backend
-nvm use --lts >/dev/null 2>&1
-npm run dev &
-BACKEND_PID=$!
-echo "🌐 Backend rodando (PID $BACKEND_PID)"
+# 2. Mostra logs do backend (ajusta o nome do service se precisar)
+echo "[2/3] Mostrando logs do backend (CTRL+C para sair dos logs, containers continuam rodando)..."
+docker compose logs -f --tail=50 backend &
 
-# 3) Frontend (se quiser ligar junto)
-cd ../frontend
-nvm use --lts >/dev/null 2>&1
-npm run dev &
-FRONT_PID=$!
-echo "📊 Frontend rodando (PID $FRONT_PID)"
-
-echo ""
-echo "✅ Tudo iniciado. Para encerrar, use: kill $AI_PID $BACKEND_PID $FRONT_PID"
-wait
+# 3. Inicia o frontend React
+echo "[3/3] Iniciando Frontend React..."
+cd frontend
+npm start

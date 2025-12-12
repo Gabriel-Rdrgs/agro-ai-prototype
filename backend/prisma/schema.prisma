@@ -1,81 +1,53 @@
-// backend/prisma/schema.prisma
-
 generator client {
   provider        = "prisma-client-js"
-  // Habilita gerenciamento de extensões nativas do Postgres (PostGIS + Vector)
   previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
   provider   = "postgresql"
   url        = env("DATABASE_URL")
-  // ✅ Prisma gerencia o pool automaticamente
-  // Para limitar conexões, use connection_limit na URL ou configure no PrismaClient
-  // Adicionado 'vector' para suporte a IA/Embeddings
-  extensions = [postgis, vector]
+  directUrl  = env("DIRECT_URL")
+  extensions = [postgis, uuid_ossp(map: "uuid-ossp", schema: "extensions"), vector]
 }
 
-// --- MODELOS DE NEGÓCIO ---
-
 model Opportunity {
-  id           Int      @id @default(autoincrement())
-  product      String   // Ex: Tomate
-  category     String   // Ex: Hortifruti
-  
-  // Localização Origem
+  id           Int                      @id @default(autoincrement())
+  product      String
+  category     String
   city         String
   state        String
   lat          Float
   lng          Float
-
-  // Dados Financeiros
-  buyPrice     Decimal  @db.Decimal(10, 2)
-  sellPrice    Decimal  @db.Decimal(10, 2)
-  
-  // Dados Destino
+  buyPrice     Decimal                  @db.Decimal(10, 2)
+  sellPrice    Decimal                  @db.Decimal(10, 2)
   sellLocation String
   destLat      Float?
   destLng      Float?
-
-  // --- (Inteligência Persistida) ---
-  roi          Float?   @default(0)
-  freight      Decimal? @db.Decimal(10, 2)
-  bestRoute    Boolean  @default(false)
-
-
-
-  // Detalhes
-  volume       String   // Ex: "500 cx"
-  riskLevel    Int      // 1=Baixo, 2=Médio, 3=Alto
-  climate      String   // Ex: "Chuva: 50mm"
+  volume       String
+  riskLevel    Int
+  climate      String
   description  String?
-  season       String?  // Ex: "Safra de Inverno"
-
-  createdAt    DateTime @default(now())
-
+  season       String?
+  createdAt    DateTime                 @default(now())
+  geom         Unsupported("geometry")?
+  bestRoute    Boolean                  @default(false)
+  freight      Decimal?                 @db.Decimal(10, 2)
+  roi          Float?                   @default(0)
   history      PriceHistory[]
 
-  // Guarda o ponto exato (Latitude/Longitude) num formato que o banco consegue medir distância
-  geom    Unsupported("geometry(Point, 4326)")? 
-
-  // Cria um índice especial para buscas rápidas (GIST)
-  @@index([geom], name: "opportunity_geom_idx", type: Gist)
+  @@index([geom], map: "opportunity_geom_idx", type: Gist)
+  @@index([product])
+  @@index([product, state])
+  @@index([state])
 }
-
 
 model PriceHistory {
   id            Int         @id @default(autoincrement())
-  opportunity   Opportunity @relation(fields: [opportunityId], references: [id])
   opportunityId Int
-  
   price         Decimal     @db.Decimal(10, 2)
-  
   createdAt     DateTime    @default(now())
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id])
 }
-
-// --- MODELOS DE AUTENTICAÇÃO ---
-
-// backend/prisma/schema.prisma
 
 model User {
   id            Int            @id @default(autoincrement())
@@ -84,106 +56,123 @@ model User {
   password      String
   role          String         @default("analyst")
   createdAt     DateTime       @default(now())
-  
-  refreshTokens RefreshToken[] 
-  
-  // ADICIONE ESTA LINHA ABAIXO 👇
-  auditLogs     AuditLog[]    
+  auditLogs     AuditLog[]
+  refreshTokens RefreshToken[]
 }
 
 model RefreshToken {
   id        Int      @id @default(autoincrement())
   token     String   @unique
   userId    Int
-  user      User     @relation(fields: [userId], references: [id])
   expiresAt DateTime
   createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
 }
 
 model AuditLog {
   id        Int      @id @default(autoincrement())
-  action    String   // Ex: "LOGIN", "CREATE_OPPORTUNITY", "DELETE_USER"
-  details   String?  // Ex: "Usuário logou com IP X" ou JSON com dados antigos
-  userId    Int?     // Quem fez a ação (pode ser nulo se for ação do sistema)
-  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  details   String?
+  userId    Int?
   createdAt DateTime @default(now())
-  
+  user      User?    @relation(fields: [userId], references: [id])
+
   @@index([userId])
 }
-// ============================================
-// MODELOS PARA INTEGRAÇÃO CEASA
-// ============================================
 
 model CeasaPrice {
-  id Int @id @default(autoincrement())
-  
-  // Localização
-  ceasa_region String
-  ceasa_name String
-  
-  // Produto
-  product_name String
-  unit_type String?
-  
-  // Preços (em Decimal para evitar problemas de ponto flutuante)
-  price_min Decimal @db.Decimal(10, 2)
-  price_max Decimal @db.Decimal(10, 2)
-  price_avg Decimal @db.Decimal(10, 2)
-  
-  // Data e Timestamps
-  price_date DateTime
+  id             Int      @id @default(autoincrement())
+  ceasa_region   String
+  ceasa_name     String
+  product_name   String
+  unit_type      String?
+  price_min      Decimal  @db.Decimal(10, 2)
+  price_max      Decimal  @db.Decimal(10, 2)
+  price_avg      Decimal  @db.Decimal(10, 2)
+  price_date     DateTime
   sync_timestamp DateTime @default(now())
-  
-  // ✅ NOVO: Indica se é projeção ou histórico
-  is_projection Boolean @default(false)
-  data_type String? // "historical" ou "projection"
-  
-  // Índices para queries rápidas
+  is_projection  Boolean  @default(false)
+  data_type      String?
+
   @@unique([ceasa_region, product_name, price_date])
   @@index([product_name])
   @@index([ceasa_region])
   @@index([price_date])
-  @@index([is_projection]) // ✅ NOVO: Índice para filtrar projeções
+  @@index([is_projection])
+  @@index([product_name, price_date], map: "CeasaPrice_product_date_idx")
+  @@index([ceasa_region], map: "CeasaPrice_region_idx")
 }
 
 model CeasaSyncLog {
-  id Int @id @default(autoincrement())
-  
-  source String
-  status String
+  id             Int      @id @default(autoincrement())
+  source         String
+  status         String
   records_synced Int
-  error_message String?
-  
+  error_message  String?
   sync_timestamp DateTime @default(now())
-  
+
   @@index([source])
   @@index([sync_timestamp])
 }
-// Adicione isso no final do arquivo schema.prisma
 
 model FuelPrice {
   id              Int      @id @default(autoincrement())
-  state_code      String   // Ex: "SP"
+  state_code      String
   price_per_liter Float
   data_coleta     DateTime
   fonte           String?
   created_at      DateTime @default(now())
 
-  // IMPORTANTE: Mapeia para o nome exato que o Python usa
   @@map("fuel_prices")
 }
-// --- RAG & DOCUMENTOS ---
 
 model Document {
-  id        String   @id @default(uuid())
-  content   String   // O texto extraído do PDF (chunk)
-  metadata  Json?    // Ex: { "page": 1, "source": "manual_tomate.pdf" }
-  
-  // O vetor de embedding (geralmente 1536 dimensões para OpenAI small)
-  // Usamos Unsupported porque o Prisma ainda não tipa nativamente vetores perfeitamente em todos os drivers
-  embedding Unsupported("vector(1536)")?
-
-  createdAt DateTime @default(now())
+  id        String                 @id @default(uuid())
+  content   String
+  metadata  Json?
+  embedding Unsupported("vector")?
+  createdAt DateTime               @default(now())
 
   @@map("documents")
+}
+
+model IBGEProduction {
+  id             Int       @id @default(autoincrement())
+  product_name   String
+  state_code     String
+  variable       String
+  value          Decimal   @db.Decimal(15, 2)
+  year           Int
+  source         String?   @default("IBGE")
+  data_date      DateTime  @db.Timestamp(6)
+  sync_timestamp DateTime? @default(now()) @db.Timestamp(6)
+
+  @@unique([product_name, state_code, variable, year])
+  @@index([product_name], map: "idx_ibge_product")
+  @@index([state_code], map: "idx_ibge_state")
+  @@index([year], map: "idx_ibge_year")
+}
+
+model market_prices {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  date       DateTime  @db.Date
+  product    String    @db.VarChar(50)
+  region     String?   @default("BR") @db.VarChar(50)
+  price      Decimal   @db.Decimal(10, 2)
+  unit       String    @db.VarChar(20)
+  source     String?   @db.VarChar(50)
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@unique([date, product, region], map: "unique_price_entry")
+  @@index([date], map: "idx_market_prices_date")
+  @@index([product], map: "idx_market_prices_product")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model spatial_ref_sys {
+  srid      Int     @id
+  auth_name String? @db.VarChar(256)
+  auth_srid Int?
+  srtext    String? @db.VarChar(2048)
+  proj4text String? @db.VarChar(2048)
 }

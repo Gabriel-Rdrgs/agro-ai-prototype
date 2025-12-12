@@ -646,3 +646,5 @@ class ExtremeEventsDetector:
 
 # Instância Global
 extreme_events_detector = ExtremeEventsDetector()
+
+

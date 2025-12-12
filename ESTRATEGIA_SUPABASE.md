@@ -231,3 +231,5 @@ setInterval(() => {
 1. **Implementar cache agressivo** (esta semana)
 2. **Monitorar métricas** (próximas 2 semanas)
 3. **Decidir sobre upgrade/migração** (1 mês)
+
+

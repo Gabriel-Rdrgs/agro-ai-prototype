@@ -1,47 +1,60 @@
-// backend/authMiddleware.js
-const jwt = require('jsonwebtoken');
+const supabase = require('./utils/supabase');
 
-// O CÓDIGO NOVO (SEGURO - TIPO SÉNIOR) ✅
-const SECRET_KEY = process.env.JWT_SECRET;
-
-// Se a chave não existir no .env, o servidor para e avisa no terminal
-if (!SECRET_KEY) {
-  console.error("❌ ERRO CRÍTICO: A variável JWT_SECRET não foi encontrada no .env!");
-  process.exit(1); // Encerra o servidor imediatamente para segurança
-}
-
-// --- FERRAMENTA 1: Verifica se o token é verdadeiro (O Crachá) ---
-// Antes isso era o "module.exports" direto, agora é uma função nomeada.
-exports.verifyToken = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader) {
-    return res.status(401).json({ error: 'Acesso negado. Token não fornecido.' });
-  }
-
-  // O token vem como "Bearer eyJhbGci...", pegamos só a parte final
-  const token = authHeader.split(' ')[1];
-
+/**
+ * Middleware: Verifica Token via Supabase
+ */
+const verifyToken = async (req, res, next) => {
   try {
-    const decoded = jwt.verify(token, SECRET_KEY);
-    req.user = decoded; // Salva os dados do usuário (id, role) na requisição
-    next(); // Pode passar
-  } catch (error) {
-    return res.status(403).json({ error: 'Token inválido ou expirado.' });
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Token de autenticação não fornecido' });
+    }
+
+    const token = authHeader.split(' ')[1];
+
+    // Valida o token no Supabase Auth
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+
+    if (error || !user) {
+      console.error('❌ Erro de validação Supabase:', error?.message);
+      return res.status(401).json({ error: 'Sessão inválida ou expirada' });
+    }
+
+    // Popula req.user com dados do Supabase + Role (se existir nos metadados)
+    req.user = {
+      id: user.id,
+      email: user.email,
+      // Supabase guarda roles extras em user_metadata. Se não tiver, assume 'user'
+      role: user.user_metadata?.role || 'user', 
+      aud: user.aud
+    };
+
+    next();
+  } catch (err) {
+    console.error('❌ Erro interno no authMiddleware:', err);
+    return res.status(500).json({ error: 'Erro interno de autenticação' });
   }
 };
 
-// --- FERRAMENTA 2: Verifica o Cargo (RBAC) ---
-// Essa é a novidade! Ela bloqueia se o cargo não for o certo.
-exports.checkRole = (allowedRoles) => {
+/**
+ * Middleware: Verifica Cargo (RBAC)
+ * Funciona igual ao anterior, mas olhando para o req.user populado pelo Supabase
+ */
+const checkRole = (allowedRoles) => {
   return (req, res, next) => {
-    // O verifyToken já rodou antes e colocou o req.user aqui
-    // Se não tiver usuário ou o cargo dele não estiver na lista permitida...
+    // Se o usuário não tem role ou a role não está na lista permitida
     if (!req.user || !allowedRoles.includes(req.user.role)) {
       return res.status(403).json({ 
         error: 'Acesso Proibido: Você não tem permissão para esta ação.' 
       });
     }
-    next(); // Pode passar
+    next();
   };
+};
+
+// Exportação nomeada para não quebrar as rotas existentes
+module.exports = {
+  verifyToken,
+  checkRole
 };

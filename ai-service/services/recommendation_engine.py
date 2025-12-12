@@ -253,3 +253,5 @@ class RecommendationEngine:
 
 # Instância Global
 recommendation_engine = RecommendationEngine()
+
+
