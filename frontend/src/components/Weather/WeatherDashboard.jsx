@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react'; // useMemo já importado
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -102,14 +102,15 @@ const WeatherDashboard = ({ opportunities = [] }) => {
   }, [selectedOpp]);
 
   // --- 2. EXTRAÇÃO SEGURA DE DADOS (16 DIAS) ---
-  const fData = forecast?.data || forecast?.daily || {};
-  const time = Array.isArray(fData.time) ? fData.time : [];
+  // Memoizado para evitar recálculos desnecessários
+  const fData = useMemo(() => forecast?.data || forecast?.daily || {}, [forecast]);
+  const time = useMemo(() => Array.isArray(fData.time) ? fData.time : [], [fData.time]);
   
-  const tMax = Array.isArray(fData.temp_max) ? fData.temp_max : (Array.isArray(fData.temperature_2m_max) ? fData.temperature_2m_max : []);
-  const tMin = Array.isArray(fData.temp_min) ? fData.temp_min : (Array.isArray(fData.temperature_2m_min) ? fData.temperature_2m_min : []);
-  const rain = Array.isArray(fData.rain_sum) ? fData.rain_sum : (Array.isArray(fData.precipitation_sum) ? fData.precipitation_sum : []);
-  const et0 = Array.isArray(fData.et0) ? fData.et0 : [];
-  const hum = Array.isArray(fData.humidity_max) ? fData.humidity_max : [];
+  const tMax = useMemo(() => Array.isArray(fData.temp_max) ? fData.temp_max : (Array.isArray(fData.temperature_2m_max) ? fData.temperature_2m_max : []), [fData.temp_max, fData.temperature_2m_max]);
+  const tMin = useMemo(() => Array.isArray(fData.temp_min) ? fData.temp_min : (Array.isArray(fData.temperature_2m_min) ? fData.temperature_2m_min : []), [fData.temp_min, fData.temperature_2m_min]);
+  const rain = useMemo(() => Array.isArray(fData.rain_sum) ? fData.rain_sum : (Array.isArray(fData.precipitation_sum) ? fData.precipitation_sum : []), [fData.rain_sum, fData.precipitation_sum]);
+  const et0 = useMemo(() => Array.isArray(fData.et0) ? fData.et0 : [], [fData.et0]);
+  const hum = useMemo(() => Array.isArray(fData.humidity_max) ? fData.humidity_max : [], [fData.humidity_max]);
 
   // --- 3. CONFIGURAÇÃO DO GRÁFICO (MEMOIZED) ---
   const chartData = useMemo(() => {

@@ -6,9 +6,6 @@ const FinancialTab = ({ opportunity }) => {
   
   // ✅ UNIFICADO: ROI vem do Python (cálculo de produção completa)
   // Não recalcula no frontend - usa o ROI que vem do banco (calculado pelo Python)
-  const buyPrice = financials.buyPrice;
-  const sellPrice = financials.sellPrice;
-  
   // ROI vem do Python (cálculo completo: produção + frete + taxas + quebra + embalagem)
   const roiValue = financials.roi;
   const roi = (roiValue !== null && roiValue !== undefined && !isNaN(roiValue) && typeof roiValue === 'number') 

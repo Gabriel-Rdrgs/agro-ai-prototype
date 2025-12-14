@@ -17,7 +17,7 @@ api.interceptors.request.use((config) => {
 
 // 🔥 CONEXÃO DIRETA COM A IA (PYTHON)
 // Em produção, usa a variável do Vercel. Localmente, usa localhost.
-const PYTHON_URL = process.env.REACT_APP_PYTHON_API_URL || 'http://localhost:8000';
+// const PYTHON_URL = process.env.REACT_APP_PYTHON_API_URL || 'http://localhost:8000'; // Não usado atualmente
 
 // const aiApi = axios.create({
 //     baseURL: `${PYTHON_URL}/api/v1`, 

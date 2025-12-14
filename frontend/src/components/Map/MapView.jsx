@@ -1,4 +1,4 @@
-import React, { useState, useImperativeHandle, useEffect, useRef } from 'react';
+import React, { useState, useImperativeHandle, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, GeoJSON, Polyline, Tooltip } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import 'leaflet/dist/leaflet.css';
@@ -191,7 +191,7 @@ const MapView = React.forwardRef((props, ref) => {
         clearTimeout(fetchTimeoutRef.current);
       }
     };
-  }, [opportunities]);
+  }, [opportunities, setAiPredictions]);
   
   // ✅ NOVO: Carrega risco de abastecimento para todas as oportunidades (para heatmap)
   // ✅ OTIMIZADO: Cache e processamento mais eficiente
@@ -306,7 +306,7 @@ const MapView = React.forwardRef((props, ref) => {
       setSupplyRiskProgress({ loaded: 0, total: 0 });
       supplyRiskLoadingRef.current = false;
     }
-  }, [showSupplyRisk, opportunities, setSupplyRiskData]);
+  }, [showSupplyRisk, opportunities, setSupplyRiskData]); // setSupplyRiskData já está memoizado com useCallback
   
   // ✅ NOVO: Limpa cache do frontend quando toggle é desativado
   useEffect(() => {
