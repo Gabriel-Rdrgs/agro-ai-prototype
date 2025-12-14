@@ -1,4 +1,4 @@
-import React, { useState, useImperativeHandle, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useImperativeHandle, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, GeoJSON, Polyline, Tooltip } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import 'leaflet/dist/leaflet.css';
@@ -144,8 +144,15 @@ const MapView = React.forwardRef((props, ref) => {
   const supplyRiskData = props.supplyRiskData || {};
   
   // ✅ NOVO: Callbacks para atualizar dados de IA e risco
-  const setAiPredictions = props.setAiPredictions || (() => {});
-  const setSupplyRiskData = props.setSupplyRiskData || (() => {});
+  // Usa useRef para manter referência estável e evitar re-renders
+  const setAiPredictionsRef = useRef(props.setAiPredictions || (() => {}));
+  const setSupplyRiskDataRef = useRef(props.setSupplyRiskData || (() => {}));
+  
+  // Atualiza refs quando props mudam
+  useEffect(() => {
+    setAiPredictionsRef.current = props.setAiPredictions || (() => {});
+    setSupplyRiskDataRef.current = props.setSupplyRiskData || (() => {});
+  }, [props.setAiPredictions, props.setSupplyRiskData]);
 
   // ✅ OTIMIZADO: Debounce para evitar múltiplas requisições simultâneas
   const fetchTimeoutRef = useRef(null);
@@ -176,7 +183,7 @@ const MapView = React.forwardRef((props, ref) => {
           // Chama o serviço atualizado
           const preds = await OpportunityService.calculateBatchAI(opportunities);
           if (preds) {
-            setAiPredictions(preds);
+            setAiPredictionsRef.current(preds);
             lastOpportunitiesRef.current = opportunitiesKey; // Marca como processado
           }
         } catch (err) {
@@ -191,7 +198,7 @@ const MapView = React.forwardRef((props, ref) => {
         clearTimeout(fetchTimeoutRef.current);
       }
     };
-  }, [opportunities, setAiPredictions]);
+  }, [opportunities]);
   
   // ✅ NOVO: Carrega risco de abastecimento para todas as oportunidades (para heatmap)
   // ✅ OTIMIZADO: Cache e processamento mais eficiente
@@ -216,7 +223,7 @@ const MapView = React.forwardRef((props, ref) => {
             // Cache válido por 30 minutos no frontend
             if (now - cacheTime < 30 * 60 * 1000) {
               console.debug(`✅ Cache HIT no frontend para supply risk`);
-              setSupplyRiskData(cachedData.data);
+              setSupplyRiskDataRef.current(cachedData.data);
               setSupplyRiskLoading(false);
               supplyRiskLoadingRef.current = false;
               return;
@@ -301,12 +308,12 @@ const MapView = React.forwardRef((props, ref) => {
       };
     } else if (!showSupplyRisk) {
       // Limpa os dados quando o toggle é desativado
-      setSupplyRiskData({});
+      setSupplyRiskDataRef.current({});
       setSupplyRiskLoading(false);
       setSupplyRiskProgress({ loaded: 0, total: 0 });
       supplyRiskLoadingRef.current = false;
     }
-  }, [showSupplyRisk, opportunities, setSupplyRiskData]); // setSupplyRiskData já está memoizado com useCallback
+  }, [showSupplyRisk, opportunities]);
   
   // ✅ NOVO: Limpa cache do frontend quando toggle é desativado
   useEffect(() => {
