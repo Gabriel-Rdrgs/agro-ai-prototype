@@ -168,6 +168,29 @@ model market_prices {
   @@index([product], map: "idx_market_prices_product")
 }
 
+// ✅ FASE 0 - Semana 3: Dados Climáticos Históricos
+model WeatherData {
+  id              Int      @id @default(autoincrement())
+  lat             Float
+  lng             Float
+  date            DateTime @db.Date
+  temperature_max Float?
+  temperature_min Float?
+  precipitation   Float?   // mm
+  radiation_mj    Float?   // MJ/m²
+  humidity_avg    Float?   // %
+  et0             Float?   // Evapotranspiração de referência (mm)
+  source          String   @default("open-meteo")
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  @@unique([lat, lng, date, source])
+  @@index([lat, lng])
+  @@index([date])
+  @@index([lat, lng, date])
+  @@map("weather_data")
+}
+
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model spatial_ref_sys {
   srid      Int     @id

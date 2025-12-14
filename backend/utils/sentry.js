@@ -64,3 +64,4 @@ Sentry.Handlers = {
 };
 
 module.exports = Sentry;
+

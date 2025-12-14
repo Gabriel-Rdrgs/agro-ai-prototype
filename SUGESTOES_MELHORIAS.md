@@ -386,3 +386,4 @@ Essas 3 funcionalidades transformam a aplicação de "ferramenta de consulta" pa
 - Priorização considera **impacto no negócio** vs **esforço de desenvolvimento**
 - Funcionalidades podem ser implementadas **incrementalmente**
 - Cada funcionalidade pode ser **testada com usuários** antes de expandir
+

@@ -176,3 +176,4 @@ Se o **"Last Seen"** é antigo (ex: "1 hour ago") e o backend está funcionando:
 ---
 
 **Última atualização:** Dezembro 2025
+

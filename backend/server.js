@@ -1126,6 +1126,32 @@ app.use((err, req, res, next) => {
 });
 
 // ============================================
+// ✅ FASE 0 - Semana 3: Job Agendado de Sincronização Climática
+// ============================================
+const { setupWeatherSyncJob } = require('./utils/weatherSyncJob');
+
+// Configura job agendado (2h da manhã, horário de Brasília)
+if (process.env.ENABLE_WEATHER_SYNC !== 'false') {
+  const weatherSyncSchedule = process.env.WEATHER_SYNC_SCHEDULE || '0 2 * * *'; // 2h da manhã
+  setupWeatherSyncJob(weatherSyncSchedule);
+  logger.info(`✅ Job de sincronização climática configurado: ${weatherSyncSchedule}`);
+} else {
+  logger.info('⚠️ Sincronização climática desabilitada (ENABLE_WEATHER_SYNC=false)');
+}
+
+// Rota para sincronização manual (apenas para admin)
+app.post('/api/admin/sync-weather', verifyToken, checkRole(['admin']), async (req, res) => {
+  try {
+    const { runManualSync } = require('./utils/weatherSyncJob');
+    const result = await runManualSync();
+    res.json(result);
+  } catch (error) {
+    logger.error('❌ Erro na sincronização manual:', { error: error.message });
+    res.status(500).json({ error: 'Erro ao sincronizar dados climáticos' });
+  }
+});
+
+// ============================================
 // 🚀 INICIALIZAÇÃO DO SERVIDOR (CORRIGIDA)
 // ============================================
 // Ouvimos em 0.0.0.0 para garantir que o Docker/Railway consiga acessar

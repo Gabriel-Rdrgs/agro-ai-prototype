@@ -360,3 +360,4 @@ Os níveis disponíveis (do mais crítico ao menos crítico):
 ---
 
 **Última atualização:** Dezembro 2025
+

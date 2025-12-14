@@ -244,26 +244,75 @@ SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 
 ---
 
-## ⚠️ SEMANA 3: Dados Climáticos Automatizados
+## ✅ SEMANA 3: Dados Climáticos Automatizados
 
-### **3.1. Script Python para Open-Meteo**
+### **3.1. Script Python para Open-Meteo** ✅
 
-**O que fazer:**
-1. Criar script que baixa dados diariamente
-2. Salvar no Postgres
-3. Validação de dados antes de salvar
+**Status:** ✅ COMPLETO
 
-**Status:** ⚠️ PENDENTE
+**O que foi feito:**
+- ✅ Criado `ai-service/scripts/sync_weather_data.py`
+- ✅ Script busca dados do Open-Meteo para todas as localizações únicas
+- ✅ Salva dados no Postgres (tabela `weather_data`)
+- ✅ Validação completa de dados antes de salvar
+- ✅ Suporte para buscar dados de hoje e dias passados
+- ✅ Tratamento de erros e logging detalhado
+
+**Características:**
+- Busca localizações únicas da tabela `Opportunity`
+- Coleta: temperatura (max/min), precipitação, radiação, umidade, ET0
+- Validação: coordenadas, temperaturas, precipitação, radiação, umidade
+- Prevenção de duplicatas (ON CONFLICT)
+
+**Arquivos criados:**
+- `ai-service/scripts/sync_weather_data.py` (NOVO)
 
 ---
 
-### **3.2. Job Agendado**
+### **3.2. Job Agendado** ✅
 
-**O que fazer:**
-1. Configurar cron no Railway ou node-cron no backend
-2. Executar script diariamente (ex: 2h da manhã)
+**Status:** ✅ COMPLETO
 
-**Status:** ⚠️ PENDENTE
+**O que foi feito:**
+- ✅ Criado `backend/utils/weatherSyncJob.js`
+- ✅ Integrado no `backend/server.js`
+- ✅ Configurado para executar diariamente às 2h da manhã (horário de Brasília)
+- ✅ Rota admin para sincronização manual (`/api/admin/sync-weather`)
+- ✅ Configurável via variáveis de ambiente
+
+**Configuração:**
+- **Schedule padrão:** `0 2 * * *` (2h da manhã)
+- **Variável:** `WEATHER_SYNC_SCHEDULE` (customizável)
+- **Desabilitar:** `ENABLE_WEATHER_SYNC=false`
+
+**Arquivos criados/modificados:**
+- `backend/utils/weatherSyncJob.js` (NOVO)
+- `backend/server.js` (ATUALIZADO - integração do job)
+
+---
+
+### **3.3. Tabela no Banco de Dados** ✅
+
+**Status:** ✅ COMPLETO
+
+**O que foi feito:**
+- ✅ Criado modelo `WeatherData` no `schema.prisma`
+- ✅ Criada migration SQL (`20251214000000_add_weather_data`)
+- ✅ Índices otimizados para consultas por localização e data
+- ✅ Constraint único para evitar duplicatas
+
+**Estrutura da tabela:**
+- `lat`, `lng`, `date` (chave única)
+- `temperature_max`, `temperature_min`
+- `precipitation` (mm)
+- `radiation_mj` (MJ/m²)
+- `humidity_avg` (%)
+- `et0` (Evapotranspiração de referência em mm)
+- `source` (padrão: 'open-meteo')
+
+**Arquivos criados/modificados:**
+- `backend/prisma/schema.prisma` (ATUALIZADO - modelo WeatherData)
+- `backend/prisma/migrations/20251214000000_add_weather_data/migration.sql` (NOVO)
 
 ---
 
@@ -327,3 +376,4 @@ SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 ---
 
 **Última atualização:** Dezembro 2025
+
