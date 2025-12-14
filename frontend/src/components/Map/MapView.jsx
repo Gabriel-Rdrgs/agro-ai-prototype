@@ -291,7 +291,7 @@ const MapView = React.forwardRef((props, ref) => {
         }));
         
         console.debug(`📊 Total de riscos carregados: ${Object.keys(riskData).length}`);
-        setSupplyRiskData(riskData);
+        setSupplyRiskDataRef.current(riskData);
         setSupplyRiskLoading(false);
         supplyRiskLoadingRef.current = false;
       };
