@@ -5,13 +5,19 @@
 
 // 1. CARREGAMENTO DE DEPENDÊNCIAS
 require('dotenv').config();
+
+// ✅ FASE 0 - Semana 2: Sentry deve ser inicializado ANTES de tudo
+const Sentry = require('./utils/sentry');
+const logger = require('./utils/logger');
+
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const { PrismaClient } = require('@prisma/client');
 
 // 2. IMPORTAÇÃO DE MÓDULOS LOCAIS
-const authController = require('./authController');
+// ✅ FASE 0: Migrado para Supabase Auth
+const authController = require('./authController_supabase');
 const { verifyToken, checkRole } = require('./authMiddleware');
 const ceasaRoutes = require('./routes/ceasa');
 const etlRoutes = require('./routes/etl'); // ✅ ETL ASSÍNCRONO
@@ -20,6 +26,17 @@ const jobQueue = require('./utils/jobQueue'); // ✅ JOBS ASSÍNCRONOS
 
 // 3. INICIALIZAÇÃO
 const app = express();
+
+// ✅ FASE 0 - Semana 2: Middlewares do Sentry (ANTES de outros middlewares)
+// Na v10 do @sentry/node, a expressIntegration() já gerencia request/tracing automaticamente
+// Não precisamos adicionar middlewares manualmente - a integração faz isso automaticamente
+// Mas mantemos compatibilidade com código que pode usar Handlers
+if (process.env.SENTRY_DSN && Sentry.Handlers && typeof Sentry.Handlers.requestHandler === 'function') {
+  app.use(Sentry.Handlers.requestHandler());
+  if (typeof Sentry.Handlers.tracingHandler === 'function') {
+    app.use(Sentry.Handlers.tracingHandler());
+  }
+}
 
 // ✅ Prisma Singleton (otimizado para pool de conexões)
 // Usa singleton pattern para evitar múltiplas instâncias e controlar pool
@@ -35,7 +52,7 @@ const AWESOME_API_URL = process.env.AWESOME_API_URL || 'https://economia.awesome
 
 // Validação de Segurança
 if (!JWT_SECRET) {
-  console.warn('⚠️ AVISO: JWT_SECRET não configurado. Usando default inseguro para dev.');
+  logger.warn('⚠️ AVISO: JWT_SECRET não configurado. Usando default inseguro para dev.');
 }
 
 // 5. MIDDLEWARES
@@ -59,7 +76,7 @@ const corsOptions = {
     }
 
     // Se chegou aqui, bloqueia (mas loga o erro)
-    console.error(`🚫 Bloqueado por CORS: ${origin}`);
+    logger.warn(`🚫 Bloqueado por CORS: ${origin}`);
     callback(new Error(`CORS blocked for origin: ${origin}`));
   },
   credentials: true,
@@ -113,7 +130,7 @@ async function getDollarRate() {
     const response = await axios.get(`${AWESOME_API_URL}/last/USD-BRL`);
     return parseFloat(response.data.USDBRL.bid);
   } catch (error) {
-    console.error("⚠️ Erro na API de Dólar:", error.message);
+    logger.warn("⚠️ Erro na API de Dólar:", { error: error.message });
     return 5.50; // Fallback seguro
   }
 }
@@ -230,7 +247,7 @@ const formattedOpportunities = opportunities.map(opp => {
       }
       if (sellPrice > 20) {
           // Dados antigos em caixa - normaliza para kg
-          console.warn(`⚠️ [${opp.id}] sellPrice normalizado de caixa para kg: ${opp.sellPrice} -> ${sellPrice / 20}`);
+          logger.warn(`⚠️ [${opp.id}] sellPrice normalizado de caixa para kg: ${opp.sellPrice} -> ${sellPrice / 20}`);
           sellPrice /= 20;
       }
 
@@ -288,11 +305,11 @@ const formattedOpportunities = opportunities.map(opp => {
     
     // ✅ CACHE: Salva resultado no cache (5 minutos)
     cache.set(cacheKey, formattedOpportunities, 300);
-    console.log(`💾 Cache SET: /api/opportunities (${formattedOpportunities.length} oportunidades)`);
+    logger.info(`💾 Cache SET: /api/opportunities (${formattedOpportunities.length} oportunidades)`);
     
     res.json(formattedOpportunities);
   } catch (error) {
-    console.error("❌ Erro opportunities:", error);
+    logger.error("❌ Erro opportunities:", { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Erro interno' });
   }
 });
@@ -1078,15 +1095,45 @@ app.post('/api/admin/fix-data', verifyToken, checkRole(['admin']), async (req, r
 app.use('/api/ceasa', ceasaRoutes);
 app.use('/api/admin/etl', etlRoutes); // ✅ ETL ASSÍNCRONO
 
+// ✅ FASE 0 - Semana 2: Error Handler do Sentry (DEPOIS de todas as rotas, ANTES de error handlers)
+// Na v10 do @sentry/node, usamos expressErrorHandler como middleware
+if (process.env.SENTRY_DSN && typeof Sentry.expressErrorHandler === 'function') {
+  app.use(Sentry.expressErrorHandler());
+} else if (process.env.SENTRY_DSN && Sentry.Handlers && typeof Sentry.Handlers.errorHandler === 'function') {
+  // Fallback para compatibilidade
+  app.use(Sentry.Handlers.errorHandler());
+}
+
+// ✅ FASE 0 - Semana 2: Error Handler global (usa logger estruturado)
+app.use((err, req, res, next) => {
+  logger.error('Erro não tratado:', {
+    error: err.message,
+    stack: err.stack,
+    path: req.path,
+    method: req.method,
+  });
+  
+  // Envia para Sentry se configurado
+  if (process.env.SENTRY_DSN) {
+    Sentry.captureException(err);
+  }
+  
+  res.status(err.status || 500).json({
+    error: process.env.NODE_ENV === 'production' 
+      ? 'Erro interno do servidor' 
+      : err.message,
+  });
+});
+
 // ============================================
 // 🚀 INICIALIZAÇÃO DO SERVIDOR (CORRIGIDA)
 // ============================================
 // Ouvimos em 0.0.0.0 para garantir que o Docker/Railway consiga acessar
 // Se ouvirmos apenas em localhost, o deploy falha com "Application failed to respond"
 app.listen(PORT, '0.0.0.0', () => {
-  console.log('==================================================');
-  console.log(`🔥 BACKEND ONLINE EM: http://0.0.0.0:${PORT}`);
-  console.log(`🌍 URL Externa esperada: ${process.env.RAILWAY_STATIC_URL || 'Não definida'}`);
-  console.log(`🔗 Conectado ao Python em: ${PYTHON_API_URL}`);
-  console.log('==================================================');
+  logger.info('==================================================');
+  logger.info(`🔥 BACKEND ONLINE EM: http://0.0.0.0:${PORT}`);
+  logger.info(`🌍 URL Externa esperada: ${process.env.RAILWAY_STATIC_URL || 'Não definida'}`);
+  logger.info(`🔗 Conectado ao Python em: ${PYTHON_API_URL}`);
+  logger.info('==================================================');
 });

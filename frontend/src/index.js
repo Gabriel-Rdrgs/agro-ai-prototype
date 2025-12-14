@@ -1,6 +1,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
+// ✅ FASE 0 - Semana 2: Sentry deve ser inicializado ANTES de tudo
+import './utils/sentry';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 import './styles/global.css';

@@ -6,6 +6,7 @@ import L from 'leaflet';
 import theme from '../../styles/theme';
 import { createRiskIcon } from '../../data/mapIcons';
 import { OpportunityService } from '../../services/opportunityService';
+import { getPlantingSeasonStatus } from '../../utils/plantingCalendar';
 import OpportunityModal from './OpportunityModal';
 import "../../styles/mapview.css"; 
 
@@ -130,7 +131,8 @@ const MapView = React.forwardRef((props, ref) => {
     rainMax: 500,
     selectedStates: [],
     riskLevels: [],
-    products: []
+    products: [],
+    plantingSeasons: [] // ✅ NOVO: Filtro de safra/época de plantio
   };
   
   // ✅ NOVO: Callback para atualizar filtros (compartilhado com Sidebar)
@@ -442,7 +444,26 @@ const MapView = React.forwardRef((props, ref) => {
         return false;
       }
       
-      // 5. Filtro de Chuva (TODO: implementar quando dados de chuva estiverem disponíveis)
+      // ✅ NOVO: 5. Filtro de Safra/Época de Plantio
+      if (filters.plantingSeasons && filters.plantingSeasons.length > 0) {
+        const product = opp.product || '';
+        const state = opp.origin?.state || opp.state || '';
+        const seasonStatus = getPlantingSeasonStatus(product, state);
+        
+        // Se dados não disponíveis, inclui apenas se "unknown" estiver selecionado
+        if (seasonStatus === null) {
+          if (!filters.plantingSeasons.includes('unknown')) {
+            return false;
+          }
+        } else {
+          // Se dados disponíveis, verifica se o status está nos filtros selecionados
+          if (!filters.plantingSeasons.includes(seasonStatus)) {
+            return false;
+          }
+        }
+      }
+      
+      // 6. Filtro de Chuva (TODO: implementar quando dados de chuva estiverem disponíveis)
       // Por enquanto, sempre passa
       
       return true;
