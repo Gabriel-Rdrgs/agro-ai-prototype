@@ -148,11 +148,10 @@ const MapView = React.forwardRef((props, ref) => {
   const setAiPredictionsRef = useRef(props.setAiPredictions || (() => {}));
   const setSupplyRiskDataRef = useRef(props.setSupplyRiskData || (() => {}));
   
-  // Atualiza refs quando props mudam
-  useEffect(() => {
-    setAiPredictionsRef.current = props.setAiPredictions || (() => {});
-    setSupplyRiskDataRef.current = props.setSupplyRiskData || (() => {});
-  }, [props.setAiPredictions, props.setSupplyRiskData]);
+  // Atualiza refs quando props mudam (sem dependências para evitar re-renders)
+  // Refs são atualizadas diretamente, não precisam estar nas dependências
+  if (props.setAiPredictions) setAiPredictionsRef.current = props.setAiPredictions;
+  if (props.setSupplyRiskData) setSupplyRiskDataRef.current = props.setSupplyRiskData;
 
   // ✅ OTIMIZADO: Debounce para evitar múltiplas requisições simultâneas
   const fetchTimeoutRef = useRef(null);
