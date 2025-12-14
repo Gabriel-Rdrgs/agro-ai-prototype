@@ -15,10 +15,16 @@ from datetime import datetime, timedelta
 from config.crops import get_crop_specs
 from services.storage_advisor import storage_advisor
 from services.recommendation_engine import recommendation_engine
+from utils.cache import CacheManager
 import random
+import hashlib
+import json
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+# ✅ Cache para endpoint /batch (evita reprocessar mesmas oportunidades)
+batch_cache = CacheManager(ttl_seconds=300)  # 5 minutos (previsões mudam com frequência)
 
 # Definimos MAJOR_HUBS aqui para garantir que a função Scan tenha acesso
 MAJOR_HUBS = {
@@ -238,7 +244,30 @@ async def predict_batch(request: BatchPredictionRequest):
     
     ✅ CORRIGIDO: Agora usa cálculo completo de ROI de produção (mesmo do "hoje")
     em vez de fórmula simples de arbitragem.
+    
+    ✅ OTIMIZADO: Usa cache para evitar reprocessar mesmas oportunidades.
     """
+    # ✅ Gera chave de cache baseada no conteúdo da requisição
+    cache_key_data = {
+        'items': [
+            {
+                'id': item.id,
+                'product': item.product,
+                'state': getattr(item, 'state', 'SP'),
+                'current_price': round(item.current_price, 2),
+                'buy_price': round(item.buy_price, 2)
+            }
+            for item in request.items
+        ]
+    }
+    cache_key = f"batch_{hashlib.md5(json.dumps(cache_key_data, sort_keys=True).encode()).hexdigest()}"
+    
+    # Verifica cache
+    cached_result = batch_cache.get(cache_key)
+    if cached_result:
+        logger.debug(f"✅ Cache HIT para /batch ({len(request.items)} itens)")
+        return cached_result
+    
     results = {}
     for item in request.items:
         try:
@@ -251,59 +280,90 @@ async def predict_batch(request: BatchPredictionRequest):
             if curr <= 0: curr = 4.00
             if buy <= 0: buy = 2.50
 
-            # ✅ NOVO: Usa Prophet para previsões realistas (substitui valores fixos)
+            # ✅ MELHORADO: Usa Prophet com processamento paralelo e logs detalhados
             origin_state = item.state if hasattr(item, 'state') else 'SP'
             
-            # ✅ OTIMIZADO: Verifica se Prophet está disponível ANTES de tentar usar
-            # Se não estiver, usa fallback conservador imediatamente (evita timeouts)
-            origin_state = item.state if hasattr(item, 'state') else 'SP'
-            d7_price = curr * 1.02   # Fallback conservador: +2% em 7 dias
-            d30_price = curr * 1.08  # Fallback conservador: +8% em 30 dias
+            # Valores padrão (fallback se Prophet falhar ou demorar)
+            d7_price = curr * 1.02   # +2% em 7 dias (fallback conservador)
+            d30_price = curr * 1.08  # +8% em 30 dias (fallback conservador)
             
-            # Verifica se Prophet está disponível (sem tentar usar ainda)
-            prophet_available = True
+            # ✅ NOVO: Tenta usar Prophet com processamento paralelo
             try:
-                from prophet import Prophet as ProphetClass
-                # Testa se Prophet está funcionando (sem treinar modelo)
-                test_model = ProphetClass()
-            except (AttributeError, ImportError, Exception) as e:
-                if 'stan_backend' in str(e) or 'AttributeError' in str(type(e).__name__):
-                    prophet_available = False
-                    logger.debug(f"⚠️ Prophet não disponível (stan_backend), usando fallback conservador para {item.product}/{origin_state}")
-            
-            # Se Prophet estiver disponível, tenta usar (com fallback já definido)
-            if prophet_available:
-                try:
-                    # Tenta Prophet 7 dias (pode falhar rapidamente se não configurado)
-                    result_7 = price_forecast_service.forecast(
-                        product=item.product,
-                        region=origin_state,
-                        days_ahead=7
-                    )
-                    if result_7.get('status') == 'success' and result_7.get('forecast'):
-                        forecast_7d = result_7['forecast']
-                        if len(forecast_7d) > 0:
-                            d7_price = forecast_7d[-1].get('price', d7_price)
-                            logger.debug(f"✅ Prophet 7d: {item.product}/{origin_state} → R$ {d7_price:.2f}")
-                except Exception as e:
-                    # Fallback já está definido, apenas loga
-                    logger.debug(f"⚠️ Prophet 7d falhou, usando fallback: {d7_price:.2f}")
+                import concurrent.futures
                 
-                try:
-                    # Tenta Prophet 30 dias
-                    result_30 = price_forecast_service.forecast(
-                        product=item.product,
-                        region=origin_state,
-                        days_ahead=30
-                    )
-                    if result_30.get('status') == 'success' and result_30.get('forecast'):
-                        forecast_30d = result_30['forecast']
-                        if len(forecast_30d) > 0:
-                            d30_price = forecast_30d[-1].get('price', d30_price)
-                            logger.debug(f"✅ Prophet 30d: {item.product}/{origin_state} → R$ {d30_price:.2f}")
-                except Exception as e:
-                    # Fallback já está definido, apenas loga
-                    logger.debug(f"⚠️ Prophet 30d falhou, usando fallback: {d30_price:.2f}")
+                def get_forecast_7d():
+                    """Busca previsão de 7 dias"""
+                    try:
+                        result = price_forecast_service.forecast(
+                            product=item.product,
+                            region=origin_state,
+                            days_ahead=7
+                        )
+                        if result.get('status') == 'success' and result.get('forecast'):
+                            forecast_list = result['forecast']
+                            if len(forecast_list) > 0:
+                                # Pega o último preço previsto (dia 7)
+                                last_price = forecast_list[-1].get('price')
+                                if last_price and last_price > 0:
+                                    logger.info(f"✅ Prophet 7d: {item.product}/{origin_state} → R$ {last_price:.2f} (modelo: {result.get('forecast_model', 'unknown')})")
+                                    return last_price
+                        # Se chegou aqui, Prophet não retornou dados válidos
+                        logger.debug(f"⚠️ Prophet 7d: status={result.get('status')}, forecast_len={len(result.get('forecast', []))}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Prophet 7d falhou para {item.product}/{origin_state}: {str(e)[:100]}")
+                    return None
+                
+                def get_forecast_30d():
+                    """Busca previsão de 30 dias"""
+                    try:
+                        result = price_forecast_service.forecast(
+                            product=item.product,
+                            region=origin_state,
+                            days_ahead=30
+                        )
+                        if result.get('status') == 'success' and result.get('forecast'):
+                            forecast_list = result['forecast']
+                            if len(forecast_list) > 0:
+                                # Pega o último preço previsto (dia 30)
+                                last_price = forecast_list[-1].get('price')
+                                if last_price and last_price > 0:
+                                    logger.info(f"✅ Prophet 30d: {item.product}/{origin_state} → R$ {last_price:.2f} (modelo: {result.get('forecast_model', 'unknown')})")
+                                    return last_price
+                        # Se chegou aqui, Prophet não retornou dados válidos
+                        logger.debug(f"⚠️ Prophet 30d: status={result.get('status')}, forecast_len={len(result.get('forecast', []))}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Prophet 30d falhou para {item.product}/{origin_state}: {str(e)[:100]}")
+                    return None
+                
+                # ✅ OTIMIZADO: Processa ambas as previsões em paralelo (mais rápido)
+                # Timeout de 5 segundos por previsão (total máximo 5s, não 10s)
+                with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                    future_7d = executor.submit(get_forecast_7d)
+                    future_30d = executor.submit(get_forecast_30d)
+                    
+                    try:
+                        # Aguarda até 5 segundos para cada previsão
+                        price_7d = future_7d.result(timeout=5.0)
+                        if price_7d:
+                            d7_price = price_7d
+                    except concurrent.futures.TimeoutError:
+                        logger.warning(f"⏱️ Timeout ao buscar previsão 7d para {item.product}/{origin_state} (usando fallback)")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Erro ao buscar previsão 7d: {str(e)[:100]}")
+                    
+                    try:
+                        price_30d = future_30d.result(timeout=5.0)
+                        if price_30d:
+                            d30_price = price_30d
+                    except concurrent.futures.TimeoutError:
+                        logger.warning(f"⏱️ Timeout ao buscar previsão 30d para {item.product}/{origin_state} (usando fallback)")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Erro ao buscar previsão 30d: {str(e)[:100]}")
+                    
+            except Exception as e:
+                # Se qualquer erro ocorrer, usa fallback (já definido acima)
+                logger.warning(f"⚠️ Erro geral ao usar Prophet para {item.product}/{origin_state}: {str(e)[:100]}")
+                logger.debug(f"   Usando valores fallback: 7d={d7_price:.2f}, 30d={d30_price:.2f}")
             
             # ✅ Converte item para dict para usar na função de ROI completo
             # O backend envia: id, product, state, lat, lng, current_price, buy_price
@@ -322,6 +382,12 @@ async def predict_batch(request: BatchPredictionRequest):
             roi_d7 = _calculate_complete_roi(opportunity_dict, d7_price)
             roi_d30 = _calculate_complete_roi(opportunity_dict, d30_price)
             
+            # ✅ LOG: Mostra se usou Prophet ou fallback
+            used_prophet_7d = abs(d7_price - (curr * 1.02)) > 0.01  # Diferença > 1 centavo
+            used_prophet_30d = abs(d30_price - (curr * 1.08)) > 0.01
+            if used_prophet_7d or used_prophet_30d:
+                logger.debug(f"📊 {item.product}/{origin_state}: 7d={'Prophet' if used_prophet_7d else 'Fallback'} ({d7_price:.2f}), 30d={'Prophet' if used_prophet_30d else 'Fallback'} ({d30_price:.2f})")
+            
             results[item.id] = {
                 "d7": {
                     "sellPrice": round(d7_price, 2),
@@ -337,6 +403,11 @@ async def predict_batch(request: BatchPredictionRequest):
             # Fallback seguro com log para debug
             logger.warning(f"⚠️ Erro ao processar item {item.id}: {e}", exc_info=True)
             results[item.id] = {"d7": {"sellPrice": 0, "roi": 0}, "d30": {"sellPrice": 0, "roi": 0}}
+    
+    # ✅ Salva no cache antes de retornar
+    batch_cache.set(cache_key, results)
+    logger.debug(f"✅ Cache SET para /batch ({len(request.items)} itens)")
+    
     return results
 
 # --- 4. ROTA DE RECOMENDAÇÃO AUTOMÁTICA ---

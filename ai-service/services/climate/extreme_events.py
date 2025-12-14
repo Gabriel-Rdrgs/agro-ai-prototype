@@ -76,7 +76,10 @@ class ExtremeEventsDetector:
     """
     
     def __init__(self):
-        logger.info("✅ ExtremeEventsDetector iniciado")
+        # Cache para evitar múltiplas chamadas à API para mesmas coordenadas
+        from utils.cache import CacheManager
+        self.cache = CacheManager(ttl_seconds=21600)  # 6 horas (eventos extremos mudam muito lentamente - cache agressivo)
+        logger.info("✅ ExtremeEventsDetector iniciado (com cache de 6h - otimizado para velocidade)")
     
     async def detect_extreme_events(
         self,
@@ -100,6 +103,13 @@ class ExtremeEventsDetector:
             - recommendations: Recomendações baseadas nos eventos
         """
         try:
+            # ✅ OTIMIZADO: Usa cache para evitar múltiplas chamadas à API
+            cache_key = f"extreme_events_{lat}_{lng}_{forecast_days}"
+            cached_result = self.cache.get(cache_key)
+            if cached_result:
+                logger.debug(f"✅ Cache HIT para eventos extremos: {lat},{lng}")
+                return cached_result
+            
             # Busca dados climáticos (await necessário pois é async)
             forecast_data = await climate_api.get_extended_forecast(lat, lng)
             
@@ -184,7 +194,7 @@ class ExtremeEventsDetector:
             if el_nino_context.get("status") != "neutral":
                 recommendations.append(f"🌍 Contexto El Niño/La Niña: {el_nino_context.get('status').upper()}")
             
-            return {
+            result = {
                 "events": events,
                 "summary": summary,
                 "risk_level": risk_level,
@@ -192,6 +202,12 @@ class ExtremeEventsDetector:
                 "forecast_days": forecast_days,
                 "el_nino_context": el_nino_context
             }
+            
+            # ✅ Salva no cache para próximas requisições
+            self.cache.set(cache_key, result)
+            logger.debug(f"✅ Cache SET para eventos extremos: {lat},{lng}")
+            
+            return result
             
         except Exception as e:
             logger.error(f"❌ Erro ao detectar eventos extremos: {e}", exc_info=True)
@@ -646,5 +662,9 @@ class ExtremeEventsDetector:
 
 # Instância Global
 extreme_events_detector = ExtremeEventsDetector()
+
+
+
+
 
 

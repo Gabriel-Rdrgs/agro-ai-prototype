@@ -104,7 +104,6 @@ const ClimateTab = ({ opportunity }) => {
         const lng = opportunity.coords?.lng;
         const product = opportunity.product || 'Tomate';
         const state = opportunity.origin?.state || 'SP';
-        const currentMonth = new Date().getMonth() + 1; // 1-12
         
         // Busca dados climáticos
         if (lat && lng) {
@@ -262,7 +261,7 @@ const ClimateTab = ({ opportunity }) => {
         🌦️ Clima & Safra
       </h3>
 
-      {/* Comparação de Chuva */}
+      {/* Comparação de Chuva - MELHORADO COM GRÁFICO VISUAL */}
       <div
         style={{
           background: `linear-gradient(135deg, ${theme.colors.background} 0%, rgba(0, 217, 255, 0.1) 100%)`,
@@ -272,39 +271,100 @@ const ClimateTab = ({ opportunity }) => {
           marginBottom: '20px'
         }}
       >
-        <div style={{ fontSize: '14px', color: theme.colors.textMuted, marginBottom: '12px', fontWeight: 'bold' }}>
-          🌧️ Comparação de Chuva
+        <div style={{ fontSize: '14px', color: theme.colors.textMuted, marginBottom: '16px', fontWeight: 'bold' }}>
+          🌧️ Comparação de Chuva (Ano Anterior vs. Atual)
         </div>
         {rainComparison ? (
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
-              <div>
-                <div style={{ fontSize: '12px', color: theme.colors.textMuted }}>Ano Anterior (média)</div>
-                <div style={{ fontSize: '20px', fontWeight: 'bold', color: theme.colors.textPrimary }}>
-                  {rainComparison.previous.toFixed(1)} mm
+            {/* Gráfico de Barras Comparativo */}
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '20px', height: '120px', marginBottom: '8px' }}>
+                {/* Barra Ano Anterior */}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <div style={{ 
+                    width: '100%',
+                    background: 'linear-gradient(180deg, rgba(100, 116, 139, 0.8) 0%, rgba(100, 116, 139, 0.4) 100%)',
+                    height: `${Math.min((rainComparison.previous / Math.max(rainComparison.previous, rainComparison.current, 200)) * 100, 100)}%`,
+                    borderRadius: '4px 4px 0 0',
+                    minHeight: '20px',
+                    display: 'flex',
+                    alignItems: 'flex-end',
+                    justifyContent: 'center',
+                    paddingBottom: '4px',
+                    color: 'white',
+                    fontSize: '11px',
+                    fontWeight: 'bold'
+                  }}>
+                    {rainComparison.previous.toFixed(0)}
+                  </div>
+                  <div style={{ fontSize: '11px', color: theme.colors.textMuted, marginTop: '4px', textAlign: 'center' }}>
+                    Ano Anterior
+                  </div>
+                </div>
+                
+                {/* Barra Atual */}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <div style={{ 
+                    width: '100%',
+                    background: rainComparison.difference > 0 
+                      ? 'linear-gradient(180deg, rgba(59, 130, 246, 0.9) 0%, rgba(59, 130, 246, 0.5) 100%)'
+                      : 'linear-gradient(180deg, rgba(239, 68, 68, 0.9) 0%, rgba(239, 68, 68, 0.5) 100%)',
+                    height: `${Math.min((rainComparison.current / Math.max(rainComparison.previous, rainComparison.current, 200)) * 100, 100)}%`,
+                    borderRadius: '4px 4px 0 0',
+                    minHeight: '20px',
+                    display: 'flex',
+                    alignItems: 'flex-end',
+                    justifyContent: 'center',
+                    paddingBottom: '4px',
+                    color: 'white',
+                    fontSize: '11px',
+                    fontWeight: 'bold'
+                  }}>
+                    {rainComparison.current.toFixed(0)}
+                  </div>
+                  <div style={{ fontSize: '11px', color: theme.colors.textMuted, marginTop: '4px', textAlign: 'center' }}>
+                    Atual (16 dias)
+                  </div>
                 </div>
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '12px', color: theme.colors.textMuted }}>Atual (16 dias)</div>
-                <div style={{ fontSize: '20px', fontWeight: 'bold', color: theme.colors.accent }}>
-                  {rainComparison.current.toFixed(1)} mm
-                </div>
+              
+              {/* Legenda e Diferença */}
+              <div style={{
+                padding: '12px',
+                background: rainComparison.difference > 0 ? 'rgba(59, 130, 246, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                borderRadius: theme.borderRadius,
+                fontSize: '13px',
+                color: rainComparison.difference > 0 ? '#3b82f6' : '#ef4444',
+                textAlign: 'center',
+                fontWeight: '600'
+              }}>
+                {rainComparison.difference > 0 ? '↑' : '↓'} {Math.abs(rainComparison.difference).toFixed(1)} mm 
+                ({Math.abs(rainComparison.percentage).toFixed(1)}% {rainComparison.difference > 0 ? 'mais' : 'menos'} que a média histórica)
               </div>
             </div>
-            <div style={{
-              padding: '8px',
-              background: rainComparison.difference > 0 ? 'rgba(59, 130, 246, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-              borderRadius: theme.borderRadius,
-              fontSize: '12px',
-              color: rainComparison.difference > 0 ? '#3b82f6' : '#ef4444',
-              textAlign: 'center'
+            
+            {/* Informações Adicionais */}
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              fontSize: '12px', 
+              color: theme.colors.textMuted,
+              marginTop: '12px',
+              paddingTop: '12px',
+              borderTop: `1px solid rgba(0, 217, 255, 0.2)`
             }}>
-              {rainComparison.difference > 0 ? '↑' : '↓'} {Math.abs(rainComparison.percentage).toFixed(1)}% 
-              {rainComparison.difference > 0 ? ' mais chuva' : ' menos chuva'} que a média histórica
+              <div>
+                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Ano Anterior</div>
+                <div>{rainComparison.previous.toFixed(1)} mm</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Atual</div>
+                <div>{rainComparison.current.toFixed(1)} mm</div>
+              </div>
             </div>
           </div>
         ) : (
-          <div style={{ fontSize: '14px', color: theme.colors.textMuted }}>
+          <div style={{ fontSize: '14px', color: theme.colors.textMuted, textAlign: 'center', padding: '20px' }}>
             Dados de chuva não disponíveis
           </div>
         )}
@@ -437,7 +497,7 @@ const ClimateTab = ({ opportunity }) => {
       {/* Verificação de Eventos Históricos */}
       <HistoricalEventsSection opportunity={opportunity} />
 
-      {/* Informações de Safra */}
+      {/* Informações de Safra - MELHORADO COM CALENDÁRIO VISUAL */}
       <div
         style={{
           background: `linear-gradient(135deg, ${theme.colors.background} 0%, rgba(34, 197, 94, 0.1) 100%)`,
@@ -446,69 +506,159 @@ const ClimateTab = ({ opportunity }) => {
           border: `1px solid rgba(34, 197, 94, 0.3)`
         }}
       >
-        <div style={{ fontSize: '14px', color: theme.colors.textMuted, marginBottom: '12px', fontWeight: 'bold' }}>
-          🌾 Informações de Safra
+        <div style={{ fontSize: '14px', color: theme.colors.textMuted, marginBottom: '16px', fontWeight: 'bold' }}>
+          🌾 Calendário de Plantio e Colheita
         </div>
         {plantingInfo ? (
           <div>
-            <div style={{ marginBottom: '12px' }}>
-              <div style={{ fontSize: '12px', color: theme.colors.textMuted, marginBottom: '4px' }}>
-                Mês Atual: {currentMonth}
+            {/* Status do Mês Atual */}
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ fontSize: '12px', color: theme.colors.textMuted, marginBottom: '8px' }}>
+                Mês Atual: <strong>{new Date().toLocaleString('pt-BR', { month: 'long' })}</strong>
               </div>
               {plantingInfo.ideal && plantingInfo.ideal.includes(currentMonth) && (
                 <div style={{
-                  padding: '8px',
+                  padding: '12px',
                   background: 'rgba(34, 197, 94, 0.2)',
                   borderRadius: theme.borderRadius,
-                  fontSize: '12px',
+                  fontSize: '13px',
                   color: '#22c55e',
-                  marginBottom: '8px'
+                  marginBottom: '8px',
+                  border: '2px solid #22c55e',
+                  fontWeight: 'bold',
+                  textAlign: 'center'
                 }}>
                   ✅ Mês IDEAL para plantio
                 </div>
               )}
               {plantingInfo.risk && plantingInfo.risk.includes(currentMonth) && (
                 <div style={{
-                  padding: '8px',
+                  padding: '12px',
                   background: 'rgba(239, 68, 68, 0.2)',
                   borderRadius: theme.borderRadius,
-                  fontSize: '12px',
+                  fontSize: '13px',
                   color: '#ef4444',
-                  marginBottom: '8px'
+                  marginBottom: '8px',
+                  border: '2px solid #ef4444',
+                  fontWeight: 'bold',
+                  textAlign: 'center'
                 }}>
                   ⚠️ Mês de RISCO para plantio
                 </div>
               )}
-            </div>
-            {plantingInfo.ideal && plantingInfo.ideal.length > 0 && (
-              <div style={{ marginBottom: '8px' }}>
-                <div style={{ fontSize: '12px', color: theme.colors.textMuted, marginBottom: '4px' }}>
-                  Meses Ideais:
+              {(!plantingInfo.ideal || !plantingInfo.ideal.includes(currentMonth)) && 
+               (!plantingInfo.risk || !plantingInfo.risk.includes(currentMonth)) && (
+                <div style={{
+                  padding: '12px',
+                  background: 'rgba(100, 116, 139, 0.2)',
+                  borderRadius: theme.borderRadius,
+                  fontSize: '13px',
+                  color: '#64748b',
+                  marginBottom: '8px',
+                  textAlign: 'center'
+                }}>
+                  ⏸️ Mês neutro para plantio
                 </div>
-                <div style={{ fontSize: '14px', color: theme.colors.textPrimary }}>
-                  {plantingInfo.ideal.map(m => {
-                    const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-                    return monthNames[m - 1];
-                  }).join(', ')}
+              )}
+            </div>
+            
+            {/* Calendário Visual dos Meses */}
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ fontSize: '12px', color: theme.colors.textMuted, marginBottom: '8px', fontWeight: 'bold' }}>
+                Calendário Anual:
+              </div>
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(4, 1fr)', 
+                gap: '6px',
+                marginBottom: '8px'
+              }}>
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(month => {
+                  const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+                  const isIdeal = plantingInfo.ideal && plantingInfo.ideal.includes(month);
+                  const isRisk = plantingInfo.risk && plantingInfo.risk.includes(month);
+                  const isCurrent = month === currentMonth;
+                  
+                  return (
+                    <div
+                      key={month}
+                      style={{
+                        padding: '8px 4px',
+                        background: isCurrent 
+                          ? (isIdeal ? 'rgba(34, 197, 94, 0.3)' : isRisk ? 'rgba(239, 68, 68, 0.3)' : 'rgba(100, 116, 139, 0.3)')
+                          : (isIdeal ? 'rgba(34, 197, 94, 0.15)' : isRisk ? 'rgba(239, 68, 68, 0.15)' : 'rgba(100, 116, 139, 0.1)'),
+                        borderRadius: '6px',
+                        fontSize: '11px',
+                        textAlign: 'center',
+                        fontWeight: isCurrent ? 'bold' : 'normal',
+                        color: isIdeal ? '#22c55e' : isRisk ? '#ef4444' : theme.colors.textMuted,
+                        border: isCurrent ? `2px solid ${isIdeal ? '#22c55e' : isRisk ? '#ef4444' : '#64748b'}` : '1px solid transparent',
+                        position: 'relative'
+                      }}
+                    >
+                      {monthNames[month - 1]}
+                      {isCurrent && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '-2px',
+                          right: '-2px',
+                          width: '8px',
+                          height: '8px',
+                          background: theme.colors.accent,
+                          borderRadius: '50%',
+                          border: '2px solid white'
+                        }} />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              
+              {/* Legenda */}
+              <div style={{ 
+                display: 'flex', 
+                gap: '12px', 
+                fontSize: '10px', 
+                color: theme.colors.textMuted,
+                justifyContent: 'center',
+                flexWrap: 'wrap'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <div style={{ width: '12px', height: '12px', background: 'rgba(34, 197, 94, 0.3)', borderRadius: '3px' }} />
+                  <span>Ideal</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <div style={{ width: '12px', height: '12px', background: 'rgba(239, 68, 68, 0.3)', borderRadius: '3px' }} />
+                  <span>Risco</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <div style={{ width: '12px', height: '12px', background: 'rgba(100, 116, 139, 0.2)', borderRadius: '3px' }} />
+                  <span>Neutro</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <div style={{ width: '8px', height: '8px', background: theme.colors.accent, borderRadius: '50%' }} />
+                  <span>Atual</span>
                 </div>
               </div>
-            )}
+            </div>
+            
             {plantingInfo.notes && (
               <div style={{
                 marginTop: '12px',
-                padding: '8px',
+                padding: '12px',
                 background: 'rgba(0, 217, 255, 0.1)',
                 borderRadius: theme.borderRadius,
                 fontSize: '11px',
                 color: theme.colors.textMuted,
-                fontStyle: 'italic'
+                fontStyle: 'italic',
+                border: `1px solid rgba(0, 217, 255, 0.2)`
               }}>
-                {plantingInfo.notes}
+                💡 {plantingInfo.notes}
               </div>
             )}
           </div>
         ) : (
-          <div style={{ fontSize: '14px', color: theme.colors.textMuted }}>
+          <div style={{ fontSize: '14px', color: theme.colors.textMuted, textAlign: 'center', padding: '20px' }}>
             Dados de calendário não disponíveis para {opportunity?.product || 'produto'} em {opportunity?.origin?.state || 'estado'}
           </div>
         )}

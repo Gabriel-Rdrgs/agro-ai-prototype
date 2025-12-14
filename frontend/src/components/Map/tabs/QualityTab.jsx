@@ -42,8 +42,8 @@ const QualityTab = ({ opportunity }) => {
           }
         }
         
-        // Calcula chuva acumulada
-        const accumulatedRain = rainData.reduce((sum, val) => sum + (val || 0), 0);
+        // Calcula chuva acumulada (pode ser usado no futuro)
+        // const accumulatedRain = rainData.reduce((sum, val) => sum + (val || 0), 0);
         
         // Busca análise de armazenagem
         const analysis = await OpportunityService.getStorageAnalysis(

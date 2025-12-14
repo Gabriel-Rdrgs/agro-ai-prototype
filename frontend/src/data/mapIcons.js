@@ -13,17 +13,6 @@ export const createColoredIcon = (roi) => {
     color = '#ef4444'; // Vermelho (ROI baixo)
   }
 
-  // Cria um ícone SVG customizado
-  const svgIcon = `
-    <svg width="32" height="42" viewBox="0 0 32 42" xmlns="http://www.w3.org/2000/svg">
-      <path d="M16 0C7.163 0 0 7.163 0 16c0 13 16 26 16 26s16-13 16-26c0-8.837-7.163-16-16-16z" 
-            fill="${color}" 
-            stroke="#fff" 
-            stroke-width="2"/>
-      <circle cx="16" cy="16" r="6" fill="#fff"/>
-    </svg>
-  `;
-
   // Ícone SVG futurista (você pode customizar ainda mais!)
   return L.divIcon({
     className: '',
@@ -63,12 +52,15 @@ export function createRiskIcon(roi, riskLevel, hasExtremeEvents = false, extreme
     }
   }
 
-  // Badge de evento extremo (canto superior direito)
+  // ✅ MELHORADO: Badge de evento extremo (canto superior direito) - mais visível
   const extremeBadge = hasExtremeEvents ? `
-    <circle cx="26" cy="8" r="6" fill="${strokeColor}" stroke="#fff" stroke-width="1.5"/>
-    <text x="26" y="11" text-anchor="middle" fill="#fff" font-size="10" font-weight="bold">
-      ${extremeEventSeverity === 'extreme' ? '!' : '⚠'}
+    <circle cx="26" cy="8" r="8" fill="${strokeColor}" stroke="#fff" stroke-width="2" opacity="0.95"/>
+    <text x="26" y="12" text-anchor="middle" fill="#fff" font-size="11" font-weight="bold" font-family="Arial, sans-serif">
+      ${extremeEventSeverity === 'extreme' ? '!' : extremeEventSeverity === 'high' ? '⚠' : '⚡'}
     </text>
+    <circle cx="26" cy="8" r="10" fill="none" stroke="${strokeColor}" stroke-width="1.5" opacity="0.6" stroke-dasharray="2,2">
+      <animate attributeName="opacity" values="0.6;1;0.6" dur="2s" repeatCount="indefinite"/>
+    </circle>
   ` : '';
 
   const svgIcon = `

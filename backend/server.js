@@ -72,6 +72,37 @@ app.use(cors(corsOptions));
 
 // Trata o Preflight (OPTIONS) usando Regex seguro
 app.options(/^.*$/, cors(corsOptions));
+
+// ✅ CRÍTICO: Middleware de parsing JSON (necessário para req.body)
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+
+// Rota para o Railway saber que o app está vivo
+app.get('/', (req, res) => res.send('Backend Agro-AI Online 🚀'));
+
+// Health check com verificação de banco e circuit breaker
+app.get('/health', async (req, res) => {
+  try {
+    // Testa conexão com banco (com circuit breaker)
+    await dbCircuitBreaker.execute(async () => {
+      await prisma.$queryRaw`SELECT 1`;
+    });
+    
+    res.json({ 
+      status: 'ok',
+      database: 'connected',
+      circuit_breaker: dbCircuitBreaker.getState()
+    });
+  } catch (error) {
+    res.status(503).json({ 
+      status: 'degraded',
+      database: 'disconnected',
+      error: error.message,
+      circuit_breaker: dbCircuitBreaker.getState()
+    });
+  }
+});
+
 // ============================================
 // 🛠️ FUNÇÕES AUXILIARES (HELPER FUNCTIONS)
 // ============================================
@@ -480,13 +511,13 @@ app.get('/api/weather/extreme-events', verifyToken, async (req, res) => {
     
     const daysParam = days ? parseInt(days) : 16;
     
-    const response = await axios.get(
-      `${PYTHON_API_URL}/api/v1/weather/extreme-events`,
-      {
-        params: { lat: parseFloat(lat), lng: parseFloat(lng), days: daysParam },
-        timeout: 30000 // 30 segundos
-      }
-    );
+      const response = await axios.get(
+        `${PYTHON_API_URL}/api/v1/weather/extreme-events`,
+        {
+          params: { lat: parseFloat(lat), lng: parseFloat(lng), days: daysParam },
+          timeout: 20000 // 20 segundos (Python tem 15s, dá margem)
+        }
+      );
     
     res.json(response.data);
   } catch (error) {
@@ -521,6 +552,99 @@ app.get('/api/weather/extreme-events/historical', verifyToken, async (req, res) 
     console.error("Erro ao buscar eventos históricos:", error.message);
     res.status(500).json({ 
       error: 'Erro ao analisar eventos históricos',
+      details: error.message
+    });
+  }
+});
+
+// 2.4. Risco de Abastecimento (Proxy para Python)
+app.get('/api/weather/supply-risk', verifyToken, async (req, res) => {
+  try {
+    const { lat, lng, product, days } = req.query;
+    if (!lat || !lng) {
+      return res.status(400).json({ error: 'lat e lng são obrigatórios' });
+    }
+    
+    console.log(`📊 Buscando supply risk para lat=${lat}, lng=${lng}, product=${product || 'Tomate'}`);
+    
+    const response = await axios.get(
+      `${PYTHON_API_URL}/api/v1/weather/supply-risk`,
+      {
+        params: {
+          lat: parseFloat(lat),
+          lng: parseFloat(lng),
+          product: product || 'Tomate',
+          days: days ? parseInt(days) : 16
+        },
+        timeout: 60000 // 60 segundos (análise de risco pode demorar, especialmente na primeira vez)
+      }
+    );
+    
+    console.log(`✅ Supply risk recebido:`, response.status, response.data ? 'com dados' : 'sem dados');
+    res.json(response.data);
+  } catch (error) {
+    console.error("❌ Erro ao buscar risco de abastecimento:", error.message);
+    if (error.response) {
+      console.error("   Status:", error.response.status);
+      console.error("   Data:", error.response.data);
+    }
+    if (error.code === 'ECONNABORTED') {
+      return res.status(504).json({
+        error: 'Timeout ao buscar risco de abastecimento',
+        details: 'O serviço demorou muito para responder'
+      });
+    }
+    res.status(500).json({
+      error: 'Erro ao buscar risco de abastecimento',
+      details: error.message
+    });
+  }
+});
+
+// 2.5. Previsão Climática (Proxy para Python)
+app.get('/api/weather/forecast', verifyToken, async (req, res) => {
+  try {
+    const { lat, lng } = req.query;
+    if (!lat || !lng) {
+      return res.status(400).json({ error: 'lat e lng são obrigatórios' });
+    }
+    
+    console.log(`📊 Buscando forecast para lat=${lat}, lng=${lng}`);
+    
+    const response = await axios.get(
+      `${PYTHON_API_URL}/api/v1/weather/forecast`,
+      {
+        params: { lat: parseFloat(lat), lng: parseFloat(lng) },
+        timeout: 30000 // 30 segundos (forecast pode demorar na primeira vez)
+      }
+    );
+    
+    console.log(`✅ Forecast recebido:`, response.status);
+    res.json(response.data);
+  } catch (error) {
+    console.error("❌ Erro ao buscar previsão climática:", error.message);
+    if (error.code === 'ECONNREFUSED') {
+      return res.status(503).json({ 
+        error: 'Serviço Python indisponível',
+        details: 'O serviço de IA não está respondendo. Verifique se está rodando.'
+      });
+    }
+    if (error.code === 'ECONNABORTED') {
+      return res.status(504).json({ 
+        error: 'Timeout ao buscar previsão climática',
+        details: 'O serviço demorou muito para responder'
+      });
+    }
+    if (error.response) {
+      console.error("   Status Python:", error.response.status);
+      console.error("   Data Python:", error.response.data);
+      return res.status(error.response.status || 500).json({ 
+        error: 'Erro ao buscar previsão climática',
+        details: error.response.data?.detail || error.message
+      });
+    }
+    res.status(500).json({ 
+      error: 'Erro ao buscar previsão climática',
       details: error.message
     });
   }
@@ -590,6 +714,12 @@ app.get('/api/analytics/trend', verifyToken, async (req, res) => {
 // 1. Armazenagem (Storage Advisor) - VERSÃO BLINDADA DEFINITIVA
 app.post('/api/ai/storage', verifyToken, async (req, res) => {
   try {
+    // Debug: Verifica se req.body está disponível
+    if (!req.body) {
+      console.error("❌ CRÍTICO: req.body está undefined!");
+      return res.status(400).json({ error: 'req.body não disponível. Verifique middleware express.json()' });
+    }
+    
     // HIGIENIZAÇÃO: Garante que nada chegue nulo no Python
     const safePayload = {
         product: req.body.product || 'Tomate',
@@ -617,11 +747,38 @@ app.post('/api/ai/storage', verifyToken, async (req, res) => {
     };
 
     console.log(`📤 [Node -> Python] Storage: ${safePayload.product} | R$${safePayload.current_price}`);
-    const response = await axios.post(
-      `${PYTHON_API_URL}/api/v1/predict/storage`, 
-      safePayload,
-      { timeout: 60000 } // 60 segundos (análise climática pode demorar)
-    );
+    
+    let response;
+    try {
+      response = await axios.post(
+        `${PYTHON_API_URL}/api/v1/predict/storage`, 
+        safePayload,
+        { timeout: 60000 } // 60 segundos (análise climática pode demorar)
+      );
+    } catch (axiosError) {
+      console.error("❌ Erro ao chamar Python /storage:", axiosError.message);
+      if (axiosError.code === 'ECONNREFUSED') {
+        return res.status(503).json({ 
+          error: 'Serviço Python indisponível',
+          details: 'O serviço de IA não está respondendo. Verifique se está rodando.'
+        });
+      }
+      if (axiosError.code === 'ECONNABORTED') {
+        return res.status(504).json({ 
+          error: 'Timeout ao processar análise de armazenagem',
+          details: 'O serviço demorou muito para responder (60s)'
+        });
+      }
+      if (axiosError.response) {
+        console.error("   Status Python:", axiosError.response.status);
+        console.error("   Data Python:", axiosError.response.data);
+        return res.status(axiosError.response.status || 500).json({ 
+          error: 'Erro no serviço de IA',
+          details: axiosError.response.data?.detail || axiosError.message
+        });
+      }
+      throw axiosError; // Re-throw para ser capturado pelo catch externo
+    }
     
     // Tratamento da resposta para evitar erro no Front
     const pyData = response.data || {};
@@ -649,16 +806,38 @@ app.post('/api/ai/storage', verifyToken, async (req, res) => {
     res.json(formattedData);
 
   } catch (error) {
+    console.error("❌ Erro Node Storage:", error.message);
+    if (error.code === 'ECONNREFUSED') {
+      return res.status(503).json({ 
+        error: 'Serviço Python indisponível',
+        details: 'O serviço de IA não está respondendo. Verifique se está rodando.'
+      });
+    }
+    if (error.code === 'ECONNABORTED') {
+      return res.status(504).json({ 
+        error: 'Timeout ao processar análise de armazenagem',
+        details: 'O serviço demorou muito para responder'
+      });
+    }
     const errorDetail = error.response?.data?.detail || error.message;
-    console.error("❌ Erro Node Storage:", JSON.stringify(errorDetail));
+    console.error("   Detalhes:", errorDetail);
     // Retorna 500 mas com JSON válido para o front não crashar feio
-    res.status(500).json({ error: 'Erro IA', details: errorDetail });
+    res.status(500).json({ 
+      error: 'Erro ao processar análise de armazenagem',
+      details: errorDetail 
+    });
   }
 });
 
 // 2. Processamento em Lote (Batch) - VERSÃO DEBUG X9 🕵️‍♂️
 app.post('/api/ai/batch', verifyToken, async (req, res) => {
   try {
+    // Debug: Verifica se req.body está disponível
+    if (!req.body) {
+      console.error("❌ CRÍTICO: req.body está undefined no /batch!");
+      return res.status(400).json({ error: 'req.body não disponível. Verifique middleware express.json()' });
+    }
+    
     if (!req.body.items || !Array.isArray(req.body.items)) {
         return res.status(400).json({ error: "Payload inválido: 'items' obrigatório" });
     }
@@ -822,6 +1001,12 @@ app.post('/calc/arbitrage', verifyToken, async (req, res) => {
 // 6. Recomendação Automática (IA)
 app.post('/api/ai/recommendation', verifyToken, async (req, res) => {
   try {
+    // Debug: Verifica se req.body está disponível
+    if (!req.body) {
+      console.error("❌ CRÍTICO: req.body está undefined no /recommendation!");
+      return res.status(400).json({ error: 'req.body não disponível. Verifique middleware express.json()' });
+    }
+    
     const safePayload = {
       product: req.body.product || 'Tomate',
       state: req.body.state || 'SP',

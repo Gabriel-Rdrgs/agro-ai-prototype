@@ -1,4 +1,4 @@
-import React, { useState, useImperativeHandle, useEffect } from 'react';
+import React, { useState, useImperativeHandle, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, GeoJSON, Polyline, Tooltip } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import 'leaflet/dist/leaflet.css';
@@ -40,11 +40,47 @@ const getWeatherDesc = (code) => {
 // --- 2. CONTROLADOR DE MAPA ---
 const MapController = ({ center, zoom, bounds }) => {
   const map = useMap();
+  const lastCenterRef = React.useRef(null);
+  const lastZoomRef = React.useRef(null);
+  
   useEffect(() => {
     if (bounds) {
       map.flyToBounds(bounds, { padding: [50, 50], animate: true, duration: 1.5 });
     } else if (center) {
-      map.setView(center, zoom || 8, { animate: true, duration: 1 });
+      // ✅ CORRIGIDO: Só atualiza se realmente mudou (evita fechar popup)
+      const centerChanged = !lastCenterRef.current || 
+        (Math.abs(center[0] - lastCenterRef.current[0]) > 0.01 || 
+         Math.abs(center[1] - lastCenterRef.current[1]) > 0.01);
+      const zoomChanged = zoom !== lastZoomRef.current;
+      
+      if (centerChanged || zoomChanged) {
+        // ✅ CORRIGIDO: Usa panTo sempre que possível (não fecha popup)
+        // Só usa setView se for a primeira vez ou mudança muito grande
+        if (lastCenterRef.current) {
+          // Já tem um centro anterior, usa panTo (mais suave, não fecha popup)
+          // Mas só se a mudança for significativa (evita micro-movimentos)
+          if (centerChanged) {
+            const distance = map.distance(
+              lastCenterRef.current,
+              center
+            );
+            // Só move se a distância for > 5km (evita micro-ajustes)
+            if (distance > 5000) {
+              map.panTo(center, { animate: true, duration: 0.5 });
+            }
+          }
+          if (zoomChanged && Math.abs(zoom - (lastZoomRef.current || 4)) > 1) {
+            // Só muda zoom se a diferença for > 1 nível
+            map.setZoom(zoom || 8, { animate: true });
+          }
+        } else {
+          // Primeira vez, pode usar setView
+          map.setView(center, zoom || 8, { animate: true, duration: 0.5 });
+        }
+        
+        lastCenterRef.current = center;
+        lastZoomRef.current = zoom;
+      }
     }
   }, [center, zoom, bounds, map]);
   return null;
@@ -80,56 +116,230 @@ const MapView = React.forwardRef((props, ref) => {
   
 // --- LÓGICA DO SLIDER TEMPORAL (CORRIGIDA) ---
 
-  // Estado para guardar as previsões reais da IA (Batch)
-  const [aiPredictions, setAiPredictions] = useState({});
-  
   // Estado para eventos extremos por oportunidade
   const [extremeEventsMap, setExtremeEventsMap] = useState({});
+  
+  // ✅ NOVO: Estado para regiões comprometidas (heatmap)
+  const [showSupplyRisk, setShowSupplyRisk] = useState(false);
+  
+  // ✅ NOVO: Recebe filtros via props (compartilhados com Sidebar)
+  const filters = props.filters || {
+    roiMin: 0, // ✅ CORRIGIDO: Padrão de 0% (mas permite negativos)
+    roiMax: 1000,
+    rainMin: 0,
+    rainMax: 500,
+    selectedStates: [],
+    riskLevels: [],
+    products: []
+  };
+  
+  // ✅ NOVO: Callback para atualizar filtros (compartilhado com Sidebar)
+  // eslint-disable-next-line no-unused-vars
+  const onFiltersChange = props.onFiltersChange || (() => {});
+  
+  // ✅ NOVO: Recebe dados de IA e risco via props (compartilhados)
+  const aiPredictions = props.aiPredictions || {};
+  const supplyRiskData = props.supplyRiskData || {};
+  
+  // ✅ NOVO: Callbacks para atualizar dados de IA e risco
+  const setAiPredictions = props.setAiPredictions || (() => {});
+  const setSupplyRiskData = props.setSupplyRiskData || (() => {});
 
-  // Carrega previsões
+  // ✅ OTIMIZADO: Debounce para evitar múltiplas requisições simultâneas
+  const fetchTimeoutRef = useRef(null);
+  const lastOpportunitiesRef = useRef(null);
+  
+  // Carrega previsões com debounce
   useEffect(() => {
-    if (opportunities.length > 0) {
-        const fetchPredictions = async () => {
-            try {
-                // Chama o serviço atualizado
-                const preds = await OpportunityService.calculateBatchAI(opportunities);
-                if (preds) setAiPredictions(preds);
-            } catch (err) {
-                console.error("Erro buscando previsões:", err);
-            }
-        };
-        fetchPredictions();
+    // Limpa timeout anterior se houver
+    if (fetchTimeoutRef.current) {
+      clearTimeout(fetchTimeoutRef.current);
     }
+    
+    // Verifica se as oportunidades realmente mudaram
+    const opportunitiesKey = JSON.stringify(opportunities.map(opp => ({
+      id: opp.id,
+      product: opp.product,
+      state: opp.state
+    })));
+    
+    if (opportunitiesKey === lastOpportunitiesRef.current) {
+      return; // Não mudou, não precisa buscar novamente
+    }
+    
+    if (opportunities.length > 0) {
+      // Debounce de 500ms (aguarda usuário parar de interagir)
+      fetchTimeoutRef.current = setTimeout(async () => {
+        try {
+          // Chama o serviço atualizado
+          const preds = await OpportunityService.calculateBatchAI(opportunities);
+          if (preds) {
+            setAiPredictions(preds);
+            lastOpportunitiesRef.current = opportunitiesKey; // Marca como processado
+          }
+        } catch (err) {
+          console.error("Erro buscando previsões:", err);
+        }
+      }, 500); // 500ms de debounce
+    }
+    
+    // Cleanup: limpa timeout se componente desmontar ou opportunities mudar
+    return () => {
+      if (fetchTimeoutRef.current) {
+        clearTimeout(fetchTimeoutRef.current);
+      }
+    };
   }, [opportunities]);
   
-  // Carrega eventos extremos para todas as oportunidades
+  // ✅ NOVO: Carrega risco de abastecimento para todas as oportunidades (para heatmap)
+  // ✅ OTIMIZADO: Cache e processamento mais eficiente
+  const supplyRiskLoadingRef = useRef(false);
+  const [supplyRiskLoading, setSupplyRiskLoading] = useState(false);
+  const [supplyRiskProgress, setSupplyRiskProgress] = useState({ loaded: 0, total: 0 });
+  
   useEffect(() => {
-    if (opportunities.length > 0) {
-      const fetchExtremeEvents = async () => {
-        const eventsMap = {};
-        
-        for (const opp of opportunities) {
-          const lat = opp.coords?.lat;
-          const lng = opp.coords?.lng;
-          
-          if (lat && lng) {
-            try {
-              const eventsData = await OpportunityService.getExtremeEvents(lat, lng, 16);
-              if (eventsData?.events && eventsData.events.length > 0) {
-                eventsMap[opp.id] = eventsData;
-              }
-            } catch (err) {
-              // Silencioso - não bloqueia o mapa se falhar
+    if (showSupplyRisk && opportunities.length > 0 && !supplyRiskLoadingRef.current) {
+      supplyRiskLoadingRef.current = true;
+      setSupplyRiskLoading(true);
+      
+      const fetchSupplyRisks = async () => {
+        // ✅ OTIMIZADO: Cache local no frontend para evitar requisições duplicadas
+        const localCacheKey = `supply_risk_${opportunities.map(o => o.id).join('_')}`;
+        const cached = sessionStorage.getItem(localCacheKey);
+        if (cached) {
+          try {
+            const cachedData = JSON.parse(cached);
+            const cacheTime = cachedData.timestamp;
+            const now = Date.now();
+            // Cache válido por 30 minutos no frontend
+            if (now - cacheTime < 30 * 60 * 1000) {
+              console.debug(`✅ Cache HIT no frontend para supply risk`);
+              setSupplyRiskData(cachedData.data);
+              setSupplyRiskLoading(false);
+              supplyRiskLoadingRef.current = false;
+              return;
             }
+          } catch (e) {
+            // Cache inválido, continua normalmente
           }
         }
         
-        setExtremeEventsMap(eventsMap);
+        const riskData = {};
+        
+        // ✅ OTIMIZADO: Processa TODAS em paralelo (cache no backend torna isso seguro)
+        const oppsWithCoords = opportunities.filter(opp => opp.coords?.lat && opp.coords?.lng);
+        const total = oppsWithCoords.length;
+        setSupplyRiskProgress({ loaded: 0, total });
+        
+        console.debug(`📊 Iniciando carregamento de risco para ${total} oportunidades (cache agressivo ativo)`);
+        
+        // ✅ OTIMIZADO: Processa em batches para evitar sobrecarga (mesmo com cache)
+        // Cache ajuda, mas muitas requisições simultâneas ainda podem sobrecarregar
+        const batchSize = 8; // ✅ Balanceado: 8 por vez para velocidade sem sobrecarga
+        const loadedCountRef = { current: 0 }; // ✅ CORRIGIDO: Usa ref para evitar problema de closure
+        
+        for (let i = 0; i < oppsWithCoords.length; i += batchSize) {
+          const batch = oppsWithCoords.slice(i, i + batchSize);
+          
+          const batchResults = await Promise.allSettled(
+            batch.map(async (opp) => {
+              try {
+                const risk = await OpportunityService.getSupplyRisk(
+                  opp.coords.lat,
+                  opp.coords.lng,
+                  opp.product || 'Tomate',
+                  16
+                );
+                loadedCountRef.current++;
+                setSupplyRiskProgress({ loaded: loadedCountRef.current, total });
+                return { oppId: opp.id, risk };
+              } catch (err) {
+                console.debug(`Erro ao buscar risco para ${opp.id}:`, err.message);
+                loadedCountRef.current++;
+                setSupplyRiskProgress({ loaded: loadedCountRef.current, total });
+                return { oppId: opp.id, risk: null };
+              }
+            })
+          );
+          
+          // ✅ CORRIGIDO: Coleta resultados do batch
+          batchResults.forEach(result => {
+            if (result.status === 'fulfilled' && result.value?.risk && result.value.risk.risk_level) {
+              riskData[result.value.oppId] = result.value.risk;
+            }
+          });
+          
+          // ✅ Pequeno delay entre batches para não sobrecarregar (mesmo com cache)
+          if (i + batchSize < oppsWithCoords.length) {
+            await new Promise(resolve => setTimeout(resolve, 50)); // Delay mínimo
+          }
+        }
+        
+        // ✅ Salva no cache local do frontend
+        sessionStorage.setItem(localCacheKey, JSON.stringify({
+          data: riskData,
+          timestamp: Date.now()
+        }));
+        
+        console.debug(`📊 Total de riscos carregados: ${Object.keys(riskData).length}`);
+        setSupplyRiskData(riskData);
+        setSupplyRiskLoading(false);
+        supplyRiskLoadingRef.current = false;
       };
       
-      fetchExtremeEvents();
+      // ✅ REDUZIDO: Debounce mínimo (100ms apenas para evitar múltiplas chamadas simultâneas)
+      const timeout = setTimeout(() => {
+        fetchSupplyRisks();
+      }, 100);
+      
+      return () => {
+        clearTimeout(timeout);
+        supplyRiskLoadingRef.current = false;
+        setSupplyRiskLoading(false);
+      };
+    } else if (!showSupplyRisk) {
+      // Limpa os dados quando o toggle é desativado
+      setSupplyRiskData({});
+      setSupplyRiskLoading(false);
+      setSupplyRiskProgress({ loaded: 0, total: 0 });
+      supplyRiskLoadingRef.current = false;
     }
-  }, [opportunities]);
+  }, [showSupplyRisk, opportunities, setSupplyRiskData]);
+  
+  // ✅ NOVO: Limpa cache do frontend quando toggle é desativado
+  useEffect(() => {
+    if (!showSupplyRisk) {
+      // Limpa cache do sessionStorage quando desativa
+      Object.keys(sessionStorage).forEach(key => {
+        if (key.startsWith('supply_risk_')) {
+          sessionStorage.removeItem(key);
+        }
+      });
+    }
+  }, [showSupplyRisk]);
+  
+  // Carrega eventos extremos SOB DEMANDA (quando marcador é clicado)
+  // Desabilitado busca automática para todas as oportunidades para evitar sobrecarga
+  const fetchExtremeEventsForOpportunity = async (oppId, lat, lng) => {
+    // Se já temos os dados, não busca novamente
+    if (extremeEventsMap[oppId]) {
+      return extremeEventsMap[oppId];
+    }
+    
+    try {
+      const eventsData = await OpportunityService.getExtremeEvents(lat, lng, 16);
+      if (eventsData?.events && eventsData.events.length > 0) {
+        setExtremeEventsMap(prev => ({
+          ...prev,
+          [oppId]: eventsData
+        }));
+        return eventsData;
+      }
+    } catch (err) {
+      console.debug(`Erro ao buscar eventos para ${oppId}:`, err.message);
+    }
+    return null;
+  };
 
   // --- LÓGICA DO SLIDER (CONECTADA À IA) ---
   const getSimulatedOpportunities = () => {
@@ -196,7 +406,50 @@ const MapView = React.forwardRef((props, ref) => {
     });
   };
 
-  const currentOpportunities = getSimulatedOpportunities();
+  // Aplica simulação temporal
+  const simulatedOpportunities = getSimulatedOpportunities();
+  
+  // ✅ NOVO: Aplica filtros nas oportunidades
+  const applyFilters = (opps) => {
+    return opps.filter(opp => {
+      // 1. Filtro de ROI
+      const pred = Array.isArray(aiPredictions) 
+        ? aiPredictions.find(p => p.id === opp.id)
+        : aiPredictions?.[opp.id];
+      const roi = pred?.roi || opp.financials?.roi || 0;
+      
+      if (roi < filters.roiMin || roi > filters.roiMax) {
+        return false;
+      }
+      
+      // 2. Filtro de Estado
+      const state = opp.origin?.state || opp.state;
+      if (filters.selectedStates?.length > 0 && !filters.selectedStates.includes(state)) {
+        return false;
+      }
+      
+      // 3. Filtro de Nível de Risco (baseado em supplyRiskData)
+      if (filters.riskLevels?.length > 0) {
+        const riskData = supplyRiskData[opp.id];
+        const riskLevel = riskData?.risk_level || 'low';
+        if (!filters.riskLevels.includes(riskLevel)) {
+          return false;
+        }
+      }
+      
+      // 4. Filtro de Produto (para futuro)
+      if (filters.products?.length > 0 && !filters.products.includes(opp.product)) {
+        return false;
+      }
+      
+      // 5. Filtro de Chuva (TODO: implementar quando dados de chuva estiverem disponíveis)
+      // Por enquanto, sempre passa
+      
+      return true;
+    });
+  };
+  
+  const currentOpportunities = applyFilters(simulatedOpportunities);
 
   
 
@@ -244,19 +497,47 @@ const MapView = React.forwardRef((props, ref) => {
   }, [props.selectedOpportunity]);
 
   // Função centralizada de seleção
-  const handleSelection = (opp) => {
+  const handleSelection = (opp, skipZoom = false) => {
       setWeatherData(null); // Reseta clima anterior
-      setMapCenter(opp.position);
-      setMapZoom(6);
+      
+      // ✅ CORRIGIDO: Usa coords se disponível, senão position
+      const coords = opp.coords || (opp.position ? { lat: opp.position[0], lng: opp.position[1] } : null);
+      
+      // ✅ CORRIGIDO: Só faz zoom/pan se não for skipZoom (evita fechar popup)
+      if (!skipZoom) {
+        if (coords) {
+          setMapCenter([coords.lat || coords[0], coords.lng || coords[1]]);
+        } else if (opp.position && opp.position.length === 2) {
+          setMapCenter(opp.position);
+        }
+        setMapZoom(6);
+        setMapBounds(null);
+      }
+      
       setActiveMarkerId(opp.id);
       setSelectedOpportunity(opp);
-      setSelectedState(opp.state);
-      setMapBounds(null);
-
-      if (opp.position && opp.position.length === 2) {
-          OpportunityService.getWeather(opp.position[0], opp.position[1])
-            .then(data => setWeatherData(data));
+      
+      // ✅ CORRIGIDO: Restaura destaque de estado
+      const state = opp.origin?.state || opp.state;
+      if (state) {
+        setSelectedState(state);
       }
+
+      // Busca dados climáticos
+      if (coords) {
+        OpportunityService.getCurrentWeather(coords.lat || coords[0], coords.lng || coords[1])
+          .then(data => setWeatherData(data));
+      } else if (opp.position && opp.position.length === 2) {
+        OpportunityService.getCurrentWeather(opp.position[0], opp.position[1])
+          .then(data => setWeatherData(data));
+      }
+  };
+  
+  // ✅ NOVO: Função para limpar seleção quando popup fecha
+  const handleDeselection = () => {
+    setSelectedOpportunity(null);
+    setSelectedState(null);
+    setActiveMarkerId(null);
   };
 
   // Efeito Seleção via Props
@@ -402,6 +683,44 @@ return (
             </div>
         </div>
       )}
+      
+      {/* ✅ NOVO: Toggle para mostrar/ocultar heatmap de regiões comprometidas */}
+      <div style={{
+        position: 'absolute',
+        top: legendVisible ? '350px' : '210px', // ✅ CORRIGIDO: Mais abaixo para não sobrepor a legenda (legenda expandida tem ~270px de altura)
+        right: '20px', // ✅ CORRIGIDO: Alinhado com a legenda (mesmo right)
+        zIndex: 1000,
+        background: `${theme.colors.background}F2`,
+        padding: '10px',
+        borderRadius: '8px',
+        boxShadow: theme.colors.cardGlow,
+        border: `1px solid ${theme.colors.accent}40`,
+        transition: 'top 0.3s ease', // Animação suave quando a legenda expande/contrai
+        minWidth: '200px' // ✅ CORRIGIDO: Mesma largura mínima da legenda para alinhamento
+      }}>
+        <label style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          cursor: 'pointer',
+          fontSize: '12px',
+          color: theme.colors.textPrimary,
+          fontFamily: theme.font
+        }}>
+          <input
+            type="checkbox"
+            checked={showSupplyRisk}
+            onChange={(e) => setShowSupplyRisk(e.target.checked)}
+            style={{ cursor: 'pointer', accentColor: theme.colors.accent }}
+          />
+          <span>🔥 Regiões Comprometidas</span>
+        </label>
+        {showSupplyRisk && (
+          <div style={{ marginTop: '8px', fontSize: '10px', color: theme.colors.textMuted }}>
+            <div>🔴 Extremo | 🟠 Alto | 🟡 Moderado | 🟢 Baixo</div>
+          </div>
+        )}
+      </div>
       <MapContainer
         center={brazilCenter} // 🔥 Usa a constante definida na Parte 1
         zoom={4}
@@ -464,7 +783,8 @@ return (
               ...geojsonMunicipios,
               features: geojsonMunicipios.features.filter(f => {
                 const geoNome = (f.properties.name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase();
-                const cityNome = (selectedOpportunity.city || '').normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase();
+                // ✅ CORRIGIDO: Tenta origin.city primeiro, depois city
+                const cityNome = (selectedOpportunity.origin?.city || selectedOpportunity.city || '').normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase();
                 return geoNome === cityNome;
               })
             }}
@@ -558,6 +878,141 @@ return (
           </>
         )}
         
+        {/* ✅ NOVO: Destaque de Municípios Comprometidos (em vez de círculos) */}
+        {showSupplyRisk && !customRoute && geojsonMunicipios && (
+          <>
+            {/* ✅ MELHORADO: Indicador de progresso com feedback visual */}
+            {supplyRiskLoading && (
+              <div style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                background: 'linear-gradient(135deg, rgba(0, 217, 255, 0.15) 0%, rgba(0, 217, 255, 0.05) 100%)',
+                backdropFilter: 'blur(10px)',
+                color: '#00d9ff',
+                padding: '24px 32px',
+                borderRadius: '12px',
+                border: '1px solid rgba(0, 217, 255, 0.3)',
+                zIndex: 2000,
+                fontSize: '14px',
+                textAlign: 'center',
+                boxShadow: '0 8px 32px rgba(0, 217, 255, 0.2)',
+                minWidth: '280px'
+              }}>
+                <div style={{ marginBottom: '12px', fontSize: '24px' }}>⏳</div>
+                <div style={{ fontWeight: '600', marginBottom: '8px' }}>
+                  Carregando Regiões Comprometidas...
+                </div>
+                {supplyRiskProgress.total > 0 && (
+                  <div style={{ 
+                    marginTop: '12px',
+                    fontSize: '12px',
+                    color: '#94a3b8'
+                  }}>
+                    {supplyRiskProgress.loaded} / {supplyRiskProgress.total} regiões
+                    <div style={{
+                      marginTop: '8px',
+                      width: '100%',
+                      height: '4px',
+                      background: 'rgba(0, 217, 255, 0.2)',
+                      borderRadius: '2px',
+                      overflow: 'hidden'
+                    }}>
+                      <div style={{
+                        width: `${(supplyRiskProgress.loaded / supplyRiskProgress.total) * 100}%`,
+                        height: '100%',
+                        background: 'linear-gradient(90deg, #00d9ff 0%, #00a8cc 100%)',
+                        transition: 'width 0.3s ease',
+                        boxShadow: '0 0 8px rgba(0, 217, 255, 0.5)'
+                      }} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {Object.entries(supplyRiskData).map(([oppId, riskData]) => {
+              // ✅ CORRIGIDO: Busca a oportunidade original pelo ID (não usa currentOpportunities que pode ter IDs diferentes)
+              const opp = opportunities.find(o => o.id === parseInt(oppId));
+              if (!opp || !opp.origin?.city) {
+                console.debug(`⚠️ Oportunidade não encontrada para ID ${oppId} ou sem cidade`);
+                return null;
+              }
+              
+              // ✅ CORRIGIDO: Extrai risk_level corretamente (pode estar em riskData diretamente ou dentro de um objeto)
+              const riskLevel = riskData?.risk_level || 'low';
+              const riskScore = riskData?.risk_score || 0;
+              
+              // ✅ DEBUG: Log para verificar os dados recebidos
+              console.debug(`🎨 Renderizando risco para ${opp.origin?.city}: level=${riskLevel}, score=${riskScore}, data=`, riskData);
+              
+              // Cores baseadas no nível de risco
+              const getRiskColor = (level) => {
+                switch (level) {
+                  case 'extreme': return '#dc2626'; // Vermelho
+                  case 'high': return '#f59e0b'; // Laranja
+                  case 'moderate': return '#eab308'; // Amarelo
+                  default: return '#22c55e'; // Verde
+                }
+              };
+              
+              // Filtra o município específico
+              const cityGeoJSON = {
+                ...geojsonMunicipios,
+                features: geojsonMunicipios.features.filter(f => {
+                  const geoNome = (f.properties.name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase();
+                  const cityNome = (opp.origin?.city || '').normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase();
+                  return geoNome === cityNome;
+                })
+              };
+              
+              if (cityGeoJSON.features.length === 0) {
+                console.debug(`⚠️ Município não encontrado no GeoJSON: ${opp.origin?.city}`);
+                return null;
+              }
+              
+              return (
+                <GeoJSON
+                  key={`risk-municipio-${oppId}`}
+                  data={cityGeoJSON}
+                  style={() => ({
+                    fillColor: getRiskColor(riskLevel),
+                    color: getRiskColor(riskLevel),
+                    weight: 3,
+                    fillOpacity: 0.4,
+                    opacity: 0.8,
+                    filter: `drop-shadow(0 0 8px ${getRiskColor(riskLevel)})`
+                  })}
+                >
+                  <Tooltip>
+                    <div style={{ textAlign: 'center', padding: '4px' }}>
+                      <strong>{opp.product} - {opp.origin?.city}</strong><br/>
+                      <span style={{ color: getRiskColor(riskLevel), fontWeight: 'bold' }}>
+                        Risco: {riskLevel.toUpperCase()} ({riskScore.toFixed(1)}%)
+                      </span>
+                    </div>
+                  </Tooltip>
+                </GeoJSON>
+              );
+            })}
+            {Object.keys(supplyRiskData).length > 0 && (
+              <div style={{
+                position: 'absolute',
+                bottom: '20px',
+                right: '20px',
+                background: 'rgba(0,0,0,0.7)',
+                color: 'white',
+                padding: '8px 12px',
+                borderRadius: '8px',
+                fontSize: '12px',
+                zIndex: 1000
+              }}>
+                ✅ {Object.keys(supplyRiskData).length} região(ões) analisada(s)
+              </div>
+            )}
+          </>
+        )}
+        
         {/* 🔥 MARCADORES PRINCIPAIS (COM CLUSTERING) 🔥 */}
         {!customRoute && (
           <MarkerClusterGroup
@@ -597,7 +1052,20 @@ return (
                 )}
                 
                 eventHandlers={{
-                  click: () => { handleSelection(opp); }
+                  // ✅ REMOVIDO: click handler - deixa o Leaflet gerenciar o popup naturalmente
+                  popupopen: () => {
+                    // ✅ CORRIGIDO: Atualiza seleção quando popup abre (sem zoom)
+                    handleSelection(opp, true);
+                    
+                    // Busca eventos extremos quando o popup é aberto (sob demanda)
+                    if (opp.coords?.lat && opp.coords?.lng && !extremeEventsMap[opp.id]) {
+                      fetchExtremeEventsForOpportunity(opp.id, opp.coords.lat, opp.coords.lng);
+                    }
+                  },
+                  popupclose: () => {
+                    // ✅ NOVO: Limpa destaque quando popup fecha
+                    handleDeselection();
+                  }
                 }}
               >
                 <Popup maxWidth={350} minWidth={250} autoPanPadding={[50, 50]}>
@@ -726,27 +1194,65 @@ return (
                       📋 Ver Detalhes Completos
                     </button>
                     
-                    {/* Badge de Eventos Extremos no Popup */}
+                    {/* ✅ MELHORADO: Badge de Eventos Extremos no Popup - mais informativo */}
                     {hasExtremeEvents && (
                       <div style={{
-                        marginTop: '8px',
-                        padding: '8px',
-                        background: extremeSeverity === 'extreme' ? 'rgba(239, 68, 68, 0.2)' :
-                                    extremeSeverity === 'high' ? 'rgba(251, 146, 60, 0.2)' :
-                                    'rgba(250, 204, 21, 0.2)',
-                        borderRadius: '6px',
-                        border: `1px solid ${
+                        marginTop: '10px',
+                        padding: '12px',
+                        background: extremeSeverity === 'extreme' 
+                          ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.25) 0%, rgba(239, 68, 68, 0.15) 100%)'
+                          : extremeSeverity === 'high'
+                          ? 'linear-gradient(135deg, rgba(251, 146, 60, 0.25) 0%, rgba(251, 146, 60, 0.15) 100%)'
+                          : 'linear-gradient(135deg, rgba(250, 204, 21, 0.25) 0%, rgba(250, 204, 21, 0.15) 100%)',
+                        borderRadius: '8px',
+                        border: `2px solid ${
                           extremeSeverity === 'extreme' ? '#ef4444' :
                           extremeSeverity === 'high' ? '#fb923c' :
                           '#facc15'
+                        }`,
+                        boxShadow: `0 0 12px ${
+                          extremeSeverity === 'extreme' ? 'rgba(239, 68, 68, 0.4)' :
+                          extremeSeverity === 'high' ? 'rgba(251, 146, 60, 0.4)' :
+                          'rgba(250, 204, 21, 0.4)'
                         }`
                       }}>
-                        <div style={{ fontSize: '11px', fontWeight: 'bold', color: theme.colors.textPrimary, marginBottom: '4px' }}>
-                          ⚠️ Eventos Extremos Detectados
+                        <div style={{ 
+                          fontSize: '12px', 
+                          fontWeight: 'bold', 
+                          color: theme.colors.textPrimary,
+                          marginBottom: '6px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}>
+                          {extremeSeverity === 'extreme' ? '🚨' : extremeSeverity === 'high' ? '⚠️' : '⚡'}
+                          Eventos Extremos Detectados
                         </div>
-                        <div style={{ fontSize: '10px', color: theme.colors.textMuted }}>
+                        <div style={{ fontSize: '11px', color: theme.colors.textMuted, marginBottom: '4px' }}>
                           {extremeEvents.events.length} evento(s) nos próximos 16 dias
                         </div>
+                        {/* Tipos de eventos detectados */}
+                        {extremeEvents.events.length > 0 && (
+                          <div style={{ 
+                            fontSize: '10px', 
+                            color: theme.colors.textMuted,
+                            marginTop: '6px',
+                            paddingTop: '6px',
+                            borderTop: `1px solid ${
+                              extremeSeverity === 'extreme' ? 'rgba(239, 68, 68, 0.3)' :
+                              extremeSeverity === 'high' ? 'rgba(251, 146, 60, 0.3)' :
+                              'rgba(250, 204, 21, 0.3)'
+                            }`
+                          }}>
+                            {[...new Set(extremeEvents.events.map(e => {
+                              if (e.type === 'heat' || e.type === 'heat_wave') return '🔥 Onda de Calor';
+                              if (e.type === 'cold' || e.type === 'cold_wave') return '❄️ Onda de Frio';
+                              if (e.type === 'tropical_storm') return '🌀 Tempestade Tropical';
+                              if (e.type === 'hail') return '🌨️ Granizo';
+                              return '🌧️ Chuva Extrema';
+                            }))].join(' • ')}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

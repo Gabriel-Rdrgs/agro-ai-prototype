@@ -6,7 +6,7 @@ import { OpportunityService } from './services/opportunityService';
 import RoiCalculator from './components/Calculator/RoiCalculator';
 import Login from './components/Auth/Login';
 import WeatherDashboard from './components/Weather/WeatherDashboard';
-import MarketRadar from './components/Market/MarketRadar';
+// import MarketRadar from './components/Market/MarketRadar'; // TODO: Implementar quando necessário
 import AgronomicChat from './components/Chat/AgronomicChat';
 
 function App() {
@@ -31,6 +31,48 @@ function App() {
   const [activeTab, setActiveTab] = useState('map');
   const mapRef = useRef(null);
   const [selectedOpportunity, setSelectedOpportunity] = useState(null);
+  
+  // ✅ NOVO: Estado para filtros do mapa (compartilhado entre Sidebar e MapView)
+  const [mapFilters, setMapFilters] = useState({
+    roiMin: 0, // ✅ CORRIGIDO: Padrão de 0% (mas permite negativos)
+    roiMax: 1000,
+    rainMin: 0,
+    rainMax: 500,
+    selectedStates: [],
+    riskLevels: [],
+    products: []
+  });
+  
+  // ✅ NOVO: Estado para dados de IA e risco (compartilhado)
+  const [aiPredictions, setAiPredictions] = useState({});
+  const [supplyRiskData, setSupplyRiskData] = useState({});
+  
+  // ✅ NOVO: Inicializa valores máximos dos filtros quando os dados chegam (mínimo sempre 0 por padrão)
+  const filtersInitialized = useRef(false);
+  useEffect(() => {
+    if (!filtersInitialized.current && opportunities.length > 0) {
+      const roiValues = opportunities
+        .map(opp => {
+          const pred = Array.isArray(aiPredictions) 
+            ? aiPredictions.find(p => p.id === opp.id)
+            : aiPredictions?.[opp.id];
+          return pred?.roi || opp.financials?.roi || 0;
+        })
+        .filter(v => !isNaN(v) && isFinite(v));
+      
+      if (roiValues.length > 0) {
+        const maxROI = Math.max(...roiValues);
+        
+        // ✅ CORRIGIDO: Só atualiza o máximo, mantém mínimo em 0 (mas permite negativos manualmente)
+        setMapFilters(prev => ({
+          ...prev,
+          roiMax: Math.ceil(maxROI)
+          // roiMin permanece 0 (padrão), mas usuário pode digitar negativo se quiser
+        }));
+        filtersInitialized.current = true;
+      }
+    }
+  }, [opportunities, aiPredictions]);
 
   // --- 2. EFEITOS (SIDE EFFECTS) ---
 
@@ -161,7 +203,15 @@ function App() {
               <button onClick={toggleSidebar} className="sidebar-toggle-btn">✕</button>
             </div>
             <div className="sidebar-content">
-              <Sidebar onSelectOpportunity={handleSelectOpportunity} hideHeader={true} opportunities={opportunities} />
+              <Sidebar 
+                onSelectOpportunity={handleSelectOpportunity} 
+                hideHeader={true} 
+                opportunities={opportunities}
+                filters={mapFilters}
+                onFiltersChange={setMapFilters}
+                aiPredictions={aiPredictions}
+                supplyRiskData={supplyRiskData}
+              />
             </div>
           </div>
         )}
@@ -191,7 +241,13 @@ function App() {
                   selectedOpportunity={selectedOpportunity}
                   opportunities={opportunities}
                   customRoute={customRoute}
-                  onClearRoute={handleClearRoute} 
+                  onClearRoute={handleClearRoute}
+                  filters={mapFilters}
+                  onFiltersChange={setMapFilters}
+                  aiPredictions={aiPredictions}
+                  setAiPredictions={setAiPredictions}
+                  supplyRiskData={supplyRiskData}
+                  setSupplyRiskData={setSupplyRiskData}
                 />
               </div>
             )}

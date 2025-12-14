@@ -151,7 +151,7 @@ class PriceForecastService:
             # Treina o modelo
             model.fit(df)
             
-            logger.info(f"✅ Modelo Prophet treinado para {product}/{region}")
+            logger.debug(f"✅ Modelo Prophet treinado para {product}/{region}")
             return model
         
         except Exception as e:
@@ -267,9 +267,9 @@ class PriceForecastService:
         """
         try:
             # Verifica dados antes de tentar Prophet
-            logger.info(f"🔍 Iniciando previsão para {product}/{region or 'todas as regiões'} - {days_ahead} dias")
+            logger.debug(f"🔍 Iniciando previsão para {product}/{region or 'todas as regiões'} - {days_ahead} dias")
             df_check = self._load_historical_data(product, region)
-            logger.info(f"📊 Dados carregados: {len(df_check)} registros")
+            logger.debug(f"📊 Dados carregados: {len(df_check)} registros")
             
             if df_check.empty or len(df_check) < 30:
                 # Dados insuficientes para Prophet, usa fallback direto
@@ -286,13 +286,13 @@ class PriceForecastService:
                 return self._forecast_fallback(product, region, days_ahead, df_check)
             
             # Tem dados suficientes, tenta Prophet
-            logger.info(f"✅ Dados suficientes ({len(df_check)} >= 30), tentando Prophet...")
+            logger.debug(f"✅ Dados suficientes ({len(df_check)} >= 30), tentando Prophet...")
             try:
-                # Limpa cache antes de treinar (força retreinar)
-                self._train_prophet_model.cache_clear()
-                logger.info(f"🔄 Cache limpo, treinando Prophet para {product}/{region or 'todas'}...")
+                # ✅ OTIMIZADO: NÃO limpa cache - permite reutilizar modelos já treinados
+                # O cache LRU mantém até 8 modelos diferentes, acelerando requisições repetidas
+                logger.debug(f"🔄 Usando cache do Prophet para {product}/{region or 'todas'}...")
                 model = self._train_prophet_model(product, region)
-                logger.info(f"🔮 Modelo Prophet retornado: {type(model).__name__ if model else 'None'}")
+                logger.debug(f"🔮 Modelo Prophet retornado: {type(model).__name__ if model else 'None'}")
             except Exception as prophet_error:
                 # Se Prophet falhar na inicialização, usa fallback
                 error_str = str(prophet_error)
@@ -306,7 +306,7 @@ class PriceForecastService:
                 logger.warning("⚠️ Prophet retornou None, usando regressão polinomial como fallback")
                 return self._forecast_fallback(product, region, days_ahead, df_check)
             
-            logger.info("✅ Prophet treinado com sucesso, gerando previsões...")
+            logger.debug("✅ Prophet treinado com sucesso, gerando previsões...")
             
             # Cria dataframe futuro
             future = model.make_future_dataframe(periods=days_ahead)

@@ -2,6 +2,7 @@
 from fastapi import APIRouter, HTTPException, Query
 from services.climate.intelligence import climate_api
 from services.climate.extreme_events import extreme_events_detector
+from services.climate.supply_risk_analyzer import supply_risk_analyzer
 import logging
 
 router = APIRouter()
@@ -193,3 +194,45 @@ async def get_historical_extreme_events(
     except Exception as e:
         logger.error(f"❌ Erro ao buscar eventos históricos: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erro ao analisar eventos históricos: {str(e)}")
+
+@router.get("/supply-risk")
+async def get_supply_risk(
+    lat: float = Query(..., description="Latitude"),
+    lng: float = Query(..., description="Longitude"),
+    product: str = Query("Tomate", description="Produto agrícola (ex: Tomate, Soja, Milho)"),
+    days: int = Query(16, ge=7, le=30, description="Dias à frente para analisar (7-30)")
+):
+    """
+    🔥 Analisa risco de abastecimento para uma região específica.
+    
+    Identifica regiões que podem ficar comprometidas no abastecimento
+    devido a eventos climáticos extremos, problemas de produção, etc.
+    
+    Retorna:
+    - Nível de risco (low, moderate, high, extreme)
+    - Score de risco (0-100)
+    - Fatores de risco identificados
+    - Recomendações específicas
+    - Período afetado
+    """
+    import time
+    start_time = time.time()
+    logger.info(f"📊 Iniciando análise de supply risk para lat={lat}, lng={lng}, product={product}")
+    
+    try:
+        result = await supply_risk_analyzer.analyze_supply_risk(
+            lat=lat,
+            lng=lng,
+            product=product,
+            forecast_days=days
+        )
+        elapsed = time.time() - start_time
+        logger.info(f"✅ Supply risk calculado em {elapsed:.2f}s para lat={lat}, lng={lng}")
+        return {
+            "status": "success",
+            **result
+        }
+    except Exception as e:
+        elapsed = time.time() - start_time
+        logger.error(f"❌ Erro ao analisar risco de abastecimento após {elapsed:.2f}s: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erro ao analisar risco de abastecimento: {str(e)}")

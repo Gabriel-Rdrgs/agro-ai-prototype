@@ -41,10 +41,11 @@ class ClimateIntelligence:
     """
     
     def __init__(self):
-        self.cache = CacheManager(ttl_seconds=3600)  # 1 hora
+        self.cache = CacheManager(ttl_seconds=43200)  # 12 horas (dados climáticos mudam muito lentamente - cache agressivo)
         self.headers = {
             'User-Agent': 'Agro-AI/6.0 (Climate Intelligence Module)'
         }
+        self._pending_requests = {}  # Lock para evitar requisições duplicadas
         logger.info("✅ ClimateIntelligence iniciado")
     
     def _validate_coords(self, lat: float, lng: float) -> bool:
@@ -285,6 +286,35 @@ class ClimateIntelligence:
         if not self._validate_coords(lat, lng):
             return {}
 
+        # ✅ OTIMIZADO: Usa cache para evitar múltiplas chamadas à API
+        cache_key = f"extended_forecast_{lat}_{lng}"
+        cached_result = self.cache.get(cache_key)
+        if cached_result:
+            logger.debug(f"✅ Cache HIT para forecast: {lat},{lng}")
+            return cached_result
+
+        # ✅ OTIMIZADO: Lock para evitar requisições duplicadas simultâneas
+        import asyncio
+        if cache_key in self._pending_requests:
+            logger.debug(f"⏳ Aguardando requisição em andamento para {lat},{lng}")
+            try:
+                return await self._pending_requests[cache_key]
+            except Exception as e:
+                logger.warning(f"⚠️ Erro ao aguardar requisição: {e}")
+        
+        # Cria uma nova requisição
+        future = asyncio.create_task(self._fetch_forecast_data(lat, lng, cache_key))
+        self._pending_requests[cache_key] = future
+        
+        try:
+            result = await future
+            return result
+        finally:
+            # Remove o lock após completar
+            self._pending_requests.pop(cache_key, None)
+
+    async def _fetch_forecast_data(self, lat: float, lng: float, cache_key: str) -> Optional[Dict]:
+        """Busca dados do forecast da API (método interno)"""
         try:
             params = {
                 "latitude": lat,
@@ -310,7 +340,9 @@ class ClimateIntelligence:
                 ]
             }
 
-            async with httpx.AsyncClient(timeout=20.0) as client:
+            # ✅ OTIMIZADO: Timeout balanceado (15s total, 5s conexão)
+            # Open-Meteo geralmente responde em 1-3s, mas pode demorar até 10s em picos
+            async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=5.0)) as client:
                 response = await client.get(FORECAST_API_URL, params=params)
                 
                 if response.status_code != 200:
@@ -381,6 +413,10 @@ class ClimateIntelligence:
                     "et0": daily_et0,             # ✅ Calculado (Hargreaves)
                     "humidity_max": daily_hum_max # ✅ API Real
                 }
+                
+                # ✅ Salva no cache para próximas requisições
+                self.cache.set(cache_key, result)
+                logger.debug(f"✅ Cache SET para forecast: {lat},{lng}")
                 
                 logger.info(f"✅ Previsão Híbrida (16 dias) gerada para {lat},{lng}")
                 return result

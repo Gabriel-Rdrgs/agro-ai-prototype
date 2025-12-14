@@ -19,10 +19,10 @@ api.interceptors.request.use((config) => {
 // Em produção, usa a variável do Vercel. Localmente, usa localhost.
 const PYTHON_URL = process.env.REACT_APP_PYTHON_API_URL || 'http://localhost:8000';
 
-const aiApi = axios.create({
-    baseURL: `${PYTHON_URL}/api/v1`, 
-    timeout: 60000 
-});
+// const aiApi = axios.create({
+//     baseURL: `${PYTHON_URL}/api/v1`, 
+//     timeout: 60000 
+// }); // TODO: Usar quando necessário
 
 const handleAuthError = (error) => {
     if (error.response && (error.response.status === 401 || error.response.status === 403)) {
@@ -135,10 +135,11 @@ export const OpportunityService = {
 // 4. PREVISÃO DO TEMPO (Alterado para usar aiApi na porta 8000)
   getForecast: async (lat, lng) => {
       try {
-          // Usa a conexão 'aiApi' que criamos acima
-          const response = await aiApi.get('/weather/forecast', {
+          // ✅ OTIMIZADO: Chama através do backend Node.js (proxy para Python)
+          // Isso permite melhor controle de timeout e cache
+          const response = await api.get('/api/weather/forecast', {
               params: { lat, lng },
-              timeout: 60000 // 60 segundos (busca de dados climáticos pode demorar)
+              timeout: 30000 // 30 segundos (backend tem 25s, dá margem)
           });
           
           // Valida a estrutura da resposta
@@ -176,6 +177,37 @@ export const OpportunityService = {
       return response.data;
     } catch (error) {
       console.error("Erro ao buscar eventos extremos:", error);
+      return null;
+    }
+  },
+
+  // ✅ NOVO: Risco de Abastecimento (Regiões Comprometidas)
+  getSupplyRisk: async (lat, lng, product = 'Tomate', days = 16) => {
+    try {
+      // ✅ OTIMIZADO: Retry logic para lidar com timeouts
+      let lastError = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const response = await api.get('/api/weather/supply-risk', {
+            params: { lat, lng, product, days },
+            timeout: 70000 // 70 segundos (backend tem 60s, dá margem)
+          });
+          return response.data;
+        } catch (error) {
+          lastError = error;
+          // Se não for timeout ou 504, não tenta novamente
+          if (error.code !== 'ECONNABORTED' && error.response?.status !== 504) {
+            throw error;
+          }
+          // Aguarda antes de tentar novamente (apenas na primeira tentativa)
+          if (attempt === 0) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+      }
+      throw lastError;
+    } catch (error) {
+      console.error("Erro ao buscar risco de abastecimento:", error);
       return null;
     }
   },

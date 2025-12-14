@@ -3,11 +3,22 @@ import '../../styles/sidebar.css';
 import { OpportunityService } from '../../services/opportunityService';
 
 // RECEBE 'opportunities' DO PAI AGORA
-const Sidebar = ({ onSelectOpportunity, hideHeader = false, opportunities = [], onRefresh }) => {
+const Sidebar = ({ 
+  onSelectOpportunity, 
+  hideHeader = false, 
+  opportunities = [], 
+  onRefresh,
+  // ✅ NOVO: Props para filtros avançados
+  filters = {},
+  onFiltersChange,
+  aiPredictions = {},
+  supplyRiskData = {}
+}) => {
   const [filter, setFilter] = useState('all');
   const [sortBy, setSortBy] = useState('roi');
   const [searchTerm, setSearchTerm] = useState('');
   const [calculatingROI, setCalculatingROI] = useState(false);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
 const getFilteredOpportunities = () => {
     let filtered = Array.isArray(opportunities) ? [...opportunities] : [];
@@ -121,7 +132,7 @@ const getFilteredOpportunities = () => {
         />
       </div>
 
-      {/* Filtros */}
+      {/* Filtros Básicos */}
       <div className="sidebar-filters">
         <label className="filter-label">📊 Filtrar por ROI</label>
         <div className="filter-buttons">
@@ -161,7 +172,351 @@ const getFilteredOpportunities = () => {
           <option value="risk">Risco menor primeiro</option>
           <option value="price">Preço maior primeiro</option>
         </select>
+        
+        {/* ✅ NOVO: Botão para Filtros Avançados */}
+        <button
+          onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+          style={{
+            marginTop: '12px',
+            padding: '8px 12px',
+            borderRadius: '6px',
+            border: '1px solid rgba(0, 217, 255, 0.3)',
+            background: showAdvancedFilters ? 'rgba(0, 217, 255, 0.1)' : 'transparent',
+            color: '#00d9ff',
+            fontSize: '12px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            width: '100%',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          {showAdvancedFilters ? '▼' : '▶'} Filtros Avançados
+        </button>
       </div>
+      
+      {/* ✅ NOVO: Filtros Avançados (Colapsável) - ESTÉTICA MELHORADA */}
+      {showAdvancedFilters && onFiltersChange && (
+        <div style={{
+          marginTop: '16px',
+          padding: '16px',
+          background: 'linear-gradient(135deg, rgba(0, 217, 255, 0.08) 0%, rgba(0, 217, 255, 0.03) 100%)',
+          borderRadius: '12px',
+          border: '1px solid rgba(0, 217, 255, 0.25)',
+          boxShadow: '0 4px 12px rgba(0, 217, 255, 0.1)',
+          transition: 'all 0.3s ease'
+        }}>
+          {/* ROI Min/Max */}
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ 
+              display: 'block', 
+              fontSize: '12px', 
+              fontWeight: '700', 
+              color: '#00d9ff', 
+              marginBottom: '10px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px'
+            }}>
+              💰 ROI (%)
+            </label>
+            <div style={{ 
+              display: 'flex', 
+              gap: '8px', 
+              alignItems: 'center',
+              justifyContent: 'flex-start'
+            }}>
+              <input
+                type="number"
+                value={filters.roiMin ?? 0}
+                onChange={(e) => {
+                  const value = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                  // ✅ CORRIGIDO: Permite valores negativos e zero
+                  if (!isNaN(value) && isFinite(value)) {
+                    onFiltersChange({ ...filters, roiMin: value });
+                  }
+                }}
+                style={{
+                  width: '70px',
+                  padding: '8px',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(0, 217, 255, 0.4)',
+                  background: 'rgba(15, 23, 42, 0.9)',
+                  color: '#e2e8f0',
+                  fontSize: '12px',
+                  fontWeight: '500',
+                  transition: 'all 0.2s ease',
+                  outline: 'none',
+                  textAlign: 'center'
+                }}
+                onFocus={(e) => {
+                  e.target.style.border = '1px solid #00d9ff';
+                  e.target.style.boxShadow = '0 0 8px rgba(0, 217, 255, 0.3)';
+                }}
+                onBlur={(e) => {
+                  e.target.style.border = '1px solid rgba(0, 217, 255, 0.4)';
+                  e.target.style.boxShadow = 'none';
+                  // ✅ CORRIGIDO: Se campo ficar vazio, define como 0
+                  if (e.target.value === '') {
+                    onFiltersChange({ ...filters, roiMin: 0 });
+                  }
+                }}
+                placeholder="Mín"
+              />
+              <span style={{ 
+                color: '#94a3b8', 
+                fontSize: '11px', 
+                fontWeight: '500',
+                padding: '0 2px'
+              }}>
+                até
+              </span>
+              <input
+                type="number"
+                value={filters.roiMax ?? 1000}
+                onChange={(e) => onFiltersChange({ ...filters, roiMax: parseFloat(e.target.value) || 1000 })}
+                style={{
+                  width: '70px',
+                  padding: '8px',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(0, 217, 255, 0.4)',
+                  background: 'rgba(15, 23, 42, 0.9)',
+                  color: '#e2e8f0',
+                  fontSize: '12px',
+                  fontWeight: '500',
+                  transition: 'all 0.2s ease',
+                  outline: 'none',
+                  textAlign: 'center'
+                }}
+                onFocus={(e) => {
+                  e.target.style.border = '1px solid #00d9ff';
+                  e.target.style.boxShadow = '0 0 8px rgba(0, 217, 255, 0.3)';
+                }}
+                onBlur={(e) => {
+                  e.target.style.border = '1px solid rgba(0, 217, 255, 0.4)';
+                  e.target.style.boxShadow = 'none';
+                }}
+                placeholder="Máx"
+              />
+            </div>
+          </div>
+          
+          {/* Estado */}
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ 
+              display: 'block', 
+              fontSize: '12px', 
+              fontWeight: '700', 
+              color: '#00d9ff', 
+              marginBottom: '10px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px'
+            }}>
+              🗺️ Estado
+            </label>
+            <select
+              multiple
+              value={filters.selectedStates || []}
+              onChange={(e) => {
+                const selected = Array.from(e.target.selectedOptions, option => option.value);
+                onFiltersChange({ ...filters, selectedStates: selected });
+              }}
+              style={{
+                width: '100%',
+                padding: '10px',
+                borderRadius: '8px',
+                border: '1px solid rgba(0, 217, 255, 0.4)',
+                background: 'rgba(15, 23, 42, 0.9)',
+                color: '#e2e8f0',
+                fontSize: '13px',
+                minHeight: '80px',
+                maxHeight: '120px',
+                overflowY: 'auto',
+                transition: 'all 0.2s ease',
+                outline: 'none',
+                cursor: 'pointer'
+              }}
+              onFocus={(e) => {
+                e.target.style.border = '1px solid #00d9ff';
+                e.target.style.boxShadow = '0 0 8px rgba(0, 217, 255, 0.3)';
+              }}
+              onBlur={(e) => {
+                e.target.style.border = '1px solid rgba(0, 217, 255, 0.4)';
+                e.target.style.boxShadow = 'none';
+              }}
+            >
+              {[...new Set(opportunities.map(opp => opp.origin?.state || opp.state).filter(Boolean))].sort().map(state => (
+                <option key={state} value={state} style={{ padding: '6px' }}>{state}</option>
+              ))}
+            </select>
+            <div style={{ 
+              fontSize: '10px', 
+              color: '#64748b', 
+              marginTop: '6px',
+              fontStyle: 'italic'
+            }}>
+              💡 Segure Ctrl/Cmd para seleção múltipla
+            </div>
+          </div>
+          
+          {/* Nível de Risco */}
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ 
+              display: 'block', 
+              fontSize: '12px', 
+              fontWeight: '700', 
+              color: '#00d9ff', 
+              marginBottom: '10px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px'
+            }}>
+              ⚠️ Nível de Risco
+            </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {['extreme', 'high', 'moderate', 'low'].map(level => {
+                const colors = { 
+                  extreme: '#dc2626', 
+                  high: '#f59e0b', 
+                  moderate: '#eab308', 
+                  low: '#22c55e' 
+                };
+                const labels = { 
+                  extreme: 'Extremo', 
+                  high: 'Alto', 
+                  moderate: 'Moderado', 
+                  low: 'Baixo' 
+                };
+                const isChecked = Array.isArray(filters.riskLevels) && filters.riskLevels.includes(level);
+                
+                const handleToggle = (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!onFiltersChange) {
+                    console.error('❌ onFiltersChange não está disponível!');
+                    return;
+                  }
+                  const current = Array.isArray(filters.riskLevels) ? filters.riskLevels : [];
+                  const updated = isChecked
+                    ? current.filter(l => l !== level)
+                    : [...current, level];
+                  console.debug(`🔄 Toggle risco ${level}:`, { 
+                    isChecked, 
+                    before: current, 
+                    after: updated,
+                    filters: filters 
+                  });
+                  onFiltersChange({ ...filters, riskLevels: updated });
+                };
+                
+                return (
+                  <div
+                    key={level}
+                    onClick={handleToggle}
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '10px', 
+                      cursor: 'pointer', 
+                      fontSize: '13px', 
+                      color: '#e2e8f0',
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      background: isChecked ? 'rgba(0, 217, 255, 0.1)' : 'transparent',
+                      border: isChecked ? '1px solid rgba(0, 217, 255, 0.3)' : '1px solid transparent',
+                      transition: 'all 0.2s ease',
+                      userSelect: 'none'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isChecked) {
+                        e.currentTarget.style.background = 'rgba(0, 217, 255, 0.05)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isChecked) {
+                        e.currentTarget.style.background = 'transparent';
+                      }
+                    }}
+                  >
+                    <div 
+                      style={{
+                        position: 'relative',
+                        width: '20px',
+                        height: '20px',
+                        borderRadius: '4px',
+                        border: '2px solid rgba(0, 217, 255, 0.4)',
+                        background: isChecked ? '#00d9ff' : 'transparent',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'all 0.2s ease',
+                        flexShrink: 0,
+                        pointerEvents: 'none'
+                      }}
+                    >
+                      {isChecked && (
+                        <span style={{ color: '#0a0e27', fontSize: '14px', fontWeight: 'bold' }}>✓</span>
+                      )}
+                    </div>
+                    <span style={{ 
+                      width: '14px', 
+                      height: '14px', 
+                      borderRadius: '50%', 
+                      background: colors[level], 
+                      display: 'inline-block',
+                      boxShadow: `0 0 8px ${colors[level]}40`,
+                      flexShrink: 0,
+                      pointerEvents: 'none'
+                    }} />
+                    <span style={{ fontWeight: isChecked ? '600' : '400', pointerEvents: 'none' }}>{labels[level]}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          
+          {/* Botão Limpar */}
+          {(filters.selectedStates?.length > 0 || filters.riskLevels?.length > 0 || (filters.roiMin && filters.roiMin !== 0) || (filters.roiMax && filters.roiMax !== 1000)) && (
+            <button
+              onClick={() => onFiltersChange({
+                roiMin: 0, // ✅ CORRIGIDO: Reset para 0 (não -100)
+                roiMax: 1000,
+                rainMin: 0,
+                rainMax: 500,
+                selectedStates: [],
+                riskLevels: [],
+                products: []
+              })}
+              style={{
+                width: '100%',
+                padding: '10px 16px',
+                borderRadius: '8px',
+                border: '1px solid rgba(0, 217, 255, 0.4)',
+                background: 'linear-gradient(135deg, rgba(0, 217, 255, 0.1) 0%, rgba(0, 217, 255, 0.05) 100%)',
+                color: '#00d9ff',
+                fontSize: '12px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                transition: 'all 0.2s ease',
+                outline: 'none'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.background = 'linear-gradient(135deg, rgba(0, 217, 255, 0.2) 0%, rgba(0, 217, 255, 0.1) 100%)';
+                e.target.style.border = '1px solid #00d9ff';
+                e.target.style.boxShadow = '0 0 12px rgba(0, 217, 255, 0.3)';
+                e.target.style.transform = 'translateY(-1px)';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = 'linear-gradient(135deg, rgba(0, 217, 255, 0.1) 0%, rgba(0, 217, 255, 0.05) 100%)';
+                e.target.style.border = '1px solid rgba(0, 217, 255, 0.4)';
+                e.target.style.boxShadow = 'none';
+                e.target.style.transform = 'translateY(0)';
+              }}
+            >
+              🗑️ Limpar Filtros Avançados
+            </button>
+          )}
+        </div>
+      )}
 
 {/* Lista de oportunidades */}
       <div className="opportunities-list">
@@ -187,7 +542,7 @@ const getFilteredOpportunities = () => {
             const sellPrice = financials.sellPrice || 0;
             const riskLevel = details.riskLevel || 1;
             const volume = details.volume || 'N/A';
-            const needsCalculation = financials.needsCalculation || roi === null || roi === 0;
+            // const needsCalculation = financials.needsCalculation || roi === null || roi === 0; // TODO: Usar quando necessário
 
             return (
               <div
