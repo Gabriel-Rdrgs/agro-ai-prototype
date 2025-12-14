@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import '../../styles/sidebar.css';
 import { OpportunityService } from '../../services/opportunityService';
+import { getPlantingSeasonStatus } from '../../utils/plantingCalendar';
 
 // RECEBE 'opportunities' DO PAI AGORA
 const Sidebar = ({ 
@@ -28,8 +29,8 @@ const getFilteredOpportunities = () => {
       const term = searchTerm.toLowerCase();
       filtered = filtered.filter(opp => {
         const product = opp.product?.toLowerCase() || '';
-        const state = opp.origin?.state?.toLowerCase() || ''; // Novo endereço
-        const city = opp.origin?.city?.toLowerCase() || '';   // Novo endereço
+        const state = opp.origin?.state?.toLowerCase() || opp.state?.toLowerCase() || '';
+        const city = opp.origin?.city?.toLowerCase() || '';
         return product.includes(term) || state.includes(term) || city.includes(term);
       });
     }
@@ -43,7 +44,69 @@ const getFilteredOpportunities = () => {
       filtered = filtered.filter(opp => (opp.financials?.roi || 0) < 50);
     }
 
-    // 3. Ordenação
+    // ✅ NOVO: 3. Filtro de ROI Min/Max (filtros avançados)
+    if (filters.roiMin !== undefined && filters.roiMin !== null) {
+      filtered = filtered.filter(opp => {
+        const roi = opp.financials?.roi || 0;
+        return roi >= filters.roiMin;
+      });
+    }
+    if (filters.roiMax !== undefined && filters.roiMax !== null) {
+      filtered = filtered.filter(opp => {
+        const roi = opp.financials?.roi || 0;
+        return roi <= filters.roiMax;
+      });
+    }
+
+    // ✅ NOVO: 4. Filtro de Estado (filtros avançados)
+    if (filters.selectedStates && filters.selectedStates.length > 0) {
+      filtered = filtered.filter(opp => {
+        const state = opp.origin?.state || opp.state || '';
+        return filters.selectedStates.includes(state);
+      });
+    }
+
+    // ✅ NOVO: 5. Filtro de Nível de Risco (filtros avançados)
+    if (filters.riskLevels && filters.riskLevels.length > 0) {
+      filtered = filtered.filter(opp => {
+        const riskLevel = opp.details?.riskLevel || opp.riskLevel || 'low';
+        // Mapeia numérico para string se necessário
+        let riskStr = riskLevel;
+        if (typeof riskLevel === 'number') {
+          if (riskLevel >= 4) riskStr = 'extreme';
+          else if (riskLevel >= 3) riskStr = 'high';
+          else if (riskLevel >= 2) riskStr = 'moderate';
+          else riskStr = 'low';
+        }
+        return filters.riskLevels.includes(riskStr);
+      });
+    }
+
+    // ✅ NOVO: 6. Filtro de Produto (filtros avançados)
+    if (filters.products && filters.products.length > 0) {
+      filtered = filtered.filter(opp => {
+        const product = opp.product || '';
+        return filters.products.includes(product);
+      });
+    }
+
+    // ✅ NOVO: 7. Filtro de Safra/Época de Plantio (filtros avançados)
+    if (filters.plantingSeasons && filters.plantingSeasons.length > 0) {
+      filtered = filtered.filter(opp => {
+        const product = opp.product || '';
+        const state = opp.origin?.state || opp.state || '';
+        const seasonStatus = getPlantingSeasonStatus(product, state);
+        
+        // Se dados não disponíveis, inclui apenas se "outros" estiver selecionado
+        if (seasonStatus === null) {
+          return filters.plantingSeasons.includes('unknown');
+        }
+        
+        return filters.plantingSeasons.includes(seasonStatus);
+      });
+    }
+
+    // 8. Ordenação
     if (sortBy === 'roi') {
       filtered.sort((a, b) => (b.financials?.roi || 0) - (a.financials?.roi || 0));
     } else if (sortBy === 'risk') {
@@ -472,8 +535,125 @@ const getFilteredOpportunities = () => {
             </div>
           </div>
           
+          {/* ✅ NOVO: Filtro de Safra/Época de Plantio */}
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ 
+              display: 'block', 
+              fontSize: '12px', 
+              fontWeight: '700', 
+              color: '#00d9ff', 
+              marginBottom: '10px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px'
+            }}>
+              🌱 Época de Plantio
+            </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {[
+                { value: 'ideal', label: 'Ideal', color: '#22c55e', icon: '✅' },
+                { value: 'risk', label: 'Risco', color: '#f59e0b', icon: '⚠️' },
+                { value: 'out', label: 'Fora de Época', color: '#ef4444', icon: '❌' },
+                { value: 'unknown', label: 'Sem Dados', color: '#64748b', icon: '❓' }
+              ].map(season => {
+                const isChecked = Array.isArray(filters.plantingSeasons) && filters.plantingSeasons.includes(season.value);
+                
+                const handleToggle = (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!onFiltersChange) {
+                    console.error('❌ onFiltersChange não está disponível!');
+                    return;
+                  }
+                  const current = Array.isArray(filters.plantingSeasons) ? filters.plantingSeasons : [];
+                  const updated = isChecked
+                    ? current.filter(s => s !== season.value)
+                    : [...current, season.value];
+                  console.debug(`🔄 Toggle safra ${season.value}:`, { 
+                    isChecked, 
+                    before: current, 
+                    after: updated,
+                    filters: filters 
+                  });
+                  onFiltersChange({ ...filters, plantingSeasons: updated });
+                };
+                
+                return (
+                  <div
+                    key={season.value}
+                    onClick={handleToggle}
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '10px', 
+                      cursor: 'pointer', 
+                      fontSize: '13px', 
+                      color: '#e2e8f0',
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      background: isChecked ? 'rgba(0, 217, 255, 0.1)' : 'transparent',
+                      border: isChecked ? '1px solid rgba(0, 217, 255, 0.3)' : '1px solid transparent',
+                      transition: 'all 0.2s ease',
+                      userSelect: 'none'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isChecked) {
+                        e.currentTarget.style.background = 'rgba(0, 217, 255, 0.05)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isChecked) {
+                        e.currentTarget.style.background = 'transparent';
+                      }
+                    }}
+                  >
+                    <div 
+                      style={{
+                        position: 'relative',
+                        width: '20px',
+                        height: '20px',
+                        borderRadius: '4px',
+                        border: '2px solid rgba(0, 217, 255, 0.4)',
+                        background: isChecked ? '#00d9ff' : 'transparent',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'all 0.2s ease',
+                        flexShrink: 0,
+                        pointerEvents: 'none'
+                      }}
+                    >
+                      {isChecked && (
+                        <span style={{ color: '#0a0e27', fontSize: '14px', fontWeight: 'bold' }}>✓</span>
+                      )}
+                    </div>
+                    <span style={{ fontSize: '16px', pointerEvents: 'none' }}>{season.icon}</span>
+                    <span style={{ 
+                      width: '14px', 
+                      height: '14px', 
+                      borderRadius: '50%', 
+                      background: season.color, 
+                      display: 'inline-block',
+                      boxShadow: `0 0 8px ${season.color}40`,
+                      flexShrink: 0,
+                      pointerEvents: 'none'
+                    }} />
+                    <span style={{ fontWeight: isChecked ? '600' : '400', pointerEvents: 'none' }}>{season.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ 
+              fontSize: '10px', 
+              color: '#64748b', 
+              marginTop: '6px',
+              fontStyle: 'italic'
+            }}>
+              💡 Baseado no calendário ZARC/Embrapa
+            </div>
+          </div>
+          
           {/* Botão Limpar */}
-          {(filters.selectedStates?.length > 0 || filters.riskLevels?.length > 0 || (filters.roiMin && filters.roiMin !== 0) || (filters.roiMax && filters.roiMax !== 1000)) && (
+          {(filters.selectedStates?.length > 0 || filters.riskLevels?.length > 0 || filters.plantingSeasons?.length > 0 || (filters.roiMin && filters.roiMin !== 0) || (filters.roiMax && filters.roiMax !== 1000)) && (
             <button
               onClick={() => onFiltersChange({
                 roiMin: 0, // ✅ CORRIGIDO: Reset para 0 (não -100)
@@ -482,7 +662,8 @@ const getFilteredOpportunities = () => {
                 rainMax: 500,
                 selectedStates: [],
                 riskLevels: [],
-                products: []
+                products: [],
+                plantingSeasons: []
               })}
               style={{
                 width: '100%',
