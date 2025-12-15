@@ -316,37 +316,77 @@ SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 
 ---
 
-## ⚠️ SEMANA 4: Integrações Essenciais
+## ✅ SEMANA 4: Integrações Essenciais
 
-### **4.1. SoilGrids API**
+### **4.1. SoilGrids API** ✅
 
-**O que fazer:**
-1. Integrar API REST do ISRIC
-2. Endpoint: dados de solo via Lat/Long
-3. Cachear resultados
+**Status:** ✅ COMPLETO
 
-**Status:** ⚠️ PENDENTE
+**O que foi feito:**
+- ✅ Criado `ai-service/services/data_sync/soilgrids_service.py`
+- ✅ Integração com API REST do ISRIC (SoilGrids)
+- ✅ Endpoint `/api/v1/soil/properties` (dados de solo por Lat/Long)
+- ✅ Endpoint `/api/v1/soil/summary` (resumo múltiplas profundidades)
+- ✅ Cache com `@lru_cache` (100 localizações)
+- ✅ Validação de dados antes de retornar
+
+**Características:**
+- Busca propriedades: argila, areia, silte, carbono orgânico, pH, densidade
+- Suporta múltiplas profundidades (0-5cm, 5-15cm, 15-30cm)
+- Timeout de 15s para requisições
+
+**Arquivos criados/modificados:**
+- `ai-service/services/data_sync/soilgrids_service.py` (NOVO)
+- `ai-service/routers/soil.py` (NOVO)
+- `ai-service/main.py` (ATUALIZADO - router integrado)
 
 ---
 
-### **4.2. ZARC API (MAPA)**
+### **4.2. ZARC API (MAPA)** ✅
 
-**O que fazer:**
-1. Integrar API Dados Abertos (MAPA)
-2. Ou baixar CSVs do Gov.br se API instável
-3. Dados de janelas ideais de plantio
+**Status:** ✅ COMPLETO
 
-**Status:** ⚠️ PENDENTE
+**O que foi feito:**
+- ✅ Criado `ai-service/services/data_sync/zarc_service.py`
+- ✅ Download automático de CSV do portal Dados Abertos do MAPA
+- ✅ Endpoint `/api/v1/zarc/planting-windows` (janelas de plantio)
+- ✅ Endpoint `/api/v1/zarc/ideal-period` (período ideal)
+- ✅ Cache com `@lru_cache` (10 consultas)
+- ✅ Suporte a filtros por produto, estado e cultivar
+
+**Características:**
+- Fonte: CSV do SISZARC (Sistema de Zoneamento Agrícola)
+- Busca janelas de plantio por produto e estado
+- Timeout de 30s para download do CSV
+
+**Arquivos criados/modificados:**
+- `ai-service/services/data_sync/zarc_service.py` (NOVO)
+- `ai-service/routers/zarc.py` (NOVO)
+- `ai-service/main.py` (ATUALIZADO - router integrado)
 
 ---
 
-### **4.3. SIDRA (IBGE)**
+### **4.3. SIDRA (IBGE)** ✅
 
-**O que fazer:**
-1. Integrar API do IBGE (SIDRA)
-2. Dados de produção/safra (LSPA)
+**Status:** ✅ COMPLETO
 
-**Status:** ⚠️ PENDENTE (parcialmente implementado)
+**O que foi feito:**
+- ✅ Já existia `ai-service/services/data_sync/ibge_scraper.py` (ETL completo)
+- ✅ Criado `ai-service/routers/production.py` (endpoints REST)
+- ✅ Endpoint `/api/v1/production/data` (dados de produção)
+- ✅ Endpoint `/api/v1/production/summary` (resumo últimos anos)
+- ✅ Integração com tabela IBGE 1612 (Lavouras Temporárias)
+
+**Características:**
+- Fonte: API IBGE SIDRA (https://apisidra.ibge.gov.br/)
+- Dados: produção, área plantada, área colhida, rendimento
+- Produtos suportados: Tomate, Soja, Milho
+- ETL já implementado e funcionando
+
+**Arquivos criados/modificados:**
+- `ai-service/routers/production.py` (NOVO)
+- `ai-service/main.py` (ATUALIZADO - router integrado)
+- `ai-service/services/data_sync/ibge_scraper.py` (JÁ EXISTIA - ETL completo)
 
 ---
 

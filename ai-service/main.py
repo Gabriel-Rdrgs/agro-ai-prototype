@@ -26,6 +26,9 @@ from datetime import datetime
 from contextlib import asynccontextmanager
 from routers import chat as chat_router
 from routers import weather
+from routers import soil  # ✅ FASE 0 - Semana 4: SoilGrids
+from routers import zarc  # ✅ FASE 0 - Semana 4: ZARC
+from routers import production  # ✅ FASE 0 - Semana 4: IBGE SIDRA
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -268,6 +271,24 @@ app.include_router(
     weather.router,
     prefix="/api/v1/weather",
     tags=["Climate Intelligence"]
+)
+
+app.include_router(
+    soil.router,
+    prefix="/api/v1/soil",
+    tags=["🌱 Soil Data (SoilGrids)"]  # ✅ FASE 0 - Semana 4
+)
+
+app.include_router(
+    zarc.router,
+    prefix="/api/v1/zarc",
+    tags=["📅 ZARC (Zoneamento Agrícola)"]  # ✅ FASE 0 - Semana 4
+)
+
+app.include_router(
+    production.router,
+    prefix="/api/v1/production",
+    tags=["📊 Production Data (IBGE SIDRA)"]  # ✅ FASE 0 - Semana 4
 )
 # ========================================
 # ROTAS RAIZ
