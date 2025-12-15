@@ -10,7 +10,7 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
-// ✅ FASE 0: Cliente Admin para operações administrativas (criar usuários, etc.)
+// ✅ Cliente Admin para operações administrativas (criar usuários, etc.)
 // Requer SUPABASE_SERVICE_ROLE_KEY no .env (não commitar!)
 let supabaseAdmin = null;
 if (process.env.SUPABASE_SERVICE_ROLE_KEY) {

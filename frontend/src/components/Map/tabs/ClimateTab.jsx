@@ -111,20 +111,15 @@ const ClimateTab = ({ opportunity }) => {
           setForecast(forecastData);
         }
         
-        // Busca informações de safra (via backend Node.js)
+        // Busca informações de safra (via ZARC API - Python)
         try {
-          const token = localStorage.getItem('token');
-          const response = await fetch(`http://localhost:3001/api/calendar/planting-window?product=${encodeURIComponent(product)}&state=${encodeURIComponent(state)}`, {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
-          });
+          const pythonUrl = process.env.REACT_APP_PYTHON_API_URL || 'http://localhost:8000';
+          const response = await fetch(`${pythonUrl}/api/v1/zarc/planting-windows?product=${encodeURIComponent(product)}&state=${encodeURIComponent(state)}`);
           if (response.ok) {
             const data = await response.json();
             setPlantingInfo(data);
           } else {
-            console.warn("Resposta não OK ao buscar calendário:", response.status);
+            console.warn("Resposta não OK ao buscar calendário ZARC:", response.status);
           }
         } catch (err) {
           console.warn("Erro ao buscar calendário:", err);

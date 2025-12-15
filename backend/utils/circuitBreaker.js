@@ -50,31 +50,17 @@ class CircuitBreaker {
     this.failures++;
     this.lastFailure = error.message;
     
-    // Detecta se é erro de pool esgotado ou conexão
+    // Detecta se é erro de pool esgotado
     const isPoolError = error.message?.toLowerCase().includes('maxclients') ||
                        error.message?.toLowerCase().includes('max clients') ||
-                       error.message?.toLowerCase().includes('pool') ||
-                       error.message?.toLowerCase().includes("can't reach database") ||
-                       error.message?.toLowerCase().includes('server has closed the connection') ||
-                       error.code === 'P1001' || // Prisma connection error
-                       error.code === 'P1000' || // Prisma authentication error
-                       error.code === 'P1017';   // Prisma server closed connection
+                       error.message?.toLowerCase().includes('pool');
     
-    // Abre circuit breaker mais rapidamente para erros de conexão
-    const threshold = isPoolError ? 3 : this.threshold;
-    
-    if (this.failures >= threshold) {
+    if (isPoolError && this.failures >= this.threshold) {
       this.state = 'OPEN';
       this.nextAttempt = Date.now() + this.timeout;
       console.error(
-        `🔴 Circuit breaker: ABERTO após ${this.failures} falhas (threshold: ${threshold}). ` +
-        `Tentará novamente em ${this.timeout / 1000}s. ` +
-        `Último erro: ${error.message?.substring(0, 100)}`
-      );
-    } else {
-      console.warn(
-        `⚠️ Circuit breaker: ${this.failures}/${threshold} falhas. ` +
-        `Erro: ${error.message?.substring(0, 80)}`
+        `🔴 Circuit breaker: ABERTO após ${this.failures} falhas. ` +
+        `Tentará novamente em ${this.timeout / 1000}s`
       );
     }
   }

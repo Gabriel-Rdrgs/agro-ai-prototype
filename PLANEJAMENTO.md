@@ -18,18 +18,6 @@ O **agro-ai-prototype** é uma plataforma de inteligência agrícola para arbitr
 
 Foco atual: **tomate de mesa** no Brasil, com base em PDFs técnicos (Embrapa, UFG, ZARC) e integrações CEASA/Agrolink/CONAB/IBGE.
 
-### 🎯 **Visão de Evolução (Tech Lead/Arquiteto Sênior)**
-
-> **Objetivo:** Transformar o protótipo em um **MVP de nível empresarial**, focado em entregar valor real para o produtor rural sem se afogar em complexidade desnecessária.
-
-**Evolução:** De modelo **"reativo"** (mostrar gráficos do passado) para **"proativo"** (DSS - Sistema de Suporte à Decisão). O sistema lê PDFs técnicos, cruza com clima atual e diz: *"Venda agora"* ou *"Risco de praga detectado"*.
-
-**Arquitetura Alvo:** "Modern Data Stack" (PaaS)
-- **Frontend:** Vercel (manter) ✅
-- **Backend & IA:** Railway ✅
-- **Banco de Dados:** Supabase (PostgreSQL + PostGIS + pgvector) ✅
-- **Armazenamento:** Supabase Storage (PDFs) - não salvar no disco do container
-
 ---
 
 ## 🗺️ VISÃO FUTURA DO MAPA (REQUISITO DO CLIENTE)
@@ -117,15 +105,9 @@ Foco atual: **tomate de mesa** no Brasil, com base em PDFs técnicos (Embrapa, U
 - ✅ **Extreme Events Detector** (granizo, ciclones, ondas de calor/frio)
 - ✅ **Projeções futuras corrigidas** (ROI completo)
 - ✅ **Sistema de recomendação** (compra/não compra)
-- ✅ **RAG Básico** (OpenAI Embeddings + pgvector + gpt-4o-mini)
 
-#### ⚠️ **Pendente (Recomendações Tech Lead):**
-- ⚠️ **RAG Avançado:** Reranking com `cross-encoder/ms-marco-MiniLM-L-6-v2`
-- ⚠️ **RAG Avançado:** Filtros contextuais por metadata (estado, tipo de solo, época)
-- ⚠️ **Árvores de Decisão:** Para risco climático (substituir regras simples por ML)
+#### ⚠️ **Pendente:**
 - ⚠️ **Integrar Prophet no `/batch`** (substituir valores fixos) - **REQUISITO CLIENTE**
-- ⚠️ **Prophet Automatizado:** Job agendado semanal (domingo à noite)
-- ⚠️ **Regressores Exógenos:** Adicionar chuva, dólar, safra ao Prophet
 - ⚠️ Validação de modelos Prophet (backtesting)
 - ⚠️ Redis para cache distribuído (opcional, futuro)
 
@@ -214,113 +196,9 @@ Foco atual: **tomate de mesa** no Brasil, com base em PDFs técnicos (Embrapa, U
 
 ---
 
-## ✅ FASE 0: FUNDAÇÃO SÓLIDA (1-3 Meses) - Recomendações Tech Lead
+## 🎯 PLANO DE AÇÃO (Próximas 4 Semanas)
 
-**Status:** ✅ **FASE 0.1 CONCLUÍDA** (Dezembro 2025)
-
-> **Nota:** Esta fase incorpora as recomendações técnicas do Tech Lead/Arquiteto Sênior para estabelecer uma base sólida antes do plano expandido de 16 semanas.
-
-### **FASE 0.1: Fundação Sólida (Semanas 1-4)** ✅
-
-#### **Semana 1: Infraestrutura e Segurança** ✅
-- [x] **Supabase Auth:** Substituir `authController.js` manual pelo middleware do Supabase Auth (segurança imediata)
-- [x] **Row Level Security (RLS):** Ativar RLS no Supabase para que usuários não vejam dados uns dos outros
-- [x] **Deploy Automático:** Configurar deploy automático no Railway conectado ao GitHub
-- [x] **Variáveis de Ambiente:** Criar `.env.development` e `.env.production` (nunca commitar chaves)
-
-#### **Semana 2: Observabilidade e Qualidade** ✅
-- [x] **Sentry:** Instalar no Backend (Node/Python) e Frontend para monitorar erros em produção
-- [x] **GitHub Actions:** Criar pipeline simples (`.github/workflows/test.yml`) que roda testes unitários a cada `git push`
-- [x] **Logging Estruturado:** Melhorar logging com níveis apropriados (info, warn, error)
-
-#### **Semana 3: Dados Climáticos Automatizados** ✅
-- [x] **Script Python Robusto:** Criar script que baixa dados do Open-Meteo diariamente e salva no Postgres
-- [x] **Agendamento:** Configurar job agendado (cron ou Railway cron) para atualização automática
-- [x] **Validação:** Implementar validação de dados antes de salvar
-
-#### **Semana 4: Integrações de Dados Essenciais** ✅
-- [x] **SoilGrids API:** Integrar API REST do ISRIC para dados de solo (argila, pH, carbono) via Lat/Long
-- [x] **ZARC API:** Integrar API Dados Abertos (MAPA) ou baixar CSVs do Gov.br para janelas ideais de plantio
-- [x] **SIDRA (IBGE):** Integrar API do IBGE para dados de produção/safra (LSPA)
-
----
-
-### **FASE 0.2: Inteligência e RAG (Semanas 5-8)**
-
-#### **Semana 5-6: RAG Avançado**
-- [ ] **Rota `/ingest`:** Implementar no Python: Recebe PDF → Extrai Texto → Gera Embeddings (OpenAI) → Salva no Supabase (`pgvector`)
-- [ ] **Reranking:** Implementar reranking com `cross-encoder/ms-marco-MiniLM-L-6-v2` (top 3 trechos mais similares)
-- [ ] **Filtros Contextuais:** Adicionar filtros por metadata (estado, tipo de solo, época do ano) na busca vetorial
-- [ ] **Tela de Upload:** Criar tela de "Upload de Documentos" para admin subir laudos técnicos
-
-#### **Semana 7: Chatbot Refinado**
-- [ ] **Busca Contextual:** Ao receber pergunta, buscar 3 trechos de PDF mais similares e passar como contexto para GPT
-- [ ] **Citações:** GPT deve citar a fonte (qual PDF, qual página) nas respostas
-- [ ] **Validação:** Testar com perguntas reais de produtores
-
-#### **Semana 8: Prophet Automatizado**
-- [ ] **Job Agendado:** Rodar Prophet todo domingo à noite e salvar previsão da semana na tabela `prices_forecast`
-- [ ] **Regressores Exógenos:** Adicionar regressores (chuva passada, dólar, safra) ao Prophet
-- [ ] **Cache:** Cachear previsões para evitar recálculo desnecessário
-
----
-
-### **FASE 0.3: Produto e Visualização (Semanas 9-12)**
-
-#### **Semana 9: Mapa com Dados de Solo**
-- [ ] **Integração SoilGrids:** Integrar mapa Leaflet com dados do SoilGrids
-- [ ] **Interatividade:** Clicar no mapa e ver tipo de solo (argila, pH, carbono)
-- [ ] **Camada Visual:** Adicionar camada visual de solo no mapa
-
-#### **Semana 10: Dashboard de Oportunidades**
-- [ ] **Alerta Visual:** Mostrar alerta quando Preço Previsto > Preço Atual + Custo Frete
-- [ ] **Recomendações:** Sistema proativo: "Venda agora" ou "Espere 15 dias"
-- [ ] **Integração:** Conectar com dados de Prophet e análise de risco
-
-#### **Semana 11: Qualidade e Monitoramento**
-- [ ] **Sentry Configurado:** Monitorar bugs em produção
-- [ ] **Health Checks:** Melhorar health checks do backend
-- [ ] **Métricas:** Adicionar métricas básicas (tempo de resposta, taxa de erro)
-
-#### **Semana 12: Mobile Responsivo**
-- [ ] **Responsividade:** Ajustar React para uso em celular no campo
-- [ ] **PWA Básico:** Service Worker e Manifest.json para instalação como app
-- [ ] **Testes Mobile:** Testar em dispositivos reais
-
----
-
-### **⚠️ RISCOS E MITIGAÇÃO (Fase 0)**
-
-#### **1. Custos de API (LLM)**
-- **Risco:** Uso de LLM (OpenAI) cobra por tokens. Com muitos usuários subindo PDFs grandes, custo sobe.
-- **Mitigação:** 
-  - Limitar tamanho de PDF (ex: 10MB máximo)
-  - Limitar número de perguntas por usuário (ex: 50/mês no plano básico)
-  - Cache de respostas similares
-
-#### **2. Qualidade dos Dados (Garbage In, Garbage Out)**
-- **Risco:** PDF escaneado ou ilegível faz a IA alucinar.
-- **Mitigação:**
-  - Priorizar PDFs de texto nativo (não escaneados)
-  - Usar OCR de qualidade se necessário (Tesseract ou Google Vision)
-  - Validação de qualidade antes de processar
-
-#### **3. Segurança de Dados**
-- **Risco:** Dados estratégicos podem ser vistos por usuários não autorizados.
-- **Mitigação:**
-  - Ativar Row Level Security (RLS) no Supabase
-  - Validar permissões em todas as rotas
-  - Audit logs para rastreabilidade
-
----
-
-## 🎯 PLANO DE AÇÃO EXPANDIDO (Próximas 16 Semanas)
-
-> **Nota:** Este planejamento incorpora **TODAS** as sugestões de melhorias identificadas para tornar a aplicação um programa de previsão de mercado completo e útil. O prazo foi expandido para 16 semanas (4 meses) para acomodar todas as funcionalidades de forma realista.
-
-> **📄 Documento Completo:** Consulte `PLANEJAMENTO_EXPANDIDO.md` para detalhes completos semana a semana.
-
-### **SEMANA 1: Quick Wins - Visualizações e Exportação** ⚡
+### **SEMANA 1: Finalizar Requisitos Críticos**
 
 #### **Dia 1-2: Melhorias Visuais**
 - [ ] Melhorar visualização de comparação de chuva
@@ -533,28 +411,5 @@ Para dúvidas ou sugestões sobre o planejamento, consulte este documento ou ent
 **Status:** ✅ **PLANEJAMENTO CONSOLIDADO E ATUALIZADO**
 
 **Última atualização:** Dezembro 2025  
-**Versão:** 4.0 (Expandido com todas as sugestões + Recomendações Tech Lead)
-
----
-
-## 📋 ESTRUTURA DO PLANEJAMENTO
-
-Este documento está organizado em:
-
-1. **FASE 0: Fundação Sólida (1-3 meses)** - Recomendações Tech Lead para MVP empresarial
-2. **PLANO DE AÇÃO EXPANDIDO (16 semanas)** - Funcionalidades de previsão de mercado
-3. **ROADMAP DE EVOLUÇÃO FUTURA** - Migração AWS, ML avançado, etc.
-
-**Ordem Recomendada de Execução:**
-1. ✅ **FASE 0 CONCLUÍDA** (fundação sólida) - Dezembro 2025
-2. ⏳ Executar PLANO DE AÇÃO EXPANDIDO (16 semanas) - Próxima fase
-3. ⏳ Planejar ROADMAP DE EVOLUÇÃO FUTURA (após MVP estável)
-
----
-
-## 📄 DOCUMENTOS RELACIONADOS
-
-- **`PLANEJAMENTO_EXPANDIDO.md`** - Planejamento detalhado semana a semana (16 semanas)
-- **`SUGESTOES_MELHORIAS.md`** - Documento original com todas as sugestões e priorização
-- **`FASE0_GUIA_COMPLETO.md`** - Guia completo da FASE 0 (fundação sólida)
+**Versão:** 2.0
 

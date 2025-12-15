@@ -5,7 +5,6 @@ const crypto = require('crypto'); // Nativo do Node, para gerar tokens aleatóri
 const prisma = require('./utils/prisma');
 const { dbCircuitBreaker } = require('./utils/circuitBreaker');
 const { logAction } = require('./services/auditService');
-const { getCachedUser, invalidateUserCache } = require('./utils/authCache');
 // O CÓDIGO NOVO (SEGURO - TIPO SÉNIOR) ✅
 const SECRET_KEY = process.env.JWT_SECRET;
 
@@ -28,8 +27,7 @@ exports.register = async (req, res) => {
   const { name, email, password } = req.body; 
 
   try {
-    // ✅ NOVO: Usa cache para verificar se usuário existe
-    const existingUser = await getCachedUser(email, prisma);
+    const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) return res.status(400).json({ error: 'E-mail já cadastrado.' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -43,16 +41,6 @@ exports.register = async (req, res) => {
         role: 'analyst' // <--- AQUI ESTÁ A TRAVA DE SEGURANÇA 🔒
       }
     });
-    
-    // ✅ NOVO: Cache o novo usuário para evitar query imediata
-    const cache = require('./utils/cache');
-    cache.set(`user:${user.email}`, {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      password: user.password // Cache temporário para login
-    }, 300);
 
     // Opcional: Log de Auditoria
     // if (logAction) await logAction(user.id, 'REGISTER', 'Novo usuário registrado via Web'); 
@@ -71,68 +59,15 @@ exports.login = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    // ✅ Usa Cache + Circuit Breaker para reduzir carga no Supabase
+    // ✅ Usa Circuit Breaker para proteger contra pool esgotado
     let user;
     try {
-      // Adiciona timeout explícito para evitar travamentos
-      user = await Promise.race([
-        dbCircuitBreaker.execute(async () => {
-          // ✅ NOVO: Usa cache agressivo para reduzir queries ao banco
-          return await getCachedUser(email, prisma);
-        }),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Timeout: Conexão com banco demorou mais de 10s')), 10000)
-        )
-      ]);
-    } catch (dbError) {
-      // Log detalhado do erro para diagnóstico
-      console.error('❌ Erro no Circuit Breaker:', {
-        message: dbError.message,
-        code: dbError.code,
-        name: dbError.name,
-        stack: dbError.stack?.split('\n').slice(0, 3).join('\n')
+      user = await dbCircuitBreaker.execute(async () => {
+        return await prisma.user.findUnique({ where: { email } });
       });
-      
-      // Se for erro de conexão/pool, tenta retry com backoff exponencial
-      if (dbError.message?.includes("Can't reach database server") || 
-          dbError.message?.includes("timeout") ||
-          dbError.message?.includes("pool") ||
-          dbError.message?.includes("Server has closed the connection") ||
-          dbError.code === 'P1001' || // Connection error
-          dbError.code === 'P1000' || // Authentication error
-          dbError.code === 'P1017') { // Server closed connection
-        
-        console.log('🔄 Erro de conexão detectado, tentando retry com backoff...');
-        
-        // Retry com backoff exponencial (até 3 tentativas)
-        let retrySuccess = false;
-        for (let attempt = 1; attempt <= 3; attempt++) {
-          try {
-            const backoffDelay = Math.min(1000 * Math.pow(2, attempt - 1), 5000); // 1s, 2s, 4s (max 5s)
-            console.log(`⏳ Tentativa ${attempt}/3 após ${backoffDelay}ms...`);
-            
-            await new Promise(resolve => setTimeout(resolve, backoffDelay));
-            
-            // Tenta a query novamente usando cache (sem desconectar/reconectar para não esgotar pool)
-            user = await getCachedUser(email, prisma);
-            retrySuccess = true;
-            console.log(`✅ Retry bem-sucedido na tentativa ${attempt}`);
-            break;
-          } catch (retryError) {
-            console.warn(`⚠️ Retry ${attempt}/3 falhou: ${retryError.message?.substring(0, 60)}`);
-            if (attempt === 3) {
-              // Última tentativa falhou
-              throw new Error('Serviço de banco de dados temporariamente indisponível. Tente novamente em alguns instantes.');
-            }
-          }
-        }
-        
-        if (!retrySuccess) {
-          throw new Error('Não foi possível conectar ao banco de dados após múltiplas tentativas.');
-        }
-      } else {
-        throw dbError;
-      }
+    } catch (dbError) {
+      // Circuit breaker já trata retries e backoff
+      throw dbError;
     }
     if (!user || !(await bcrypt.compare(password, user.password))) {
       return res.status(401).json({ error: 'Credenciais inválidas.' });
@@ -146,55 +81,16 @@ exports.login = async (req, res) => {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
 
-    // 3. Salva o Refresh Token no banco (com circuit breaker + retry)
-    try {
-      await dbCircuitBreaker.execute(async () => {
-        // Retry com backoff para refreshToken (conexão pode ter sido fechada)
-        let retrySuccess = false;
-        for (let attempt = 1; attempt <= 3; attempt++) {
-          try {
-            await prisma.refreshToken.create({
-              data: {
-                token: refreshToken,
-                userId: user.id,
-                expiresAt: expiresAt
-              }
-            });
-            retrySuccess = true;
-            break;
-          } catch (tokenError) {
-            // Se for erro de conexão fechada (P1017), tenta reconectar
-            if (tokenError.code === 'P1017' || 
-                tokenError.message?.includes('Server has closed the connection') ||
-                tokenError.message?.includes("Can't reach database")) {
-              
-              if (attempt < 3) {
-                const backoffDelay = Math.min(500 * attempt, 2000); // 500ms, 1000ms, 2000ms
-                console.log(`🔄 Retry refreshToken (${attempt}/3) após ${backoffDelay}ms...`);
-                await new Promise(resolve => setTimeout(resolve, backoffDelay));
-                
-                // Tenta reconectar se necessário
-                try {
-                  await prisma.$connect();
-                } catch (reconnectErr) {
-                  // Ignora erro de reconexão se já estiver conectado
-                }
-                continue;
-              }
-            }
-            throw tokenError;
-          }
-        }
-        
-        if (!retrySuccess) {
-          throw new Error('Não foi possível salvar refresh token após múltiplas tentativas');
+    // 3. Salva o Refresh Token no banco (com circuit breaker)
+    await dbCircuitBreaker.execute(async () => {
+      await prisma.refreshToken.create({
+        data: {
+          token: refreshToken,
+          userId: user.id,
+          expiresAt: expiresAt
         }
       });
-    } catch (tokenError) {
-      // Se falhar ao salvar refresh token, ainda permite login (mas sem refresh token)
-      console.error('⚠️ Erro ao salvar refresh token (login continua):', tokenError.message);
-      // Não bloqueia o login, apenas não terá refresh token
-    }
+    });
 
     // 4. RASTREABILIDADE (O Novo Log) ✅
     // Importante: Fazemos isso ANTES de responder, ou em paralelo, mas nunca duplicamos a resposta.
