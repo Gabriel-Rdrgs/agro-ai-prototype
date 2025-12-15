@@ -26,10 +26,21 @@ Os seguintes arquivos foram **mantidos** por serem guias técnicos específicos 
 6. **FASE0_SEMANA2_PASSOS_MANUAIS.md** - Guia passo a passo específico (Sentry, GitHub Actions)
 7. **FASE0_SENTRY_GERENCIAR_ERROS.md** - Guia específico de gerenciamento de erros
 
+## 📝 Arquivos de Commit Temporários Removidos
+
+Os seguintes arquivos temporários também foram removidos (já foram usados nos commits):
+
+1. **COMMIT_FASE0_SEMANA4.txt** - Usado no commit da Semana 4
+2. **COMMIT_GITHUB_DESKTOP_FINAL.txt** - Usado em commit anterior
+3. **COMMIT_MESSAGE_FINAL.txt** - Usado em commit anterior
+4. **COMMIT_MESSAGE.txt** - Usado em commit anterior
+5. **COMMIT_SIMPLIFICACOES.txt** - Usado no commit de simplificações
+
 ## ✅ Resultado
 
-- **7 arquivos removidos** (consolidados)
-- **7 arquivos mantidos** (documentação técnica essencial)
+- **7 arquivos .md removidos** (consolidados)
+- **5 arquivos .txt removidos** (temporários de commit)
+- **7 arquivos .md mantidos** (documentação técnica essencial)
 - **1 arquivo único de planejamento:** `PLANEJAMENTO_COMPLETO.md`
 
 ---
