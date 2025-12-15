@@ -214,32 +214,34 @@ Foco atual: **tomate de mesa** no Brasil, com base em PDFs técnicos (Embrapa, U
 
 ---
 
-## 🏗️ FASE 0: FUNDAÇÃO SÓLIDA (1-3 Meses) - Recomendações Tech Lead
+## ✅ FASE 0: FUNDAÇÃO SÓLIDA (1-3 Meses) - Recomendações Tech Lead
+
+**Status:** ✅ **FASE 0.1 CONCLUÍDA** (Dezembro 2025)
 
 > **Nota:** Esta fase incorpora as recomendações técnicas do Tech Lead/Arquiteto Sênior para estabelecer uma base sólida antes do plano expandido de 16 semanas.
 
-### **FASE 0.1: Fundação Sólida (Semanas 1-4)**
+### **FASE 0.1: Fundação Sólida (Semanas 1-4)** ✅
 
-#### **Semana 1: Infraestrutura e Segurança**
-- [ ] **Supabase Auth:** Substituir `authController.js` manual pelo middleware do Supabase Auth (segurança imediata)
-- [ ] **Row Level Security (RLS):** Ativar RLS no Supabase para que usuários não vejam dados uns dos outros
-- [ ] **Deploy Automático:** Configurar deploy automático no Railway conectado ao GitHub
-- [ ] **Variáveis de Ambiente:** Criar `.env.development` e `.env.production` (nunca commitar chaves)
+#### **Semana 1: Infraestrutura e Segurança** ✅
+- [x] **Supabase Auth:** Substituir `authController.js` manual pelo middleware do Supabase Auth (segurança imediata)
+- [x] **Row Level Security (RLS):** Ativar RLS no Supabase para que usuários não vejam dados uns dos outros
+- [x] **Deploy Automático:** Configurar deploy automático no Railway conectado ao GitHub
+- [x] **Variáveis de Ambiente:** Criar `.env.development` e `.env.production` (nunca commitar chaves)
 
-#### **Semana 2: Observabilidade e Qualidade**
-- [ ] **Sentry:** Instalar no Backend (Node/Python) e Frontend para monitorar erros em produção
-- [ ] **GitHub Actions:** Criar pipeline simples (`.github/workflows/test.yml`) que roda testes unitários a cada `git push`
-- [ ] **Logging Estruturado:** Melhorar logging com níveis apropriados (info, warn, error)
+#### **Semana 2: Observabilidade e Qualidade** ✅
+- [x] **Sentry:** Instalar no Backend (Node/Python) e Frontend para monitorar erros em produção
+- [x] **GitHub Actions:** Criar pipeline simples (`.github/workflows/test.yml`) que roda testes unitários a cada `git push`
+- [x] **Logging Estruturado:** Melhorar logging com níveis apropriados (info, warn, error)
 
-#### **Semana 3: Dados Climáticos Automatizados**
-- [ ] **Script Python Robusto:** Criar script que baixa dados do Open-Meteo diariamente e salva no Postgres
-- [ ] **Agendamento:** Configurar job agendado (cron ou Railway cron) para atualização automática
-- [ ] **Validação:** Implementar validação de dados antes de salvar
+#### **Semana 3: Dados Climáticos Automatizados** ✅
+- [x] **Script Python Robusto:** Criar script que baixa dados do Open-Meteo diariamente e salva no Postgres
+- [x] **Agendamento:** Configurar job agendado (cron ou Railway cron) para atualização automática
+- [x] **Validação:** Implementar validação de dados antes de salvar
 
-#### **Semana 4: Integrações de Dados Essenciais**
-- [ ] **SoilGrids API:** Integrar API REST do ISRIC para dados de solo (argila, pH, carbono) via Lat/Long
-- [ ] **ZARC API:** Integrar API Dados Abertos (MAPA) ou baixar CSVs do Gov.br para janelas ideais de plantio
-- [ ] **SIDRA (IBGE):** Integrar API do IBGE para dados de produção/safra (LSPA)
+#### **Semana 4: Integrações de Dados Essenciais** ✅
+- [x] **SoilGrids API:** Integrar API REST do ISRIC para dados de solo (argila, pH, carbono) via Lat/Long
+- [x] **ZARC API:** Integrar API Dados Abertos (MAPA) ou baixar CSVs do Gov.br para janelas ideais de plantio
+- [x] **SIDRA (IBGE):** Integrar API do IBGE para dados de produção/safra (LSPA)
 
 ---
 
@@ -544,9 +546,9 @@ Este documento está organizado em:
 3. **ROADMAP DE EVOLUÇÃO FUTURA** - Migração AWS, ML avançado, etc.
 
 **Ordem Recomendada de Execução:**
-1. ✅ Completar FASE 0 (fundação sólida)
-2. ✅ Executar PLANO DE AÇÃO EXPANDIDO (16 semanas)
-3. ✅ Planejar ROADMAP DE EVOLUÇÃO FUTURA (após MVP estável)
+1. ✅ **FASE 0 CONCLUÍDA** (fundação sólida) - Dezembro 2025
+2. ⏳ Executar PLANO DE AÇÃO EXPANDIDO (16 semanas) - Próxima fase
+3. ⏳ Planejar ROADMAP DE EVOLUÇÃO FUTURA (após MVP estável)
 
 ---
 
