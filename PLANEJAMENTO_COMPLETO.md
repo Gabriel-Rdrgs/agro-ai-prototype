@@ -278,8 +278,8 @@ Estabelecer base técnica sólida: segurança, observabilidade, dados automatiza
 - ⚠️ **Exibir como colhe cada região** (melhorar visualização no ClimateTab)
 - ⚠️ Filtros mais avançados (safra, época de plantio) - parcialmente implementado
 - ⚠️ Conexão completa com dados preditivos no Dashboard
-- ⚠️ Gerador de relatórios PDF
-- ⚠️ PWA (Service Worker, Manifest)
+- ⚠️ Gerador de relatórios PDF (no Plano Expandido - Semana 10)
+- ⚠️ PWA Completo (notificações push) - ver "Funcionalidades Adicionais"
 
 ---
 
@@ -454,6 +454,51 @@ Estabelecer base técnica sólida: segurança, observabilidade, dados automatiza
 - [ ] Setup e Estrutura Base
 - [ ] Funcionalidades Principais
 - [ ] Deploy iOS e Android
+
+---
+
+## ⚠️ FUNCIONALIDADES ADICIONAIS (Futuro - Após 16 Semanas)
+
+> **Nota:** Estas funcionalidades foram sugeridas mas não estão no plano de 16 semanas. Podem ser implementadas conforme necessidade e prioridade.
+
+### **Análise de Sentimento de Mercado** ⭐⭐⭐
+**Impacto:** MÉDIO | **Esforço:** ALTO (5-7 dias)
+
+- [ ] Scraping de notícias agrícolas (Agrolink, Globo Rural)
+- [ ] Análise de sentimento (positivo/negativo)
+- [ ] Correlacionar com movimentos de preço
+
+**Por que é útil:**
+- Antecipa movimentos de preço baseado em notícias
+- Ex: "Notícia de geada em SP → preço deve subir"
+
+---
+
+### **Integração com Sistemas de Gestão (ERP)** ⭐⭐⭐⭐
+**Impacto:** ALTO | **Esforço:** ALTO (1-2 semanas)
+
+- [ ] API para integrar com ERPs agrícolas
+- [ ] Sincronizar: compras, vendas, estoque
+- [ ] ROI calculado com dados reais do ERP
+
+**Por que é útil:**
+- Automação completa: não precisa digitar dados
+- Decisões baseadas em dados reais (não estimativas)
+
+---
+
+### **PWA Completo (Notificações Push)** ⭐⭐⭐⭐
+**Impacto:** ALTO | **Esforço:** BAIXO (1-2 dias)
+
+- [ ] Service Worker completo
+- [ ] Manifest.json
+- [ ] Notificações push no navegador
+- [ ] Instalação como app (Add to Home Screen)
+
+**Por que é útil:**
+- Produtor recebe alertas críticos mesmo offline
+- Melhor experiência mobile
+- Funciona como app sem precisar desenvolver app nativo
 
 ---
 
