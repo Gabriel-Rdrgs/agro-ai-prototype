@@ -15,7 +15,7 @@ import pandas as pd
 import logging
 import httpx
 import asyncio 
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import lru_cache
 from typing import Dict, Optional, Tuple
 
@@ -482,6 +482,112 @@ class ClimateIntelligence:
         except Exception as e:
             logger.error(f"❌ Erro fetch rain history: {e}")
             return 500.0    
+
+    @lru_cache(maxsize=256)
+    def get_rain_comparison_30d(self, lat: float, lng: float, days: int = 30) -> Dict:
+        """
+        Compara chuva acumulada REAL dos últimos N dias com o mesmo período do ano anterior.
+        
+        Usa a API Archive do Open-Meteo (dados históricos).
+        
+        Returns:
+            {
+                "current": mm_ultimos_N_dias,
+                "previous": mm_mesmo_periodo_ano_anterior,
+                "difference": current - previous,
+                "percentage": ((current - previous) / previous) * 100,
+                "period_current": {"start": "...", "end": "..."},
+                "period_previous": {"start": "...", "end": "..."}
+            }
+        """
+        if not self._validate_coords(lat, lng):
+            logger.warning("⚠️ Coordenadas inválidas em get_rain_comparison_30d, usando fallback 0/0")
+            return {
+                "current": 0.0,
+                "previous": 0.0,
+                "difference": 0.0,
+                "percentage": 0.0,
+                "period_current": {},
+                "period_previous": {}
+            }
+
+        # Cachea por coordenada + dia atual (não precisa recalcular durante o dia)
+        today = datetime.now().date()
+        cache_key = f"rain_30d_compare_{lat}_{lng}_{days}_{today.isoformat()}"
+        cached = self.cache.get(cache_key)
+        if cached:
+            return cached
+
+        try:
+            # Período atual: últimos N dias (exclui hoje)
+            end_current = today - timedelta(days=1)
+            start_current = end_current - timedelta(days=days - 1)
+
+            # Mesmo período no ano anterior
+            end_previous = end_current.replace(year=end_current.year - 1)
+            start_previous = start_current.replace(year=start_current.year - 1)
+
+            def _accumulate_period(start_date: datetime.date, end_date: datetime.date) -> float:
+                params = {
+                    "latitude": lat,
+                    "longitude": lng,
+                    "start_date": start_date.strftime("%Y-%m-%d"),
+                    "end_date": end_date.strftime("%Y-%m-%d"),
+                    "daily": "precipitation_sum",
+                    "timezone": "America/Sao_Paulo"
+                }
+                resp = requests.get(
+                    ARCHIVE_API_URL,
+                    params=params,
+                    headers=self.headers,
+                    timeout=10
+                )
+                if resp.status_code != 200:
+                    logger.warning(f"⚠️ Falha ao buscar chuva para período {start_date}..{end_date}: {resp.status_code}")
+                    return 0.0
+                data = resp.json()
+                daily = data.get("daily", {})
+                rain_list = daily.get("precipitation_sum", []) or []
+                return float(sum(filter(lambda x: x is not None, rain_list)))
+
+            current_total = _accumulate_period(start_current, end_current)
+            previous_total = _accumulate_period(start_previous, end_previous)
+
+            diff = current_total - previous_total
+            pct = ((diff / previous_total) * 100) if previous_total > 0 else 0.0
+
+            result = {
+                "current": round(current_total, 1),
+                "previous": round(previous_total, 1),
+                "difference": round(diff, 1),
+                "percentage": round(pct, 1),
+                "period_current": {
+                    "start": start_current.strftime("%Y-%m-%d"),
+                    "end": end_current.strftime("%Y-%m-%d")
+                },
+                "period_previous": {
+                    "start": start_previous.strftime("%Y-%m-%d"),
+                    "end": end_previous.strftime("%Y-%m-%d")
+                }
+            }
+
+            self.cache.set(cache_key, result)
+            logger.info(
+                f"🌧️ Comparação 30d chuva {lat},{lng}: atual={result['current']}mm, "
+                f"anterior={result['previous']}mm, diff={result['difference']}mm ({result['percentage']}%)"
+            )
+            return result
+
+        except Exception as e:
+            logger.error(f"❌ Erro em get_rain_comparison_30d: {e}", exc_info=True)
+            return {
+                "current": 0.0,
+                "previous": 0.0,
+                "difference": 0.0,
+                "percentage": 0.0,
+                "period_current": {},
+                "period_previous": {}
+            }
 
 
 # ========================================

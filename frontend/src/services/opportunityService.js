@@ -46,6 +46,20 @@ export const OpportunityService = {
     }
   },
 
+  // ✅ Novo: Comparação de chuva (últimos N dias vs mesmo período do ano anterior)
+  getRainComparison: async (lat, lng, days = 30) => {
+    try {
+      const response = await api.get('/api/weather/rain-comparison', {
+        params: { lat, lng, days },
+        timeout: 30000
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao buscar comparação de chuva:', error);
+      return null;
+    }
+  },
+
   create: async (opportunity) => {
     try {
         const response = await api.post('/api/opportunities', opportunity);

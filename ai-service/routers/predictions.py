@@ -382,12 +382,30 @@ async def predict_batch(request: BatchPredictionRequest):
             roi_d7 = _calculate_complete_roi(opportunity_dict, d7_price)
             roi_d30 = _calculate_complete_roi(opportunity_dict, d30_price)
             
-            # ✅ LOG: Mostra se usou Prophet ou fallback
+            # ✅ LOG: Mostra se usou Prophet ou fallback (agora de forma mais explícita)
+            # Usamos os valores "baseline" (+2% e +8%) como referência:
+            # - Se o preço final for diferente do baseline, assumimos que veio do serviço Prophet/fallback inteligente.
+            # - Se for igual ao baseline, significa que caímos no fallback simples definido aqui no router.
             used_prophet_7d = abs(d7_price - (curr * 1.02)) > 0.01  # Diferença > 1 centavo
             used_prophet_30d = abs(d30_price - (curr * 1.08)) > 0.01
+
+            source_7d = "prophet" if used_prophet_7d else "fallback_simple_router"
+            source_30d = "prophet" if used_prophet_30d else "fallback_simple_router"
+
             if used_prophet_7d or used_prophet_30d:
-                logger.debug(f"📊 {item.product}/{origin_state}: 7d={'Prophet' if used_prophet_7d else 'Fallback'} ({d7_price:.2f}), 30d={'Prophet' if used_prophet_30d else 'Fallback'} ({d30_price:.2f})")
-            
+                logger.info(
+                    f"📊 BatchPriceModel {item.product}/{origin_state}: "
+                    f"7d={source_7d} (R$ {d7_price:.2f}), "
+                    f"30d={source_30d} (R$ {d30_price:.2f})"
+                )
+            else:
+                logger.debug(
+                    f"ℹ️ BatchPriceModel Fallback simples aplicado para {item.product}/{origin_state} "
+                    f"(7d={d7_price:.2f}, 30d={d30_price:.2f})"
+                )
+
+            # ✅ NOVO: Inclui metadata de origem do preço (Prophet vs fallback) no payload
+            # Isso permite que o frontend / dashboards saibam exatamente de onde veio cada projeção.
             results[item.id] = {
                 "d7": {
                     "sellPrice": round(d7_price, 2),
@@ -396,6 +414,10 @@ async def predict_batch(request: BatchPredictionRequest):
                 "d30": {
                     "sellPrice": round(d30_price, 2),
                     "roi": roi_d30  # ROI completo de produção
+                },
+                "meta": {
+                    "price_source_7d": source_7d,
+                    "price_source_30d": source_30d
                 }
             }
             

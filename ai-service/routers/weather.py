@@ -36,6 +36,46 @@ async def get_weather_forecast(
         logger.error(f"❌ Erro crítico na rota weather: {e}")
         raise HTTPException(status_code=500, detail="Erro interno ao buscar clima")
 
+
+@router.get("/rain-comparison")
+async def get_rain_comparison_30d(
+    lat: float = Query(..., description="Latitude da fazenda"),
+    lng: float = Query(..., description="Longitude da fazenda"),
+    days: int = Query(30, ge=7, le=120, description="Número de dias para comparação (padrão: 30)")
+):
+    """
+    📊 Compara a chuva acumulada REAL dos últimos N dias com o mesmo período do ano anterior.
+    
+    Usa dados históricos da API Archive do Open-Meteo.
+    
+    Retorno:
+    {
+      "status": "success",
+      "data": {
+        "current": 123.4,      # mm nos últimos N dias
+        "previous": 98.7,      # mm no mesmo período do ano anterior
+        "difference": 24.7,    # current - previous
+        "percentage": 25.0,    # variação percentual
+        "period_current": { "start": "2025-11-15", "end": "2025-12-14" },
+        "period_previous": { "start": "2024-11-15", "end": "2024-12-14" }
+      }
+    }
+    """
+    try:
+        if days <= 0:
+            raise HTTPException(status_code=400, detail="O número de dias deve ser maior que zero")
+        
+        data = climate_api.get_rain_comparison_30d(lat, lng, days)
+        return {
+            "status": "success",
+            "data": data
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Erro em /rain-comparison: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Erro ao comparar chuva recente vs ano anterior")
+
 @router.get("/extreme-events")
 async def get_extreme_events(
     lat: float = Query(..., description="Latitude"),

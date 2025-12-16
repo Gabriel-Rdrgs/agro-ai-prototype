@@ -91,6 +91,7 @@ const ClimateTab = ({ opportunity }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [plantingInfo, setPlantingInfo] = useState(null);
+  const [rainComparisonData, setRainComparisonData] = useState(null);
 
   useEffect(() => {
     const fetchClimateData = async () => {
@@ -105,10 +106,18 @@ const ClimateTab = ({ opportunity }) => {
         const product = opportunity.product || 'Tomate';
         const state = opportunity.origin?.state || 'SP';
         
-        // Busca dados climáticos
+        // Busca dados climáticos e comparação de chuva
         if (lat && lng) {
           const forecastData = await OpportunityService.getForecast(lat, lng);
           setForecast(forecastData);
+
+          // ✅ Novo: comparação de chuva 30d vs mesmo período ano anterior (dados reais)
+          const rainCompResp = await OpportunityService.getRainComparison(lat, lng, 30);
+          if (rainCompResp?.status === 'success' && rainCompResp.data) {
+            setRainComparisonData(rainCompResp.data);
+          } else {
+            setRainComparisonData(null);
+          }
         }
         
         // Busca informações de safra (via ZARC API - Python)
@@ -135,25 +144,6 @@ const ClimateTab = ({ opportunity }) => {
     
     fetchClimateData();
   }, [opportunity]);
-  
-  // Calcula comparação de chuva (ano anterior vs atual)
-  const getRainComparison = () => {
-    if (!forecast?.data) return null;
-    
-    const rainData = forecast.data.precipitation_sum || forecast.data.rain_sum || [];
-    const currentRain = rainData.reduce((sum, val) => sum + (val || 0), 0);
-    
-    // TODO: Buscar dados do ano anterior do banco quando disponível
-    // Por enquanto, usa média histórica como referência
-    const avgHistoricalRain = 150; // mm/mês (aproximação)
-    
-    return {
-      current: currentRain,
-      previous: avgHistoricalRain,
-      difference: currentRain - avgHistoricalRain,
-      percentage: ((currentRain - avgHistoricalRain) / avgHistoricalRain) * 100
-    };
-  };
   
   // ✅ MELHORADO: Busca eventos extremos do novo serviço Python
   const [extremeEventsData, setExtremeEventsData] = useState(null);
@@ -228,7 +218,7 @@ const ClimateTab = ({ opportunity }) => {
     return events;
   };
   
-  const rainComparison = getRainComparison();
+  const rainComparison = rainComparisonData;
   const extremeEvents = getExtremeEvents();
   const currentMonth = new Date().getMonth() + 1;
   
@@ -256,7 +246,7 @@ const ClimateTab = ({ opportunity }) => {
         🌦️ Clima & Safra
       </h3>
 
-      {/* Comparação de Chuva - MELHORADO COM GRÁFICO VISUAL */}
+      {/* Comparação de Chuva - últimos 30 dias vs mesmo período do ano anterior */}
       <div
         style={{
           background: `linear-gradient(135deg, ${theme.colors.background} 0%, rgba(0, 217, 255, 0.1) 100%)`,
@@ -266,8 +256,11 @@ const ClimateTab = ({ opportunity }) => {
           marginBottom: '20px'
         }}
       >
-        <div style={{ fontSize: '14px', color: theme.colors.textMuted, marginBottom: '16px', fontWeight: 'bold' }}>
-          🌧️ Comparação de Chuva (Ano Anterior vs. Atual)
+        <div style={{ fontSize: '14px', color: theme.colors.textMuted, marginBottom: '4px', fontWeight: 'bold' }}>
+          🌧️ Chuva: últimos 30 dias vs. mesmos 30 dias do ano anterior
+        </div>
+        <div style={{ fontSize: '11px', color: theme.colors.textMuted, marginBottom: '12px' }}>
+          Comparação entre a chuva acumulada nos <strong>últimos 30 dias</strong> e no <strong>mesmo período do ano anterior</strong>.
         </div>
         {rainComparison ? (
           <div>
@@ -293,7 +286,8 @@ const ClimateTab = ({ opportunity }) => {
                     {rainComparison.previous.toFixed(0)}
                   </div>
                   <div style={{ fontSize: '11px', color: theme.colors.textMuted, marginTop: '4px', textAlign: 'center' }}>
-                    Ano Anterior
+                    Ano anterior<br />
+                    <span style={{ fontSize: '10px', opacity: 0.8 }}>mesmos 30 dias</span>
                   </div>
                 </div>
                 
@@ -318,7 +312,8 @@ const ClimateTab = ({ opportunity }) => {
                     {rainComparison.current.toFixed(0)}
                   </div>
                   <div style={{ fontSize: '11px', color: theme.colors.textMuted, marginTop: '4px', textAlign: 'center' }}>
-                    Atual (16 dias)
+                    Atual<br />
+                    <span style={{ fontSize: '10px', opacity: 0.8 }}>últimos 30 dias</span>
                   </div>
                 </div>
               </div>
@@ -334,7 +329,7 @@ const ClimateTab = ({ opportunity }) => {
                 fontWeight: '600'
               }}>
                 {rainComparison.difference > 0 ? '↑' : '↓'} {Math.abs(rainComparison.difference).toFixed(1)} mm 
-                ({Math.abs(rainComparison.percentage).toFixed(1)}% {rainComparison.difference > 0 ? 'mais' : 'menos'} que a média histórica)
+                ({Math.abs(rainComparison.percentage).toFixed(1)}% {rainComparison.difference > 0 ? 'mais' : 'menos'} que no mesmo período do ano anterior)
               </div>
             </div>
             

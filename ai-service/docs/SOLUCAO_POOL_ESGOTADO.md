@@ -66,3 +66,7 @@ SELECT count(*) FROM pg_stat_activity WHERE datname = 'seu_banco';
 
 
 
+
+
+
+

@@ -113,7 +113,8 @@ const MapView = React.forwardRef((props, ref) => {
   
   // 1. Estado para saber se o mouse está em cima da linha
   const [hoveredFlowId, setHoveredFlowId] = useState(null);
-  const [timeHorizon, setTimeHorizon] = useState(0); // 0 = Hoje, 7 = +7d, 30 = +30d
+  const [timeHorizon, setTimeHorizon] = useState(0); // 0 = Hoje (preço atual) / 7 e 30 dias = previsão Prophet
+  const [isBatchLoading, setIsBatchLoading] = useState(false); // ✅ Loading das projeções de 7d/30d
   
 // --- LÓGICA DO SLIDER TEMPORAL (CORRIGIDA) ---
 
@@ -179,6 +180,7 @@ const MapView = React.forwardRef((props, ref) => {
       // Debounce de 500ms (aguarda usuário parar de interagir)
       fetchTimeoutRef.current = setTimeout(async () => {
         try {
+          setIsBatchLoading(true); // ⏳ Inicia loading das projeções
           // Chama o serviço atualizado
           const preds = await OpportunityService.calculateBatchAI(opportunities);
           if (preds) {
@@ -187,6 +189,8 @@ const MapView = React.forwardRef((props, ref) => {
           }
         } catch (err) {
           console.error("Erro buscando previsões:", err);
+        } finally {
+          setIsBatchLoading(false); // ✅ Finaliza loading (sucesso ou erro)
         }
       }, 500); // 500ms de debounce
     }
@@ -386,6 +390,18 @@ const MapView = React.forwardRef((props, ref) => {
                 const predictedRoi = typeof predData === 'object' ? predData.roi : predData;
 
                 if (predictedRoi !== undefined && predictedRoi !== null) {
+                    // DEBUG: Loga no console para inspecionar comportamento do slider
+                    if (opp.id === (selectedOpportunity?.id || opp.id)) {
+                      console.debug(
+                        `[SLIDER][${timeHorizon}d] Oportunidade ${opp.id} (${opp.product}/${opp.origin?.state || opp.state})`,
+                        {
+                          currentRoi: opp.financials?.roi,
+                          predictedRoi,
+                          predictedSellPrice: typeof predData === 'object' ? predData.sellPrice : undefined
+                        }
+                      );
+                    }
+
                     // 1. Atualiza o ROI na simulação (vem do Python)
                     newFinancials.roi = parseFloat(predictedRoi);
 
@@ -420,6 +436,12 @@ const MapView = React.forwardRef((props, ref) => {
   // ✅ NOVO: Aplica filtros nas oportunidades
   const applyFilters = (opps) => {
     return opps.filter(opp => {
+      // ✅ IMPORTANTE: Nunca esconda a oportunidade atualmente selecionada
+      // Isso evita que o popup feche sozinho quando o slider muda ROI / filtros.
+      if (selectedOpportunity && opp.id === selectedOpportunity.id) {
+        return true;
+      }
+
       // 1. Filtro de ROI
       const pred = Array.isArray(aiPredictions) 
         ? aiPredictions.find(p => p.id === opp.id)
@@ -708,6 +730,16 @@ return (
             <div style={{ textAlign: 'center', marginTop: '8px', fontSize: '11px', color: '#00d9ff' }}>
                 {timeHorizon === 0 ? '⚡ Dados em Tempo Real' : `🔮 Projeção Futura: +${timeHorizon} dias`}
             </div>
+            {isBatchLoading && (
+              <div style={{ 
+                marginTop: '6px', 
+                fontSize: '10px', 
+                color: '#94a3b8',
+                textAlign: 'center'
+              }}>
+                ⏳ Calculando projeções com IA...
+              </div>
+            )}
         </div>
       )}
       
@@ -1129,6 +1161,16 @@ return (
                           <span style={{fontSize:'20px', fontWeight:'bold', color: textColor}}>
                             🎯 {roiText}
                           </span>
+                          {/* 🔄 Loading específico do ROI quando o slider está em projeção */}
+                          {timeHorizon > 0 && isBatchLoading && (
+                            <div style={{ 
+                              marginTop: '4px', 
+                              fontSize: '10px', 
+                              color: '#64748b'
+                            }}>
+                              ⏳ Calculando projeção de ROI...
+                            </div>
+                          )}
                         </div>
                       );
                     })()}

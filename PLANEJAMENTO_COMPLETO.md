@@ -18,9 +18,8 @@
 5. [FASE 2: Inteligência Artificial](#fase-2-inteligencia-artificial) ⚠️ **80% CONCLUÍDA**
 6. [FASE 3: Frontend e UX](#fase-3-frontend-e-ux) ⚠️ **70% CONCLUÍDA**
 7. [FASE 4: Qualidade e Produção](#fase-4-qualidade-e-producao) ⚠️ **10% CONCLUÍDA**
-8. [Plano de Ação Imediato (4 Semanas)](#plano-de-acao-imediato)
-9. [Plano Expandido (16 Semanas)](#plano-expandido-16-semanas)
-10. [Roadmap de Evolução Futura](#roadmap-evolucao-futura)
+8. [🧭 Plano Detalhado por Fase, Semana e Tarefas](#🧭-plano-detalhado-por-fase-semana-e-tarefas)
+9. [Roadmap de Evolução Futura](#roadmap-evolucao-futura)
 
 ---
 
@@ -299,161 +298,252 @@ Estabelecer base técnica sólida: segurança, observabilidade, dados automatiza
 
 ---
 
-## 🎯 PLANO DE AÇÃO IMEDIATO (4 Semanas)
+## 🧭 PLANO DETALHADO POR FASE, SEMANA E TAREFAS
 
-> **Foco:** Finalizar requisitos críticos do cliente e melhorias de alto impacto.
-
----
-
-### **SEMANA 1: Finalizar Requisitos Críticos** 🔥
-
-**Objetivo:** Completar funcionalidades pendentes de alta prioridade.
-
-#### **Dia 1-2: Melhorias Visuais** ⚠️
-- [ ] Melhorar visualização de comparação de chuva
-- [ ] Adicionar badges de eventos extremos no mapa
-- [ ] Melhorar exibição de safra no ClimateTab
-
-#### **Dia 3: Integrar Prophet no `/batch`** 🔥 **PRIORIDADE MÁXIMA**
-- [ ] Modificar `/api/v1/predict/batch` para usar Prophet
-- [ ] Substituir valores fixos (+2%/+8%) por previsões reais
-- [ ] Manter fallback para casos sem dados históricos
-
-#### **Dia 4-5: Polimento e Testes**
-- [ ] Ajustes visuais
-- [ ] Testes de usabilidade
-- [ ] Correções de bugs
-
-**Esforço Total:** 3-4 dias  
-**Impacto:** ✅ Finaliza requisitos críticos do cliente
+> **Esta é a linha do tempo única do projeto.**  
+> Organização: **FASE → SEMANA → TAREFAS**.  
+> Use as checkboxes `[ ] / [x]` para marcar o progresso.
 
 ---
 
-### **SEMANA 2: Melhorias de UX e Performance**
+### 🧱 FASE 1 – Core + Requisitos Críticos (Semanas 1–4)
 
-#### **Dia 1-3: Filtros Avançados**
-- [ ] Filtro por safra (parcialmente implementado)
-- [ ] Filtro por época de plantio (parcialmente implementado)
-- [ ] Filtros salvos e compartilhados
+**Objetivo da Fase 1:**  
+Garantir que o **MVP esteja sólido**, com previsões funcionando, ROI consistente, mapa utilizável e experiência mínima agradável para o cliente.
 
-#### **Dia 4-5: Otimizações**
-- [ ] Otimizar queries geoespaciais
-- [ ] Melhorar tratamento de erros
-- [ ] Adicionar logging estruturado (completar)
+#### 🗓️ Semana 1 – Requisitos Críticos do Cliente 🔥
 
-**Esforço Total:** 3-4 dias
+- **1.1. Melhorias Visuais Imediatas**
+  - [ ] Melhorar visualização de comparação de chuva (ano anterior vs. atual)
+  - [ ] Adicionar badges de eventos extremos no mapa (granizo, ciclones, etc.)
+  - [ ] Melhorar exibição de safra no `ClimateTab`
 
----
+- **1.2. Integrar Prophet no `/batch`** 🔥 **PRIORIDADE MÁXIMA**
+  - [ ] Garantir que `price_forecast_service` (Prophet + fallback) seja a fonte de verdade dos preços futuros no `/batch`
+  - [ ] Garantir que **não haja valores fixos** (+2%/+8%) dominando o resultado (apenas fallback rápido)
+  - [ ] Adicionar logs e métricas para rastrear percentual de chamadas usando Prophet vs fallback
+  - [ ] Validar datasets suficientes (rodar ETLs e `backfill_history.py` se necessário)
+  - [ ] Testar com múltiplas regiões e produtos
+  - [ ] Atualizar documentação marcando requisito como concluído
 
-### **SEMANA 3: Produção e Qualidade**
+- **1.3. Segurança e Infraestrutura** 🔒 **CRÍTICO**
+  - [ ] Revisar segurança do serviço Python (FastAPI)
+  - [ ] Adicionar middleware de autenticação no FastAPI (API key compartilhada entre Node ↔ Python)
+  - [ ] Garantir que Python não esteja exposto publicamente sem proteção (networking privado ou shared secret)
+  - [ ] Restringir CORS do Brain para origens específicas em produção (ler de `ALLOWED_ORIGINS` env)
+  - [ ] Endurecer RBAC: revisar todas as rotas `/api/admin/*` e garantir `checkRole(['admin'])` onde necessário
+  - [ ] Implementar uso efetivo de `AuditLog` para ações críticas (ETL, recálculo de ROI, correções de dados)
 
-#### **Dia 1-2: Backup e Monitoramento**
-- [ ] Script de backup PostgreSQL
-- [ ] Agendamento automático (cron)
-- [ ] Health checks melhorados
+- **1.4. Formalização de Configuração**
+  - [ ] Criar `.env.example` completo para `backend/` (todas as variáveis necessárias sem valores reais)
+  - [ ] Criar `.env.example` completo para `ai-service/` (todas as variáveis necessárias sem valores reais)
+  - [ ] Criar `.env.example` completo para `frontend/` (todas as variáveis necessárias sem valores reais)
+  - [ ] Consolidar documentação de variáveis de ambiente em seção única (evitar duplicação entre README e PLANEJAMENTO)
 
-#### **Dia 3-4: Validação Prophet**
-- [ ] Script de backtesting
-- [ ] Validar previsões com dados históricos
-- [ ] Ajustar hiperparâmetros se necessário
+- **1.5. Limpeza de Dados Legados**
+  - [ ] Criar script de migração definitiva: converter todos os preços legados (`Opportunity`, `CeasaPrice`) de caixa para R$/kg
+  - [ ] Executar migração em ambiente de desenvolvimento primeiro
+  - [ ] Remover normalizações defensivas (>20 → caixa→kg) do Node e Python após migração (ou deixar apenas como salvaguarda com log)
+  - [ ] Validar que todos os novos dados já entram no padrão R$/kg
 
-#### **Dia 5: Documentação**
-- [ ] Atualizar README
-- [ ] Documentar APIs
-- [ ] Guia de uso para cliente
-
-**Esforço Total:** 3-4 dias
-
----
-
-### **SEMANA 4: Preparação para Evolução Futura**
-
-#### **Dia 1-3: Pesquisa e Planejamento**
-- [ ] Pesquisar Google Maps API
-- [ ] Planejar migração de Leaflet para Google Maps
-- [ ] Definir arquitetura de camadas 3D
-
-#### **Dia 4-5: Protótipos**
-- [ ] Protótipo básico de Google Maps
-- [ ] Teste de visualização 3D
-- [ ] Avaliar performance
-
-**Esforço Total:** 3-4 dias
+- **1.6. Polimento e Testes**
+  - [ ] Ajustes visuais finais no mapa e tabs
+  - [ ] Testes de usabilidade (mapa + simulador + clima)
+  - [ ] Correções de bugs encontrados
 
 ---
 
-## 📋 PLANO EXPANDIDO (16 Semanas)
+#### 🗓️ Semana 2 – UX, Performance e Filtros Avançados
 
-> **Nota:** Este plano incorpora todas as sugestões de melhorias para tornar a aplicação um programa de previsão de mercado completo.
+- **2.1. Filtros Avançados (Mapa + Sidebar)**
+  - [ ] Completar filtro por safra (usar lógica unificada)
+  - [ ] Completar filtro por época de plantio (ZARC/Calendar)
+  - [ ] Implementar "filtros salvos" (pelo menos em `localStorage`/`sessionStorage`)
 
-### **SEMANA 1: Quick Wins - Visualizações e Exportação** ⚡
-- [ ] Gráfico de Candle (Candlestick)
-- [ ] Exportação Excel/CSV
-- [ ] Comparador de Oportunidades
+- **2.2. Arquitetura: Extrair Scheduler de ETL**
+  - [ ] Mover lógica `schedule.run_pending()` de `ai-service/main.py` para script separado (`ai-service/scripts/scheduler_worker.py`)
+  - [ ] Configurar job agendado no Railway (cron ou Job dedicado) para rodar scheduler worker
+  - [ ] Garantir que deploy em produção tenha apenas 1 réplica do Brain ou desabilitar scheduler inline
+  - [ ] Manter FastAPI enxuto (apenas request/response, sem threads de background)
+  - [ ] Documentar processo de agendamento de ETLs
 
-### **SEMANA 2: Sistema de Alertas Inteligentes** 🔔
-- [ ] Backend - Sistema de Jobs
-- [ ] Frontend - Configuração de Alertas
-- [ ] Integração Email
+- **2.3. Otimizações Backend/Frontend**
+  - [ ] Otimizar queries geoespaciais (índices, limites de resultados)
+  - [ ] Melhorar tratamento de erros (mensagens amigáveis + logs claros)
+  - [ ] Completar logging estruturado onde ainda faltar (usar `logger.js`)
 
-### **SEMANA 3: Dashboard de Tendências de Mercado** 📊
-- [ ] Backend - Endpoint de Tendências
-- [ ] Frontend - Gráficos de Tendência
-- [ ] Alertas Automáticos de Tendência
+---
 
-### **SEMANA 4: Histórico de Decisões e ROI Realizado** 📈
-- [ ] Banco de Dados
-- [ ] Backend - API de Decisões
-- [ ] Frontend - Interface de Decisões
+#### 🗓️ Semana 3 – Produção, Qualidade e Confiabilidade
 
-### **SEMANA 5: Análise de Correlação entre Regiões** 🔗
-- [ ] Backend - Cálculo de Correlação
-- [ ] Frontend - Visualização
-- [ ] Integração com Recomendações
+- **3.1. Backup e Monitoramento**
+  - [ ] Script de backup PostgreSQL (dump automatizado)
+  - [ ] Agendamento automático (cron/Job no Railway)
+  - [ ] Health checks melhorados (incluindo Python/Supabase)
 
-### **SEMANA 6: Previsão de Oferta e Demanda** ⚖️
-- [ ] Backend - Serviço de Previsão
-- [ ] Endpoint e Lógica
-- [ ] Frontend - Visualização
+- **3.2. Validação Prophet e Testes de IA**
+  - [ ] Script de backtesting (comparar previsão vs. realidade histórica)
+  - [ ] Validar previsões com dados históricos (erro médio, desvio)
+  - [ ] Ajustar hiperparâmetros se necessário
+  - [ ] **Testes de integração Pytest para Prophet:**
+    - [ ] Testar `price_forecast_service.forecast` com dados sintéticos
+    - [ ] Validar comportamento Prophet vs fallback em diferentes cenários
+    - [ ] Testar cache LRU do Prophet
+  - [ ] **Testes de integração Pytest para RAG:**
+    - [ ] Validar ingestão de PDF de tomate (`rag_ingestion.py`)
+    - [ ] Testar que consultas típicas retornam chunks adequados (`rag_service.py`)
+    - [ ] Validar tratamento de erros (quota, rate-limit, API key inválida)
+    - [ ] Testar endpoint `/api/v1/chat/query` end-to-end
 
-### **SEMANA 7: Integração WhatsApp Business API** 📱
-- [ ] Setup WhatsApp Business API
-- [ ] Backend - Integração
-- [ ] Chatbot via WhatsApp
+- **3.3. Testes de Backend Node**
+  - [ ] Adicionar suíte Jest para endpoints críticos (`/api/ai/batch`, `/api/opportunities`)
+  - [ ] Testes de integração para autenticação e RBAC
+  - [ ] Integrar testes no GitHub Actions (já existe workflow)
 
-### **SEMANA 8: Mapa de Calor de Preços** 🗺️
-- [ ] Backend - Cálculo de Preços por Região
-- [ ] Frontend - Visualização
-- [ ] Integração e Interatividade
+- **3.4. Documentação Essencial**
+  - [ ] Atualizar `README` principal
+  - [ ] Documentar APIs principais (pelo menos via md ou Swagger básico)
+  - [ ] Criar guia de uso para cliente (fluxo principal da aplicação)
+  - [ ] Documentar contrato único de schema para tabela `documents` (evitar drift entre Prisma/SQLAlchemy)
 
-### **SEMANA 9: Timeline de Eventos** 📅
-- [ ] Backend - Agregação de Eventos
-- [ ] Frontend - Timeline Visual
-- [ ] Integração e Interatividade
+---
 
-### **SEMANA 10: Relatórios PDF Automáticos** 📄
-- [ ] Backend - Geração de PDF
-- [ ] Agendamento e Envio
-- [ ] Frontend - Configuração
+#### 🗓️ Semana 4 – Preparação para Evolução e Tendências
 
-### **SEMANA 11-12: Recomendação Personalizada por Perfil** 🤖
-- [ ] Backend - Engine de Preferências
-- [ ] Frontend - Dashboard Personalizado
+- **4.1. Dashboard de Tendências de Mercado**
+  - [ ] Backend – Endpoint de tendências (médias móveis, direção do preço)
+  - [ ] Frontend – Gráficos de tendência com filtros de período
 
-### **SEMANA 13: Chatbot de Decisão** 💬
-- [ ] Backend - Lógica de Análise
-- [ ] Frontend - Interface de Chat
-- [ ] Integração com IA
+- **4.2. Novo Mapa (Pesquisa + Protótipo)**
+  - [ ] Pesquisar Google Maps API (recursos, custos, limitações)
+  - [ ] Planejar migração de Leaflet para Google Maps (arquitetura, camadas)
+  - [ ] Criar protótipo básico com Google Maps (sem substituir o mapa atual ainda)
 
-### **SEMANA 14: Dados de Trânsito em Tempo Real** 🚗
-- [ ] Integração Google Maps Distance Matrix
-- [ ] Frontend - Visualização
-- [ ] Otimização
+---
 
-### **SEMANA 15-16: App Mobile (React Native)** 📱
-- [ ] Setup e Estrutura Base
-- [ ] Funcionalidades Principais
-- [ ] Deploy iOS e Android
+### 🤖 FASE 2 – Inteligência de Mercado e Análises (Semanas 5–8)
+
+**Objetivo da Fase 2:**  
+Sair do “só previsão de preço” para um **radar de mercado completo**, com histórico, correlação, oferta/demanda e canais de comunicação.
+
+#### 🗓️ Semana 5 – Histórico de Decisões e ROI Realizado
+
+- [ ] Criar tabela `decisions` (decisão, data, ROI esperado, ROI realizado)
+- [ ] Migration no Prisma e relações com `User`/`Opportunity`
+- [ ] API de decisões (salvar, atualizar ROI realizado, listar histórico)
+- [ ] Interface de decisões (botão "Decidir", dashboard de histórico e acurácia)
+- [ ] **Painel de Qualidade do Modelo:**
+  - [ ] Endpoint Python de backtesting automático (Prophet e recomendações)
+  - [ ] Cálculo de acurácia histórica: ROI esperado vs ROI realizado por produto/estado
+  - [ ] Frontend: Gráficos de acurácia e métricas de qualidade (MAE, RMSE, MAPE)
+  - [ ] Dashboard de "confiança do modelo" para cada previsão
+
+---
+
+#### 🗓️ Semana 6 – Correlação entre Regiões e Explicabilidade
+
+- [ ] Backend – Cálculo de correlação de preços entre regiões (`/api/v1/correlation/regions`)
+- [ ] Frontend – Matriz de correlação (heatmap) e/ou gráfico de rede
+- [ ] Integração com recomendações (usar correlação no motor de decisão)
+- [ ] **Explicabilidade de ROI:**
+  - [ ] Backend Python: Decompor ROI em componentes (frete, produção, quebra técnica, taxas CEASA)
+  - [ ] Endpoint `/api/v1/calc/roi/breakdown` retorna "feature importance" qualitativa
+  - [ ] Frontend: Exibir breakdown visual (gráfico de pizza ou barras) mostrando impacto de cada componente
+  - [ ] Tooltip explicativo: "Frete responde por 45% do custo total", "Quebra técnica impacta em X%"
+- [ ] **RAG Orientado a Tarefas:**
+  - [ ] Criar modos de consulta especializados: "Planejamento de plantio", "Manejo de risco climático", "Pós-colheita/armazenagem"
+  - [ ] Cada modo filtra documentos por metadata (`theme`, `crop`, `region`) antes da busca vetorial
+  - [ ] Endpoint `/api/v1/chat/query` aceita parâmetro `mode` (opcional)
+  - [ ] Frontend: Botões de modo rápido no chat agronômico
+
+---
+
+#### 🗓️ Semana 7 – Previsão de Oferta e Demanda
+
+- [ ] Backend – Serviço de previsão de oferta e demanda (`/api/v1/supply-demand/forecast`)
+- [ ] Integração com dados CONAB + IBGE
+- [ ] Gráfico oferta vs. demanda projetada + alertas de desequilíbrio
+- [ ] **Feature Flagging:**
+  - [ ] Criar tabela `FeatureFlags` no Prisma (nome, habilitado, descrição)
+  - [ ] Endpoint admin para gerenciar flags (`/api/admin/feature-flags`)
+  - [ ] Middleware no backend Node e Python para verificar flags antes de executar features
+  - [ ] Flags iniciais: `rag_enabled`, `supply_risk_enabled`, `prophet_enabled`, `extreme_events_enabled`
+  - [ ] Frontend: Condicionalmente renderiza features baseado em flags (permite experimentar sem quebrar demo)
+- [ ] **Melhorias no RAG:**
+  - [ ] Adicionar campos de metadata mais ricos (`crop`, `theme`, `region`, `source_type`) na ingestão
+  - [ ] Endpoint `/api/v1/chat/debug-query` para inspeção (retorna chunks sem chamar LLM)
+  - [ ] Melhorar chunking: respeitar seções/capítulos em PDFs densos
+  - [ ] Reranking simples: priorizar chunks com termos-chave relevantes à pergunta
+
+---
+
+#### 🗓️ Semana 8 – Alertas Inteligentes + WhatsApp
+
+- [ ] Completar sistema de alertas (backend + frontend)
+- [ ] Tela de configuração de alertas (ROI, preço, risco, clima)
+- [ ] Integração WhatsApp Business (envio/recebimento + comandos básicos)
+
+---
+
+### 📊 FASE 3 – Visualização Avançada e Analytics (Semanas 9–12)
+
+**Objetivo da Fase 3:**  
+Transformar o sistema num **painel visual rico**, com mapas, timelines e relatórios executivos.
+
+#### 🗓️ Semana 9 – Mapa de Calor de Preços
+
+- [ ] Backend – Agregação de preços por região (média, mediana) e endpoint `/api/v1/prices/heatmap`
+- [ ] Frontend – Heatmap no mapa (cores de preço, tooltip, filtros)
+
+---
+
+#### 🗓️ Semana 10 – Timeline de Eventos
+
+- [ ] Backend – Endpoint de agregação de eventos (clima, preço, alertas)
+- [ ] Frontend – Componente de timeline com filtros e detalhamento
+
+---
+
+#### 🗓️ Semana 11 – Relatórios PDF Automáticos
+
+- [ ] Backend – Geração de PDF (pdfkit/puppeteer) + agendamento/envio
+- [ ] Frontend – Tela de configuração de relatórios (produtos, regiões, periodicidade)
+
+---
+
+#### 🗓️ Semana 12 – Recomendação Personalizada por Perfil
+
+- [ ] Backend – Engine de preferências (perfis: conservador, moderado, agressivo)
+- [ ] Aprendizado com histórico de decisões
+- [ ] Frontend – Dashboard adaptado ao perfil do usuário
+
+---
+
+### 💬 FASE 4 – Experiência Conversacional e Mobile (Semanas 13–16)
+
+**Objetivo da Fase 4:**  
+Levar a experiência para **chat + mobile**, aproximando ainda mais do dia a dia do produtor.
+
+#### 🗓️ Semana 13 – Chatbot de Decisão (Web)
+
+- [ ] Backend – Lógica de análise usando RAG + dados em tempo real
+- [ ] Frontend – Interface de chat (histórico, sugestões de perguntas)
+
+---
+
+#### 🗓️ Semana 14 – Dados de Trânsito em Tempo Real
+
+- [ ] Integração Google Maps Distance Matrix API
+- [ ] Cálculo de frete baseado em distância/tempo real
+- [ ] Exibição no mapa e nas oportunidades
+
+---
+
+#### 🗓️ Semanas 15–16 – App Mobile (React Native)
+
+- [ ] Criar projeto React Native e integrar com APIs
+- [ ] Funcionalidades principais (login, dashboard, mapa simplificado, alertas)
+- [ ] Deploy iOS/Android (TestFlight/Google Play) e testes em dispositivos reais
 
 ---
 
@@ -499,6 +589,37 @@ Estabelecer base técnica sólida: segurança, observabilidade, dados automatiza
 - Produtor recebe alertas críticos mesmo offline
 - Melhor experiência mobile
 - Funciona como app sem precisar desenvolver app nativo
+
+---
+
+### **API Pública Limitada (Read-Only)** ⭐⭐⭐
+**Impacto:** MÉDIO | **Esforço:** MÉDIO (3-5 dias)
+
+- [ ] Criar conjunto de endpoints read-only (`/api/public/*`) com throttling
+- [ ] Endpoints: preços históricos agregados, tendências de mercado, dados climáticos públicos
+- [ ] Rate limiting por IP (ex: 100 req/hora)
+- [ ] Documentação Swagger pública
+- [ ] Sem dados sensíveis (sem oportunidades específicas, sem dados de usuários)
+
+**Por que é útil:**
+- Permite parceiros integrarem dados agregados
+- Aumenta visibilidade da plataforma
+- Gera potencial de receita via API premium no futuro
+
+---
+
+### **Sincronização de Modelos Document (Prisma ↔ SQLAlchemy)** ⭐⭐
+**Impacto:** BAIXO | **Esforço:** BAIXO (1-2 horas)
+
+- [ ] Formalizar contrato único de schema para tabela `documents`
+- [ ] Documentar campos obrigatórios e tipos
+- [ ] Garantir que migrações Prisma e modelos SQLAlchemy sejam atualizados em sincronia
+- [ ] Script de validação que compara schema Prisma vs SQLAlchemy
+
+**Por que é útil:**
+- Evita drift entre modelos Node e Python
+- Facilita manutenção futura
+- Reduz bugs de incompatibilidade
 
 ---
 
@@ -566,37 +687,66 @@ Estabelecer base técnica sólida: segurança, observabilidade, dados automatiza
 
 ## 🎯 PRÓXIMOS PASSOS IMEDIATOS
 
-### **Prioridade ALTA (Esta Semana):** 🔥
+### **Prioridade ALTA (Esta Semana - Semana 1):** 🔥
 
 1. **Integrar Prophet no `/batch`** ⭐⭐⭐
-   - Substituir valores fixos por previsões reais
-   - Esforço: 2-3 horas
+   - Adicionar logs e métricas para rastrear uso Prophet vs fallback
+   - Validar datasets suficientes (rodar ETLs se necessário)
+   - Testar com múltiplas regiões e produtos
+   - Esforço: 3-4 horas
    - **REQUISITO CRÍTICO DO CLIENTE**
 
-2. **Melhorar Visualizações** ⭐⭐
-   - Comparação de chuva
-   - Badges de eventos extremos
+2. **Segurança e Infraestrutura** ⭐⭐⭐ **CRÍTICO**
+   - Adicionar middleware de autenticação no FastAPI (API key compartilhada)
+   - Restringir CORS do Brain para origens específicas em produção
+   - Endurecer RBAC em todas as rotas admin
+   - Esforço: 4-6 horas
+
+3. **Formalização de Configuração** ⭐⭐
+   - Criar `.env.example` completo para backend, ai-service e frontend
+   - Consolidar documentação de variáveis de ambiente
+   - Esforço: 2-3 horas
+
+4. **Melhorar Visualizações** ⭐⭐
+   - Comparação de chuva (ano anterior vs. atual)
+   - Badges de eventos extremos no mapa
    - Esforço: 4-5 horas
 
-### **Prioridade MÉDIA (Próximas 2 Semanas):**
+### **Prioridade MÉDIA (Próximas 2 Semanas - Semanas 2-3):**
 
-3. **Filtros Avançados** ⭐
+5. **Limpeza de Dados Legados** ⭐⭐
+   - Script de migração: converter preços de caixa para R$/kg
+   - Remover normalizações defensivas após migração
+   - Esforço: 3-4 horas
+
+6. **Extrair Scheduler de ETL** ⭐⭐
+   - Mover `schedule.run_pending()` para script separado
+   - Configurar job agendado no Railway
+   - Esforço: 2-3 horas
+
+7. **Filtros Avançados** ⭐
    - Safra, época de plantio (completar)
    - Esforço: 2-3 dias
 
-4. **Backup Automático** ⭐
+8. **Testes de IA (Prophet + RAG)** ⭐⭐
+   - Testes de integração Pytest para Prophet e RAG
+   - Testes Jest para endpoints críticos do Node
+   - Esforço: 1-2 dias
+
+9. **Backup Automático** ⭐
    - Script e agendamento
    - Esforço: 2-3 horas
 
-### **Prioridade BAIXA (Próximo Mês):**
+### **Prioridade BAIXA (Próximo Mês - Semanas 4+):**
 
-5. **Validação Prophet** ⭐
-   - Backtesting e métricas
-   - Esforço: 1 dia
+10. **Validação Prophet Avançada** ⭐
+    - Backtesting completo e métricas detalhadas
+    - Ajuste de hiperparâmetros
+    - Esforço: 1 dia
 
-6. **Documentação** ⭐
-   - README, APIs, guias
-   - Esforço: 1 dia
+11. **Documentação Essencial** ⭐
+    - Atualizar README, documentar APIs, guia de uso
+    - Esforço: 1 dia
 
 ---
 
@@ -619,12 +769,19 @@ Estabelecer base técnica sólida: segurança, observabilidade, dados automatiza
 - ⚠️ **FASE 3:** 70% Concluída (Frontend)
 - ⚠️ **FASE 4:** 10% Concluída (Qualidade)
 
-**Próximo Foco:**
-1. Integrar Prophet no `/batch` (REQUISITO CRÍTICO)
-2. Melhorias visuais (comparação chuva, badges eventos)
-3. Completar filtros avançados
+**Próximo Foco (Semana 1):**
+1. **Integrar Prophet no `/batch`** (REQUISITO CRÍTICO) - com logs e métricas
+2. **Segurança e infraestrutura** - autenticação Python, CORS restrito, RBAC completo
+3. **Formalização de configuração** - `.env.example` completo para todos os serviços
+4. **Melhorias visuais** - comparação chuva, badges eventos extremos
+5. **Limpeza de dados legados** - migração definitiva caixa→kg
+
+**Foco Médio Prazo (Semanas 2-3):**
+- Extrair scheduler de ETL para worker dedicado
+- Testes automatizados (Prophet, RAG, endpoints Node)
+- Backup automático e monitoramento
 
 ---
 
 **Última atualização:** Dezembro 2025  
-**Versão:** 1.0 (Consolidado)
+**Versão:** 1.1 (Incorporadas sugestões de análise arquitetural)

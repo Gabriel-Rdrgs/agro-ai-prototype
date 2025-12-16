@@ -667,6 +667,50 @@ app.get('/api/weather/forecast', verifyToken, async (req, res) => {
   }
 });
 
+// 2.6. Comparação de Chuva (últimos N dias vs mesmo período ano anterior)
+app.get('/api/weather/rain-comparison', verifyToken, async (req, res) => {
+  try {
+    const { lat, lng, days } = req.query;
+    if (!lat || !lng) {
+      return res.status(400).json({ error: 'lat e lng são obrigatórios' });
+    }
+
+    console.log(`📊 Comparando chuva (últimos ${days || 30} dias vs ano anterior) para lat=${lat}, lng=${lng}`);
+
+    const response = await axios.get(
+      `${PYTHON_API_URL}/api/v1/weather/rain-comparison`,
+      {
+        params: {
+          lat: parseFloat(lat),
+          lng: parseFloat(lng),
+          days: days ? parseInt(days, 10) : 30
+        },
+        timeout: 30000
+      }
+    );
+
+    res.json(response.data);
+  } catch (error) {
+    console.error('❌ Erro ao comparar chuva:', error.message);
+    if (error.code === 'ECONNREFUSED') {
+      return res.status(503).json({
+        error: 'Serviço Python indisponível',
+        details: 'O serviço de IA não está respondendo. Verifique se está rodando.'
+      });
+    }
+    if (error.code === 'ECONNABORTED') {
+      return res.status(504).json({
+        error: 'Timeout ao comparar chuva',
+        details: 'O serviço demorou muito para responder'
+      });
+    }
+    res.status(500).json({
+      error: 'Erro ao comparar chuva',
+      details: error.response?.data?.detail || error.message
+    });
+  }
+});
+
 // 3. Calendário de Plantio/Colheita
 app.get('/api/calendar/planting-window', verifyToken, async (req, res) => {
   try {

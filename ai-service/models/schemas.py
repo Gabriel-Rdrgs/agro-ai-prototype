@@ -91,6 +91,41 @@ class MarketScanRequest(BaseModel):
     month: Optional[int] = None
 
 
+# --- 5. RECOMENDAÇÃO AUTOMÁTICA (IA) ---
+class RecommendationRequest(BaseModel):
+    """
+    Requisição para recomendação automática (COMPRAR / NÃO COMPRAR / AGUARDAR).
+    
+    Mantém compatibilidade com o payload enviado pelo backend Node (`/api/ai/recommendation`).
+    """
+    product: str = "Tomate"
+    state: str = "SP"
+
+    # Métricas financeiras (podem vir nulas)
+    roi: Optional[float] = None
+    roi_d7: Optional[float] = None
+    roi_d30: Optional[float] = None
+
+    # Qualidade e shelf-life
+    quality_score: Optional[float] = None
+    shelf_life_days: Optional[int] = None
+
+    # Clima e eventos extremos
+    has_extreme_events: bool = False
+    extreme_event_severity: Optional[str] = None
+
+    # Safra / época de plantio
+    is_ideal_planting_month: Optional[bool] = None
+    is_risk_planting_month: Optional[bool] = None
+
+    # Tendência de mercado
+    market_trend: Optional[str] = None  # ex: 'up', 'down', 'sideways'
+
+    # Preços atuais
+    current_price: Optional[float] = None
+    buy_price: Optional[float] = None
+
+
 # ========================================
 # RESPONSE MODELS (Saídas)
 # ========================================

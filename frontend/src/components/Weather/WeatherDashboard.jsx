@@ -33,6 +33,7 @@ const WeatherDashboard = ({ opportunities = [] }) => {
   const [selectedOppId, setSelectedOppId] = useState(null);
   const [forecast, setForecast] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [rainComparison, setRainComparison] = useState(null);
 
   // --- 1. ESTADO DOS FILTROS ---
   const [metrics, setMetrics] = useState({
@@ -83,7 +84,7 @@ const WeatherDashboard = ({ opportunities = [] }) => {
               }
             } catch (err) {
               console.error(`❌ Erro ao buscar clima (tentativa ${retries + 1}/${maxRetries}):`, err);
-              if (retries < maxRetries) {
+                if (retries < maxRetries) {
                 retries++;
                 setTimeout(fetchWithRetry, 2000 * retries); // Retry com delay crescente
               } else {
@@ -94,9 +95,24 @@ const WeatherDashboard = ({ opportunities = [] }) => {
           };
           
           fetchWithRetry();
+          // ✅ Novo: comparação de chuva 30d vs mesmo período ano anterior
+          (async () => {
+            try {
+              const rainCompResp = await OpportunityService.getRainComparison(lat, lng, 30);
+              if (rainCompResp?.status === 'success' && rainCompResp.data) {
+                setRainComparison(rainCompResp.data);
+              } else {
+                setRainComparison(null);
+              }
+            } catch (err) {
+              console.error('Erro ao buscar comparação de chuva (dashboard):', err);
+              setRainComparison(null);
+            }
+          })();
       } else {
         console.warn("⚠️ Coordenadas inválidas:", { lat, lng });
         setLoading(false);
+        setRainComparison(null);
       }
     }
   }, [selectedOpp]);
@@ -244,12 +260,18 @@ const WeatherDashboard = ({ opportunities = [] }) => {
            <div style={{ display: 'flex', flexDirection: 'column', gap: '40px' }}>
               
               {/* 3. SEÇÃO PRINCIPAL (GRÁFICO E KPIS) - LARGURA TOTAL */}
-              <div className="chart-section" style={{ minHeight: '500px', display: 'flex', flexDirection: 'column' }}>
+                 <div className="chart-section" style={{ minHeight: '500px', display: 'flex', flexDirection: 'column' }}>
                   
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                    <h4 style={{ margin: 0 }}>Tendência Climática</h4>
-                    <span style={{ fontSize: '11px', background: '#00d9ff20', color: '#00d9ff', padding: '4px 8px', borderRadius: '4px' }}>
-                      Fonte: Open-Meteo GFS (Híbrido)
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                    <div>
+                      <h4 style={{ margin: 0 }}>Tendência Climática (Próximos 16 dias)</h4>
+                      <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
+                        Gráfico abaixo: <strong>previsão</strong> para os próximos 16 dias.<br />
+                        Cartão “CHUVA 30D x ANO ANTERIOR”: <strong>histórico</strong> (últimos 30 dias vs. mesmos 30 dias do ano anterior).
+                      </div>
+                    </div>
+                    <span style={{ fontSize: '11px', background: '#00d9ff20', color: '#00d9ff', padding: '4px 8px', borderRadius: '4px', marginLeft: '8px', whiteSpace: 'nowrap' }}>
+                      Fonte: Open-Meteo (histórico + previsão)
                     </span>
                   </div>
 
@@ -289,11 +311,11 @@ const WeatherDashboard = ({ opportunities = [] }) => {
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px', marginTop: '30px' }}>
                      
                      <div style={{ background: '#15192c', padding: '15px', borderRadius: '12px', borderLeft: '4px solid #00d9ff' }}>
-                        <small style={{ color: '#94a3b8', textTransform: 'uppercase' }}>Chuva Total</small>
+                        <small style={{ color: '#94a3b8', textTransform: 'uppercase' }}>Chuva Total (16 dias)</small>
                         <div style={{ fontSize: '24px', color: '#fff', fontWeight: 'bold' }}>
                             {rain.length > 0 ? rain.reduce((a, b) => (a || 0) + (b || 0), 0).toFixed(1) : '0.0'} mm
                         </div>
-                        <small style={{ color: '#00d9ff' }}>Acumulado 16 dias</small>
+                        <small style={{ color: '#00d9ff' }}>Previsão acumulada</small>
                      </div>
 
                      <div style={{ background: '#15192c', padding: '15px', borderRadius: '12px', borderLeft: '4px solid #ff6b6b' }}>
@@ -318,6 +340,27 @@ const WeatherDashboard = ({ opportunities = [] }) => {
                             {et0.length > 0 ? et0.reduce((a, b) => (a || 0) + (b || 0), 0).toFixed(1) : '0.0'} mm
                         </div>
                         <small style={{ color: '#facc15' }}>Demanda Hídrica</small>
+                     </div>
+
+                     {/* ✅ Novo KPI: Chuva 30d vs Ano Anterior */}
+                     <div style={{ background: '#15192c', padding: '15px', borderRadius: '12px', borderLeft: '4px solid #00d9ff' }}>
+                        <small style={{ color: '#94a3b8', textTransform: 'uppercase' }}>Chuva 30d x Ano Anterior</small>
+                        {rainComparison ? (
+                          <>
+                            <div style={{ fontSize: '18px', color: '#fff', fontWeight: 'bold' }}>
+                              {rainComparison.current.toFixed(1)} mm vs {rainComparison.previous.toFixed(1)} mm
+                            </div>
+                            <small style={{ 
+                              color: rainComparison.difference >= 0 ? '#3b82f6' : '#ef4444' 
+                            }}>
+                              {rainComparison.difference >= 0 ? '↑' : '↓'} {Math.abs(rainComparison.difference).toFixed(1)} mm ({Math.abs(rainComparison.percentage).toFixed(1)}% {rainComparison.difference >= 0 ? 'mais' : 'menos'})
+                            </small>
+                          </>
+                        ) : (
+                          <div style={{ fontSize: '14px', color: '#64748b', marginTop: '4px' }}>
+                            Dados históricos indisponíveis
+                          </div>
+                        )}
                      </div>
                   </div>
               </div>
