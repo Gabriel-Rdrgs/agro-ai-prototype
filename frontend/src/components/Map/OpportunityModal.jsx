@@ -123,7 +123,9 @@ const OpportunityModal = ({ opportunity, isOpen, onClose }) => {
           </div>
 
           {/* Tabs Navigation */}
-          <OpportunityTabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+          <div style={{ position: 'relative', zIndex: 10 }}>
+            <OpportunityTabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+          </div>
 
           {/* Tab Content */}
           <div
@@ -131,7 +133,9 @@ const OpportunityModal = ({ opportunity, isOpen, onClose }) => {
               flex: 1,
               overflowY: 'auto',
               padding: '20px',
-              background: `linear-gradient(180deg, ${theme.colors.background} 0%, rgba(10, 14, 39, 0.95) 100%)`
+              background: `linear-gradient(180deg, ${theme.colors.background} 0%, rgba(10, 14, 39, 0.95) 100%)`,
+              position: 'relative',
+              zIndex: 1 // ✅ CORRIGIDO: Conteúdo da tab fica abaixo dos botões
             }}
           >
             {renderTabContent()}

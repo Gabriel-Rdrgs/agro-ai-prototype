@@ -120,10 +120,15 @@ const ClimateTab = ({ opportunity }) => {
           }
         }
         
-        // Busca informações de safra (via ZARC API - Python)
+        // Busca informações de safra (via ZARC API - através do backend Node.js)
         try {
-          const pythonUrl = process.env.REACT_APP_PYTHON_API_URL || 'http://localhost:8000';
-          const response = await fetch(`${pythonUrl}/api/v1/zarc/planting-windows?product=${encodeURIComponent(product)}&state=${encodeURIComponent(state)}`);
+          const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+          const token = localStorage.getItem('token');
+          const response = await fetch(`${apiUrl}/api/zarc/planting-windows?product=${encodeURIComponent(product)}&state=${encodeURIComponent(state)}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
           if (response.ok) {
             const data = await response.json();
             setPlantingInfo(data);
@@ -318,38 +323,91 @@ const ClimateTab = ({ opportunity }) => {
                 </div>
               </div>
               
-              {/* Legenda e Diferença */}
+              {/* Legenda e Diferença - MELHORADO */}
               <div style={{
-                padding: '12px',
-                background: rainComparison.difference > 0 ? 'rgba(59, 130, 246, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                padding: '14px',
+                background: rainComparison.difference > 0 
+                  ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(59, 130, 246, 0.05) 100%)'
+                  : 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(239, 68, 68, 0.05) 100%)',
                 borderRadius: theme.borderRadius,
-                fontSize: '13px',
+                border: `2px solid ${rainComparison.difference > 0 ? 'rgba(59, 130, 246, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                fontSize: '14px',
                 color: rainComparison.difference > 0 ? '#3b82f6' : '#ef4444',
                 textAlign: 'center',
-                fontWeight: '600'
+                fontWeight: '600',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px'
               }}>
-                {rainComparison.difference > 0 ? '↑' : '↓'} {Math.abs(rainComparison.difference).toFixed(1)} mm 
-                ({Math.abs(rainComparison.percentage).toFixed(1)}% {rainComparison.difference > 0 ? 'mais' : 'menos'} que no mesmo período do ano anterior)
+                <div style={{ fontSize: '16px', fontWeight: 'bold' }}>
+                  {rainComparison.difference > 0 ? '📈' : '📉'} {Math.abs(rainComparison.difference).toFixed(1)} mm
+                </div>
+                <div style={{ fontSize: '12px', opacity: 0.9 }}>
+                  {Math.abs(rainComparison.percentage).toFixed(1)}% {rainComparison.difference > 0 ? 'mais' : 'menos'} que no mesmo período do ano anterior
+                </div>
+                {Math.abs(rainComparison.percentage) > 30 && (
+                  <div style={{ 
+                    fontSize: '11px', 
+                    marginTop: '4px',
+                    padding: '4px 8px',
+                    background: rainComparison.difference > 0 ? 'rgba(59, 130, 246, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                    borderRadius: '4px',
+                    fontWeight: 'normal'
+                  }}>
+                    {rainComparison.difference > 0 ? '⚠️ Variação significativa' : '⚠️ Déficit significativo'}
+                  </div>
+                )}
               </div>
             </div>
             
-            {/* Informações Adicionais */}
+            {/* Informações Adicionais - MELHORADO */}
             <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '16px',
               fontSize: '12px', 
               color: theme.colors.textMuted,
-              marginTop: '12px',
-              paddingTop: '12px',
+              marginTop: '16px',
+              paddingTop: '16px',
               borderTop: `1px solid rgba(0, 217, 255, 0.2)`
             }}>
-              <div>
-                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Ano Anterior</div>
-                <div>{rainComparison.previous.toFixed(1)} mm</div>
+              <div style={{
+                padding: '10px',
+                background: 'rgba(100, 116, 139, 0.1)',
+                borderRadius: '8px',
+                textAlign: 'center'
+              }}>
+                <div style={{ fontWeight: 'bold', marginBottom: '6px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  📅 Ano Anterior
+                </div>
+                <div style={{ fontSize: '18px', fontWeight: 'bold', color: theme.colors.textPrimary }}>
+                  {rainComparison.previous.toFixed(1)} mm
+                </div>
+                <div style={{ fontSize: '10px', marginTop: '4px', opacity: 0.8 }}>
+                  Mesmos 30 dias
+                </div>
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Atual</div>
-                <div>{rainComparison.current.toFixed(1)} mm</div>
+              <div style={{
+                padding: '10px',
+                background: rainComparison.difference > 0 
+                  ? 'rgba(59, 130, 246, 0.1)' 
+                  : 'rgba(239, 68, 68, 0.1)',
+                borderRadius: '8px',
+                textAlign: 'center'
+              }}>
+                <div style={{ fontWeight: 'bold', marginBottom: '6px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  ⚡ Atual
+                </div>
+                <div style={{ 
+                  fontSize: '18px', 
+                  fontWeight: 'bold', 
+                  color: rainComparison.difference > 0 ? '#3b82f6' : '#ef4444'
+                }}>
+                  {rainComparison.current.toFixed(1)} mm
+                </div>
+                <div style={{ fontSize: '10px', marginTop: '4px', opacity: 0.8 }}>
+                  Últimos 30 dias
+                </div>
               </div>
             </div>
           </div>

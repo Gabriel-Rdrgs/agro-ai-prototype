@@ -24,11 +24,17 @@ async def get_planting_windows(
     try:
         data = zarc_service.get_planting_windows(product, state, cultivar)
         
+        # ✅ MELHORADO: Retorna resposta vazia ao invés de 404 (mais amigável)
         if not data:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Janelas de plantio não encontradas para {product}/{state}"
-            )
+            logger.warning(f"⚠️ Janelas de plantio não encontradas para {product}/{state}")
+            return {
+                "status": "not_found",
+                "data": [],
+                "message": f"Janelas de plantio não encontradas para {product}/{state}",
+                "source": "ZARC (MAPA - Dados Abertos)",
+                "product": product,
+                "state": state
+            }
         
         return {
             "status": "success",
@@ -38,11 +44,17 @@ async def get_planting_windows(
             "state": state
         }
         
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"❌ Erro ao buscar janelas de plantio ZARC: {e}")
-        raise HTTPException(status_code=500, detail="Erro interno ao buscar dados ZARC")
+        logger.error(f"❌ Erro ao buscar janelas de plantio ZARC: {e}", exc_info=True)
+        # ✅ MELHORADO: Retorna erro mais amigável
+        return {
+            "status": "error",
+            "data": [],
+            "message": "Erro ao buscar dados ZARC. Tente novamente mais tarde.",
+            "source": "ZARC (MAPA - Dados Abertos)",
+            "product": product,
+            "state": state
+        }
 
 @router.get("/ideal-period")
 async def get_ideal_planting_period(

@@ -16,6 +16,7 @@ Correções aplicadas (baseadas em PDFs científicos):
 """
 
 import sys
+import os
 import logging
 import time
 import schedule
@@ -40,6 +41,7 @@ from config.settings import get_settings
 from routers import predictions_router, calculations_router, admin_router
 from routers import projections as projections_router
 from utils.database import test_connection
+from utils.auth_middleware import verify_internal_api_key
 
 
 
@@ -193,13 +195,29 @@ app = FastAPI(
 # ========================================
 # MIDDLEWARE - CORS
 # ========================================
+# Lê origens permitidas de variável de ambiente (separadas por vírgula)
+# Exemplo: ALLOWED_ORIGINS=http://localhost:3000,https://your-app.vercel.app
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "*")
+allowed_origins = allowed_origins_env.split(",") if allowed_origins_env != "*" else ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Em produção, especificar domínios
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*", "X-Internal-API-Key"],  # Permite header de autenticação
 )
+
+
+# ========================================
+# MIDDLEWARE - AUTENTICAÇÃO INTERNA
+# ========================================
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    """
+    Middleware de autenticação: valida X-Internal-API-Key para endpoints internos.
+    """
+    return await verify_internal_api_key(request, call_next)
 
 
 # ========================================

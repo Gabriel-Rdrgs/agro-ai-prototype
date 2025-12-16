@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     # Backend/Segurança
     # ========================================
     api_token: Optional[str] = None
+    internal_api_key: Optional[str] = os.getenv('INTERNAL_API_KEY')  # Chave compartilhada Node ↔ Python
     backend_url: Optional[str] = None
     environment: str = "development"
     

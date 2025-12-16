@@ -209,6 +209,9 @@ const MapView = React.forwardRef((props, ref) => {
   const [supplyRiskLoading, setSupplyRiskLoading] = useState(false);
   const [supplyRiskProgress, setSupplyRiskProgress] = useState({ loaded: 0, total: 0 });
   
+  // ✅ NOVO: Ref para rastrear oportunidades já processadas para supply risk
+  const processedSupplyRiskRef = useRef(new Set());
+  
   useEffect(() => {
     if (showSupplyRisk && opportunities.length > 0 && !supplyRiskLoadingRef.current) {
       supplyRiskLoadingRef.current = true;
@@ -216,7 +219,7 @@ const MapView = React.forwardRef((props, ref) => {
       
       const fetchSupplyRisks = async () => {
         // ✅ OTIMIZADO: Cache local no frontend para evitar requisições duplicadas
-        const localCacheKey = `supply_risk_${opportunities.map(o => o.id).join('_')}`;
+        const localCacheKey = `supply_risk_${opportunities.map(o => o.id).sort().join('_')}`;
         const cached = sessionStorage.getItem(localCacheKey);
         if (cached) {
           try {
@@ -236,11 +239,25 @@ const MapView = React.forwardRef((props, ref) => {
           }
         }
         
-        const riskData = {};
-        
-        // ✅ OTIMIZADO: Processa TODAS em paralelo (cache no backend torna isso seguro)
+        // ✅ NOVO: Verifica se já temos dados para todas as oportunidades (evita requisições desnecessárias)
         const oppsWithCoords = opportunities.filter(opp => opp.coords?.lat && opp.coords?.lng);
-        const total = oppsWithCoords.length;
+        const oppsNeedingData = oppsWithCoords.filter(opp => {
+          const hasData = supplyRiskData[opp.id] && supplyRiskData[opp.id].risk_level;
+          const wasProcessed = processedSupplyRiskRef.current.has(opp.id);
+          return !hasData && !wasProcessed;
+        });
+        
+        if (oppsNeedingData.length === 0) {
+          // Já temos todos os dados necessários
+          setSupplyRiskLoading(false);
+          supplyRiskLoadingRef.current = false;
+          return;
+        }
+        
+        const riskData = { ...supplyRiskData }; // ✅ NOVO: Preserva dados existentes
+        
+        // ✅ OTIMIZADO: Processa apenas oportunidades que precisam de dados
+        const total = oppsNeedingData.length;
         setSupplyRiskProgress({ loaded: 0, total });
         
         console.debug(`📊 Iniciando carregamento de risco para ${total} oportunidades (cache agressivo ativo)`);
@@ -248,14 +265,18 @@ const MapView = React.forwardRef((props, ref) => {
         // ✅ OTIMIZADO: Processa em batches para evitar sobrecarga (mesmo com cache)
         // Cache ajuda, mas muitas requisições simultâneas ainda podem sobrecarregar
         const batchSize = 8; // ✅ Balanceado: 8 por vez para velocidade sem sobrecarga
-        const loadedCountRef = { current: 0 }; // ✅ CORRIGIDO: Usa ref para evitar problema de closure
+        const loadedCountRef = { current: Object.keys(riskData).length }; // ✅ NOVO: Começa com dados existentes
+        const initialTotal = Object.keys(riskData).length;
         
-        for (let i = 0; i < oppsWithCoords.length; i += batchSize) {
-          const batch = oppsWithCoords.slice(i, i + batchSize);
+        for (let i = 0; i < oppsNeedingData.length; i += batchSize) {
+          const batch = oppsNeedingData.slice(i, i + batchSize);
           
           const batchResults = await Promise.allSettled(
             batch.map(async (opp) => {
               try {
+                // ✅ NOVO: Marca como processado antes de fazer a requisição (evita duplicatas)
+                processedSupplyRiskRef.current.add(opp.id);
+                
                 const risk = await OpportunityService.getSupplyRisk(
                   opp.coords.lat,
                   opp.coords.lng,
@@ -263,12 +284,13 @@ const MapView = React.forwardRef((props, ref) => {
                   16
                 );
                 loadedCountRef.current++;
-                setSupplyRiskProgress({ loaded: loadedCountRef.current, total });
+                setSupplyRiskProgress({ loaded: loadedCountRef.current, total: initialTotal + total });
                 return { oppId: opp.id, risk };
               } catch (err) {
                 console.debug(`Erro ao buscar risco para ${opp.id}:`, err.message);
+                processedSupplyRiskRef.current.delete(opp.id); // ✅ NOVO: Remove se falhar para permitir retry
                 loadedCountRef.current++;
-                setSupplyRiskProgress({ loaded: loadedCountRef.current, total });
+                setSupplyRiskProgress({ loaded: loadedCountRef.current, total: initialTotal + total });
                 return { oppId: opp.id, risk: null };
               }
             })
@@ -282,7 +304,7 @@ const MapView = React.forwardRef((props, ref) => {
           });
           
           // ✅ Pequeno delay entre batches para não sobrecarregar (mesmo com cache)
-          if (i + batchSize < oppsWithCoords.length) {
+          if (i + batchSize < oppsNeedingData.length) {
             await new Promise(resolve => setTimeout(resolve, 50)); // Delay mínimo
           }
         }
@@ -330,17 +352,27 @@ const MapView = React.forwardRef((props, ref) => {
     }
   }, [showSupplyRisk]);
   
-  // Carrega eventos extremos SOB DEMANDA (quando marcador é clicado)
-  // Desabilitado busca automática para todas as oportunidades para evitar sobrecarga
+  // ✅ MELHORADO: Carrega eventos extremos para oportunidades visíveis (com cache e debounce)
+  // Busca sob demanda quando popup abre, mas também pré-carrega para oportunidades visíveis
+  const fetchingEventsRef = useRef(new Set()); // ✅ NOVO: Rastreia requisições em andamento
+  
   const fetchExtremeEventsForOpportunity = async (oppId, lat, lng) => {
     // Se já temos os dados, não busca novamente
     if (extremeEventsMap[oppId]) {
       return extremeEventsMap[oppId];
     }
     
+    // ✅ NOVO: Evita requisições duplicadas simultâneas
+    const requestKey = `${oppId}-${lat}-${lng}`;
+    if (fetchingEventsRef.current.has(requestKey)) {
+      return null; // Já está buscando, não faz outra requisição
+    }
+    
+    fetchingEventsRef.current.add(requestKey);
+    
     try {
       const eventsData = await OpportunityService.getExtremeEvents(lat, lng, 16);
-      if (eventsData?.events && eventsData.events.length > 0) {
+      if (eventsData) {
         setExtremeEventsMap(prev => ({
           ...prev,
           [oppId]: eventsData
@@ -349,9 +381,12 @@ const MapView = React.forwardRef((props, ref) => {
       }
     } catch (err) {
       console.debug(`Erro ao buscar eventos para ${oppId}:`, err.message);
+    } finally {
+      fetchingEventsRef.current.delete(requestKey);
     }
     return null;
   };
+
 
   // --- LÓGICA DO SLIDER (CONECTADA À IA) ---
   const getSimulatedOpportunities = () => {
@@ -500,7 +535,42 @@ const MapView = React.forwardRef((props, ref) => {
   
   const currentOpportunities = applyFilters(simulatedOpportunities);
 
+  // ✅ MELHORADO: Pré-carrega eventos extremos para oportunidades visíveis (com debounce e cache)
+  const processedOpportunitiesRef = useRef(new Set()); // ✅ NOVO: Rastreia oportunidades já processadas
   
+  useEffect(() => {
+    if (currentOpportunities.length === 0) return;
+    
+    // Debounce: aguarda 1.5 segundos após mudanças nas oportunidades
+    const timeoutId = setTimeout(async () => {
+      // Busca eventos para as primeiras 10 oportunidades visíveis (evita sobrecarga)
+      const opportunitiesToCheck = currentOpportunities.slice(0, 10);
+      const promises = [];
+      
+      for (const opp of opportunitiesToCheck) {
+        if (opp.coords?.lat && opp.coords?.lng) {
+          // ✅ NOVO: Verifica cache e se já foi processado
+          if (!extremeEventsMap[opp.id] && !processedOpportunitiesRef.current.has(opp.id)) {
+            processedOpportunitiesRef.current.add(opp.id);
+            promises.push(
+              fetchExtremeEventsForOpportunity(opp.id, opp.coords.lat, opp.coords.lng).catch(() => {
+                // Ignora erros silenciosamente (já logado no fetchExtremeEventsForOpportunity)
+                processedOpportunitiesRef.current.delete(opp.id); // Remove se falhar para permitir retry
+              })
+            );
+          }
+        }
+      }
+      
+      // Executa todas as buscas em paralelo (mas limitado pelo fetchingEventsRef)
+      if (promises.length > 0) {
+        await Promise.allSettled(promises);
+      }
+    }, 1500); // 1.5 segundos de debounce (aumentado para evitar requisições excessivas)
+    
+    return () => clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentOpportunities.length]); // ✅ MELHORADO: Só re-executa quando o número de oportunidades muda
 
   // 2. Filtra as melhores oportunidades (>50% ROI) para mostrar linhas automáticas
   // Só mostra se não tiver nenhuma rota customizada ou seleção ativa

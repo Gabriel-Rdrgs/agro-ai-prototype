@@ -155,9 +155,13 @@ def _calculate_complete_roi(opportunity: dict, projected_sell_price: float) -> f
         origin_state = opportunity.get('state', 'SP')
         buy_price_kg = float(opportunity.get('buyPrice', 0))
         
-        # Normaliza buyPrice se necessário
+        # Validação: loga se encontrar preço suspeito (não altera mais)
+        # Após migração, todos os dados devem estar em R$/kg
         if buy_price_kg > 15:
-            buy_price_kg /= 20
+            logger.warning(
+                f"⚠️ buyPrice suspeito (R$ {buy_price_kg}) para {product_name}/{origin_state} - "
+                f"possível dado legado em caixa. Execute migrate_units_to_kg.py se necessário."
+            )
         
         if buy_price_kg <= 0:
             buy_price_kg = 2.50

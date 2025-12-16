@@ -8,6 +8,23 @@ const axios = require('axios');
 const logger = require('./logger');
 
 const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://ai-service:8000';
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY;
+
+// Helper para criar cliente axios com autenticação
+function createPythonAxiosClient() {
+  const client = axios.create({
+    baseURL: PYTHON_API_URL,
+    timeout: 300000, // 5 minutos para sync
+  });
+  
+  if (INTERNAL_API_KEY) {
+    client.defaults.headers.common['X-Internal-API-Key'] = INTERNAL_API_KEY;
+  }
+  
+  return client;
+}
+
+const pythonAxios = createPythonAxiosClient();
 
 /**
  * Executa a sincronização de dados climáticos via script Python
@@ -49,8 +66,8 @@ async function syncWeatherData() {
       logger.warn(`⚠️ Execução direta falhou, tentando via API: ${execError.message}`);
       
       try {
-        const response = await axios.post(
-          `${PYTHON_API_URL}/admin/sync-weather`,
+        const response = await pythonAxios.post(
+          '/admin/sync-weather',
           {},
           { timeout: 300000 } // 5 minutos
         );

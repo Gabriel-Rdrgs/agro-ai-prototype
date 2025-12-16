@@ -1,23 +1,24 @@
-// backend/createAdmin.js
-// Script para criar usuário admin no Supabase Auth
-// Uso: node createAdmin.js [email] [password] [name]
+// backend/createUser.js
+// Script para criar usuário comum (analyst) no Supabase Auth
+// Uso: node createUser.js [email] [password] [name] [role]
 
 require('dotenv').config();
 const { supabaseAdmin } = require('./utils/supabase');
 
 async function main() {
   // Lê argumentos da linha de comando ou usa valores padrão
-  const email = process.argv[2] || 'paulo@agro.com';
+  const email = process.argv[2] || 'usuario@teste.com';
   const password = process.argv[3] || '123456';
-  const name = process.argv[4] || 'Paulo (Sócio)';
+  const name = process.argv[4] || 'Usuário Teste';
+  const role = process.argv[5] || 'analyst'; // analyst ou user (não admin)
 
-  console.log(`\n🔐 Criando usuário admin: ${email}...`);
+  console.log(`\n🔐 Criando usuário ${role}: ${email}...`);
 
   // Validação
   if (!email || !password) {
     console.error('❌ Erro: Email e senha são obrigatórios.');
-    console.log('\nUso: node createAdmin.js [email] [password] [name]');
-    console.log('Exemplo: node createAdmin.js admin@agro.com senha123 "Admin Agro"');
+    console.log('\nUso: node createUser.js [email] [password] [name] [role]');
+    console.log('Exemplo: node createUser.js usuario@teste.com 123456 "João Silva" analyst');
     process.exit(1);
   }
 
@@ -32,14 +33,14 @@ async function main() {
   }
 
   try {
-    // Cria usuário admin no Supabase Auth
+    // Cria usuário no Supabase Auth
     const { data, error } = await supabaseAdmin.auth.admin.createUser({
       email: email,
       password: password,
       email_confirm: true, // Confirma email automaticamente
       user_metadata: {
         name: name,
-        role: 'admin' // ✅ Role hardcoded como admin
+        role: role // analyst ou user (não admin)
       }
     });
 
@@ -58,18 +59,18 @@ async function main() {
       process.exit(1);
     }
 
-    console.log('\n✅ Usuário admin criado com sucesso!');
+    console.log('\n✅ Usuário criado com sucesso!');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log(`📧 Email:     ${data.user.email}`);
     console.log(`👤 Nome:      ${data.user.user_metadata?.name || name}`);
-    console.log(`🔑 Role:      ${data.user.user_metadata?.role || 'admin'}`);
+    console.log(`🔑 Role:      ${data.user.user_metadata?.role || role}`);
     console.log(`🆔 ID:        ${data.user.id}`);
     console.log(`📅 Criado em: ${new Date(data.user.created_at).toLocaleString('pt-BR')}`);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('\n💡 Este usuário tem acesso completo (admin):');
+    console.log('\n💡 Você pode usar este usuário para testar:');
     console.log(`   - Login no frontend: ${email}`);
     console.log(`   - Senha: ${password}`);
-    console.log(`   - Acesso a todas as rotas admin`);
+    console.log(`   - Role: ${role} (não tem acesso a rotas admin)`);
     console.log('\n');
 
   } catch (error) {
@@ -79,3 +80,4 @@ async function main() {
 }
 
 main();
+

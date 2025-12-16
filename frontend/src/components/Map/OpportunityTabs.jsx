@@ -10,7 +10,9 @@ const OpportunityTabs = ({ tabs, activeTab, onTabChange }) => {
         background: theme.colors.background,
         overflowX: 'auto',
         scrollbarWidth: 'none',
-        msOverflowStyle: 'none'
+        msOverflowStyle: 'none',
+        position: 'relative',
+        zIndex: 10 // ✅ CORRIGIDO: Garante que os botões fiquem acima do conteúdo da tab
       }}
     >
       {tabs.map((tab) => (

@@ -23,6 +23,7 @@ const ceasaRoutes = require('./routes/ceasa');
 const etlRoutes = require('./routes/etl'); // ✅ ETL ASSÍNCRONO
 const cache = require('./utils/cache'); // ✅ CACHE URGENTE
 const jobQueue = require('./utils/jobQueue'); // ✅ JOBS ASSÍNCRONOS
+const { logAction } = require('./services/auditService'); // ✅ AUDIT LOG
 
 // 3. INICIALIZAÇÃO
 const app = express();
@@ -49,11 +50,33 @@ const JWT_SECRET = process.env.JWT_SECRET;
 // Ajuste crítico para Docker vs Localhost
 const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://ai-service:8000';
 const AWESOME_API_URL = process.env.AWESOME_API_URL || 'https://economia.awesomeapi.com.br';
+// ✅ SEGURANÇA: Chave compartilhada entre Node.js e Python
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY;
 
 // Validação de Segurança
 if (!JWT_SECRET) {
   logger.warn('⚠️ AVISO: JWT_SECRET não configurado. Usando default inseguro para dev.');
 }
+
+// ✅ SEGURANÇA: Helper para criar instância axios configurada com autenticação interna
+function createPythonAxiosClient() {
+  const client = axios.create({
+    baseURL: PYTHON_API_URL,
+    timeout: 120000, // 120 segundos (padrão para operações de IA)
+  });
+  
+  // Adiciona header de autenticação em todas as requisições
+  if (INTERNAL_API_KEY) {
+    client.defaults.headers.common['X-Internal-API-Key'] = INTERNAL_API_KEY;
+  } else {
+    logger.warn('⚠️ AVISO: INTERNAL_API_KEY não configurado. Requisições ao Python podem falhar em produção.');
+  }
+  
+  return client;
+}
+
+// Instância global do cliente axios para Python
+const pythonAxios = createPythonAxiosClient();
 
 // 5. MIDDLEWARES
 // ============================================
@@ -235,20 +258,21 @@ const formattedOpportunities = opportunities.map(opp => {
       let buyPrice = parseFloat(opp.buyPrice);
       let sellPrice = parseFloat(opp.sellPrice);
       
-      // --- CORREÇÃO DE UNIDADE (Defesa em Camada) ---
-      // ⚠️ ATENÇÃO: Python agora salva TUDO em R$/kg
-      // Mas pode haver dados antigos no banco em caixa (legado)
-      // Se o preço for muito alto (> 20), provavelmente está em caixa e precisa normalizar
-      // Se o preço for razoável (< 20), já está em kg
+      // --- VALIDAÇÃO DE UNIDADE (Salvaguarda) ---
+      // ⚠️ ATENÇÃO: Após migração, TODOS os dados devem estar em R$/kg
+      // Se encontrar preços > 20, pode ser dado legado não migrado
+      // Loga aviso mas NÃO altera (dados já devem estar migrados)
       if (buyPrice > 20) {
-          // Dados antigos em caixa - normaliza para kg
-          console.warn(`⚠️ [${opp.id}] buyPrice normalizado de caixa para kg: ${opp.buyPrice} -> ${buyPrice / 20}`);
-          buyPrice /= 20;
+          logger.warn(
+              `⚠️ [${opp.id}] buyPrice suspeito (R$ ${buyPrice}) - possível dado legado em caixa. ` +
+              `Execute migrate_units_to_kg.py se necessário.`
+          );
       }
       if (sellPrice > 20) {
-          // Dados antigos em caixa - normaliza para kg
-          logger.warn(`⚠️ [${opp.id}] sellPrice normalizado de caixa para kg: ${opp.sellPrice} -> ${sellPrice / 20}`);
-          sellPrice /= 20;
+          logger.warn(
+              `⚠️ [${opp.id}] sellPrice suspeito (R$ ${sellPrice}) - possível dado legado em caixa. ` +
+              `Execute migrate_units_to_kg.py se necessário.`
+          );
       }
 
       // ✅ ROI e Freight DEVEM vir do Python (via banco ou cálculo em tempo real)
@@ -328,9 +352,11 @@ app.post('/api/opportunities/:id/recalculate', verifyToken, async (req, res) => 
       return res.status(404).json({ error: 'Oportunidade não encontrada' });
     }
     
-    // Normaliza preço se necessário
+    // Validação: loga se encontrar preço suspeito (não altera mais)
     let buyPrice = parseFloat(opportunity.buyPrice);
-    if (buyPrice > 20) buyPrice /= 20;
+    if (buyPrice > 20) {
+      logger.warn(`⚠️ buyPrice suspeito (R$ ${buyPrice}) - possível dado legado. Execute migrate_units_to_kg.py se necessário.`);
+    }
     
     // Chama Python para recalcular
     const payload = {
@@ -343,8 +369,8 @@ app.post('/api/opportunities/:id/recalculate', verifyToken, async (req, res) => 
     };
     
     console.log(`🔄 Recalculando ROI pelo Python para oportunidade ${oppId}...`);
-    const response = await axios.post(
-      `${PYTHON_API_URL}/api/v1/calc/opportunity/recalculate`,
+    const response = await pythonAxios.post(
+      '/api/v1/calc/opportunity/recalculate',
       payload
     );
     
@@ -383,20 +409,28 @@ app.post('/api/opportunities/:id/recalculate', verifyToken, async (req, res) => 
 });
 
 // ✅ NOVO: Endpoint para calcular TODOS os ROIs (chama Python diretamente)
-app.post('/api/opportunities/calculate-all-roi', verifyToken, async (req, res) => {
+// 🔒 RBAC: Apenas admin pode executar cálculo em massa
+app.post('/api/opportunities/calculate-all-roi', verifyToken, checkRole(['admin']), async (req, res) => {
   try {
-    console.log("🔄 Iniciando cálculo massivo de ROI pelo Python...");
+    const userId = req.user?.id || 'system';
+    logger.info(`🔄 Admin ${req.user?.email || 'unknown'} iniciando cálculo massivo de ROI...`);
+    
+    // ✅ AUDIT LOG: Registra ação crítica
+    await logAction(userId, 'CALCULATE_ALL_ROI', 'Iniciado cálculo massivo de ROI para todas as oportunidades');
     
     // Chama o endpoint Python que processa todas as oportunidades de uma vez
-    const response = await axios.post(
-      `${PYTHON_API_URL}/api/v1/admin/calculate-all-roi`,
+    const response = await pythonAxios.post(
+      '/api/v1/admin/calculate-all-roi',
       {},
       { timeout: 300000 }  // 5 minutos (pode demorar para muitas oportunidades)
     );
     
     const result = response.data;
     
-    console.log(`✅ Cálculo concluído: ${result.updated} atualizados, ${result.errors} erros`);
+    logger.info(`✅ Cálculo concluído: ${result.updated} atualizados, ${result.errors} erros`);
+    
+    // ✅ AUDIT LOG: Registra resultado
+    await logAction(userId, 'CALCULATE_ALL_ROI', `Concluído: ${result.updated} atualizados, ${result.errors} erros`);
     
     // ✅ CACHE: Invalida cache após cálculo em massa
     cache.invalidatePattern('opportunities:*');
@@ -408,7 +442,12 @@ app.post('/api/opportunities/calculate-all-roi', verifyToken, async (req, res) =
     });
     
   } catch (error) {
-    console.error("❌ Erro ao calcular ROI em massa:", error.message);
+    const userId = req.user?.id || 'system';
+    logger.error("❌ Erro ao calcular ROI em massa:", { error: error.message });
+    
+    // ✅ AUDIT LOG: Registra erro
+    await logAction(userId, 'CALCULATE_ALL_ROI_ERROR', `Erro: ${error.message}`);
+    
     res.status(500).json({ 
       error: 'Erro ao calcular ROI',
       details: error.response?.data?.detail || error.message
@@ -417,8 +456,15 @@ app.post('/api/opportunities/calculate-all-roi', verifyToken, async (req, res) =
 });
 
 // ✅ NOVO: Endpoint para enriquecer oportunidades sem ROI (processa uma por uma)
-app.post('/api/opportunities/enrich', verifyToken, async (req, res) => {
+// 🔒 RBAC: Apenas admin pode executar enriquecimento em massa
+app.post('/api/opportunities/enrich', verifyToken, checkRole(['admin']), async (req, res) => {
   try {
+    const userId = req.user?.id || 'system';
+    logger.info(`🔄 Admin ${req.user?.email || 'unknown'} iniciando enriquecimento de oportunidades...`);
+    
+    // ✅ AUDIT LOG: Registra ação crítica
+    await logAction(userId, 'ENRICH_OPPORTUNITIES', 'Iniciado enriquecimento em massa de oportunidades');
+    
     // Busca oportunidades sem ROI ou com ROI = 0
     const opportunities = await prisma.opportunity.findMany({
       where: {
@@ -449,7 +495,10 @@ app.post('/api/opportunities/enrich', verifyToken, async (req, res) => {
     for (const opp of opportunities) {
       try {
         let buyPrice = parseFloat(opp.buyPrice);
-        if (buyPrice > 20) buyPrice /= 20;
+        // Validação: loga se encontrar preço suspeito (não altera mais)
+        if (buyPrice > 20) {
+          logger.warn(`⚠️ [${opp.id}] buyPrice suspeito (R$ ${buyPrice}) - possível dado legado. Execute migrate_units_to_kg.py se necessário.`);
+        }
         
         const payload = {
           product: opp.product,
@@ -460,8 +509,8 @@ app.post('/api/opportunities/enrich', verifyToken, async (req, res) => {
           lng: parseFloat(opp.lng) || 0
         };
         
-        const response = await axios.post(
-          `${PYTHON_API_URL}/api/v1/calc/opportunity/recalculate`,
+        const response = await pythonAxios.post(
+          '/api/v1/calc/opportunity/recalculate',
           payload,
           { timeout: 10000 }  // 10 segundos por oportunidade
         );
@@ -487,6 +536,11 @@ app.post('/api/opportunities/enrich', verifyToken, async (req, res) => {
       }
     }
     
+    logger.info(`✅ Enriquecimento concluído: ${processed} processadas, ${errors} erros`);
+    
+    // ✅ AUDIT LOG: Registra resultado
+    await logAction(userId, 'ENRICH_OPPORTUNITIES', `Concluído: ${processed} processadas, ${errors} erros de ${opportunities.length} total`);
+    
     res.json({
       success: true,
       message: `Processamento concluído`,
@@ -496,10 +550,15 @@ app.post('/api/opportunities/enrich', verifyToken, async (req, res) => {
     });
     
   } catch (error) {
-    console.error("❌ Erro ao enriquecer oportunidades:", error.message);
+    const userId = req.user?.id || 'system';
+    logger.error("❌ Erro ao enriquecer oportunidades:", { error: error.message });
+    
+    // ✅ AUDIT LOG: Registra erro
+    await logAction(userId, 'ENRICH_OPPORTUNITIES_ERROR', `Erro: ${error.message}`);
+    
     res.status(500).json({ 
       error: 'Erro ao enriquecer oportunidades',
-      details: error.message
+      details: error.response?.data?.detail || error.message
     });
   }
 });
@@ -528,8 +587,8 @@ app.get('/api/weather/extreme-events', verifyToken, async (req, res) => {
     
     const daysParam = days ? parseInt(days) : 16;
     
-      const response = await axios.get(
-        `${PYTHON_API_URL}/api/v1/weather/extreme-events`,
+      const response = await pythonAxios.get(
+        '/api/v1/weather/extreme-events',
         {
           params: { lat: parseFloat(lat), lng: parseFloat(lng), days: daysParam },
           timeout: 20000 // 20 segundos (Python tem 15s, dá margem)
@@ -556,8 +615,8 @@ app.get('/api/weather/extreme-events/historical', verifyToken, async (req, res) 
     
     const daysBackParam = days_back ? parseInt(days_back) : 7;
     
-    const response = await axios.get(
-      `${PYTHON_API_URL}/api/v1/weather/extreme-events/historical`,
+    const response = await pythonAxios.get(
+      '/api/v1/weather/extreme-events/historical',
       {
         params: { lat: parseFloat(lat), lng: parseFloat(lng), days_back: daysBackParam },
         timeout: 30000 // 30 segundos
@@ -584,8 +643,8 @@ app.get('/api/weather/supply-risk', verifyToken, async (req, res) => {
     
     console.log(`📊 Buscando supply risk para lat=${lat}, lng=${lng}, product=${product || 'Tomate'}`);
     
-    const response = await axios.get(
-      `${PYTHON_API_URL}/api/v1/weather/supply-risk`,
+    const response = await pythonAxios.get(
+      '/api/v1/weather/supply-risk',
       {
         params: {
           lat: parseFloat(lat),
@@ -628,8 +687,8 @@ app.get('/api/weather/forecast', verifyToken, async (req, res) => {
     
     console.log(`📊 Buscando forecast para lat=${lat}, lng=${lng}`);
     
-    const response = await axios.get(
-      `${PYTHON_API_URL}/api/v1/weather/forecast`,
+    const response = await pythonAxios.get(
+      '/api/v1/weather/forecast',
       {
         params: { lat: parseFloat(lat), lng: parseFloat(lng) },
         timeout: 30000 // 30 segundos (forecast pode demorar na primeira vez)
@@ -677,8 +736,8 @@ app.get('/api/weather/rain-comparison', verifyToken, async (req, res) => {
 
     console.log(`📊 Comparando chuva (últimos ${days || 30} dias vs ano anterior) para lat=${lat}, lng=${lng}`);
 
-    const response = await axios.get(
-      `${PYTHON_API_URL}/api/v1/weather/rain-comparison`,
+    const response = await pythonAxios.get(
+      '/api/v1/weather/rain-comparison',
       {
         params: {
           lat: parseFloat(lat),
@@ -711,8 +770,51 @@ app.get('/api/weather/rain-comparison', verifyToken, async (req, res) => {
   }
 });
 
+// ✅ NOVO: Rota pública para buscar janelas de plantio (ZARC) - Proxy para Python
+app.get('/api/zarc/planting-windows', verifyToken, async (req, res) => {
+  try {
+    const { product, state } = req.query;
+    if (!product || !state) {
+      return res.status(400).json({ error: 'product e state são obrigatórios' });
+    }
+
+    console.log(`📅 Buscando janelas de plantio ZARC para product=${product}, state=${state}`);
+
+    const response = await pythonAxios.get(
+      '/api/v1/zarc/planting-windows',
+      {
+        params: {
+          product: product,
+          state: state
+        },
+        timeout: 30000
+      }
+    );
+
+    res.json(response.data);
+  } catch (error) {
+    console.error('❌ Erro ao buscar janelas de plantio ZARC:', error.message);
+    if (error.code === 'ECONNREFUSED') {
+      return res.status(503).json({
+        error: 'Serviço Python indisponível',
+        details: 'O serviço de IA não está respondendo. Verifique se está rodando.'
+      });
+    }
+    if (error.response) {
+      // ✅ MELHORADO: Se o Python retornar 404 (CSV não disponível), retorna resposta vazia ao invés de erro
+      if (error.response.status === 404) {
+        console.warn('⚠️ ZARC CSV não disponível, retornando resposta vazia');
+        return res.json({ windows: [], message: 'Dados ZARC temporariamente indisponíveis' });
+      }
+      return res.status(error.response.status).json(error.response.data);
+    }
+    res.status(500).json({ error: 'Erro interno ao buscar janelas de plantio' });
+  }
+});
+
 // 3. Calendário de Plantio/Colheita
-app.get('/api/calendar/planting-window', verifyToken, async (req, res) => {
+// 🔒 RBAC: Apenas admin pode acessar calendário (chama endpoint admin do Python)
+app.get('/api/calendar/planting-window', verifyToken, checkRole(['admin']), async (req, res) => {
   try {
     const { product, state } = req.query;
     if (!product || !state) {
@@ -720,8 +822,8 @@ app.get('/api/calendar/planting-window', verifyToken, async (req, res) => {
     }
     
     // Chama Python para buscar informações de calendário
-    const response = await axios.get(
-      `${PYTHON_API_URL}/api/v1/admin/calendar/planting-window`,
+    const response = await pythonAxios.get(
+      '/api/v1/admin/calendar/planting-window',
       {
         params: { product, state },
         timeout: 30000 // 30 segundos
@@ -811,8 +913,8 @@ app.post('/api/ai/storage', verifyToken, async (req, res) => {
     
     let response;
     try {
-      response = await axios.post(
-        `${PYTHON_API_URL}/api/v1/predict/storage`, 
+      response = await pythonAxios.post(
+        '/api/v1/predict/storage', 
         safePayload,
         { timeout: 60000 } // 60 segundos (análise climática pode demorar)
       );
@@ -926,8 +1028,8 @@ app.post('/api/ai/batch', verifyToken, async (req, res) => {
 
     if (sanitizedItems.length === 0) return res.json({});
 
-    const response = await axios.post(
-      `${PYTHON_API_URL}/api/v1/predict/batch`, 
+    const response = await pythonAxios.post(
+      '/api/v1/predict/batch', 
       { items: sanitizedItems }, 
       { timeout: 120000 } // 120 segundos (Prophet pode demorar, mas tem fallback rápido)
     );
@@ -946,7 +1048,7 @@ app.post('/api/ai/batch', verifyToken, async (req, res) => {
 // 3. Preços de Combustível GERAL (Para Dashboard principal)
 app.get('/api/fuel/current-prices', verifyToken, async (req, res) => {
   try {
-    const response = await axios.get(`${PYTHON_API_URL}/api/v1/predict/fuel`);
+    const response = await pythonAxios.get('/api/v1/predict/fuel');
     // O Dashboard espera array ou objeto, mandamos direto
     res.json(response.data);
   } catch (error) {
@@ -961,7 +1063,7 @@ app.get('/api/fuel/price/:state', verifyToken, async (req, res) => {
     const state = req.params.state.toLowerCase();
     
     // 1. Buscamos TODOS os dados do Python (é mais seguro que tentar adivinhar endpoint específico)
-    const response = await axios.get(`${PYTHON_API_URL}/predict/fuel`, {
+    const response = await pythonAxios.get('/predict/fuel', {
       timeout: 30000 // 30 segundos (busca simples de preços)
     });
     const data = response.data;
@@ -1020,8 +1122,8 @@ app.post('/calc/production', verifyToken, async (req, res) => {
         expected_sell_price: parseFloat(req.body.expected_sell_price) || 0
     };
 
-    const response = await axios.post(
-      `${PYTHON_API_URL}/api/v1/calc/production`, 
+    const response = await pythonAxios.post(
+      '/api/v1/calc/production', 
       safePayload,
       { timeout: 60000 } // 60 segundos (cálculo pode demorar)
     );
@@ -1046,8 +1148,8 @@ app.post('/calc/arbitrage', verifyToken, async (req, res) => {
     };
 
     console.log(`📤 [Node -> Python] Arbitragem: ${safePayload.origin_state} -> ${safePayload.destination_state}`);
-    const response = await axios.post(
-      `${PYTHON_API_URL}/api/v1/calc/arbitrage`, 
+    const response = await pythonAxios.post(
+      '/api/v1/calc/arbitrage', 
       safePayload,
       { timeout: 60000 } // 60 segundos (cálculo pode demorar)
     );
@@ -1086,8 +1188,8 @@ app.post('/api/ai/recommendation', verifyToken, async (req, res) => {
     };
 
     console.log(`📤 [Node -> Python] Recomendação: ${safePayload.product}/${safePayload.state}`);
-    const response = await axios.post(
-      `${PYTHON_API_URL}/api/v1/predict/recommendation`,
+    const response = await pythonAxios.post(
+      '/api/v1/predict/recommendation',
       safePayload,
       { timeout: 30000 } // 30 segundos
     );
@@ -1105,8 +1207,8 @@ app.post('/api/ai/recommendation', verifyToken, async (req, res) => {
 // 7. Radar de Mercado
 app.post('/market/scan', verifyToken, async (req, res) => {
   try {
-    const response = await axios.post(
-      `${PYTHON_API_URL}/api/v1/predict/market/scan`, 
+    const response = await pythonAxios.post(
+      '/api/v1/predict/market/scan', 
       req.body,
       { timeout: 90000 } // 90 segundos (scan de múltiplos destinos pode demorar)
     );
@@ -1120,15 +1222,29 @@ app.post('/market/scan', verifyToken, async (req, res) => {
 // 7. Admin: Correção de Dados (PROTEGIDO COM RBAC)
 app.post('/api/admin/fix-data', verifyToken, checkRole(['admin']), async (req, res) => {
   try {
-    console.log(`🔧 Admin ${req.user.email} solicitando correção de dados ao Python...`);
-    const response = await axios.post(
-      `${PYTHON_API_URL}/admin/fix-market-data`,
+    const userId = req.user?.id || 'system';
+    logger.info(`🔧 Admin ${req.user?.email || 'unknown'} solicitando correção de dados ao Python...`);
+    
+    // ✅ AUDIT LOG: Registra ação crítica
+    await logAction(userId, 'FIX_MARKET_DATA', 'Iniciada correção de dados de mercado');
+    
+    const response = await pythonAxios.post(
+      '/admin/fix-market-data',
       {},
       { timeout: 120000 } // 120 segundos (operação admin pode demorar muito)
     );
+    
+    // ✅ AUDIT LOG: Registra sucesso
+    await logAction(userId, 'FIX_MARKET_DATA', `Correção concluída: ${JSON.stringify(response.data)}`);
+    
     res.json(response.data);
   } catch (error) {
-    console.error("Erro Admin Fix:", error.message);
+    const userId = req.user?.id || 'system';
+    logger.error("Erro Admin Fix:", { error: error.message });
+    
+    // ✅ AUDIT LOG: Registra erro
+    await logAction(userId, 'FIX_MARKET_DATA_ERROR', `Erro: ${error.message}`);
+    
     res.status(500).json({ error: 'Erro ao executar rotina de correção.' });
   }
 });
@@ -1186,11 +1302,26 @@ if (process.env.ENABLE_WEATHER_SYNC !== 'false') {
 // Rota para sincronização manual (apenas para admin)
 app.post('/api/admin/sync-weather', verifyToken, checkRole(['admin']), async (req, res) => {
   try {
+    const userId = req.user?.id || 'system';
+    logger.info(`🌍 Admin ${req.user?.email || 'unknown'} iniciando sincronização manual de clima...`);
+    
+    // ✅ AUDIT LOG: Registra ação crítica
+    await logAction(userId, 'SYNC_WEATHER_MANUAL', 'Iniciada sincronização manual de dados climáticos');
+    
     const { runManualSync } = require('./utils/weatherSyncJob');
     const result = await runManualSync();
+    
+    // ✅ AUDIT LOG: Registra resultado
+    await logAction(userId, 'SYNC_WEATHER_MANUAL', `Concluída: ${result.success ? 'sucesso' : 'falha'} - ${result.message || result.error || 'N/A'}`);
+    
     res.json(result);
   } catch (error) {
+    const userId = req.user?.id || 'system';
     logger.error('❌ Erro na sincronização manual:', { error: error.message });
+    
+    // ✅ AUDIT LOG: Registra erro
+    await logAction(userId, 'SYNC_WEATHER_MANUAL_ERROR', `Erro: ${error.message}`);
+    
     res.status(500).json({ error: 'Erro ao sincronizar dados climáticos' });
   }
 });

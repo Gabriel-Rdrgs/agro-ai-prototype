@@ -10,6 +10,7 @@ const axios = require('axios');
 const { verifyToken, checkRole } = require('../authMiddleware');
 const jobQueue = require('../utils/jobQueue');
 const cache = require('../utils/cache');
+const { logAction } = require('../services/auditService'); // ✅ AUDIT LOG
 
 const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://ai-service:8000';
 
@@ -19,7 +20,11 @@ const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://ai-service:8000';
  */
 router.post('/start', verifyToken, checkRole(['admin']), async (req, res) => {
   try {
+    const userId = req.user?.id || 'system';
     const { type = 'all', skipIbge = false } = req.body;
+
+    // ✅ AUDIT LOG: Registra ação crítica
+    await logAction(userId, 'ETL_START', `Iniciado ETL tipo: ${type}, skipIbge: ${skipIbge}`);
 
     // Cria job
     const jobId = jobQueue.createJob('etl', {
@@ -54,11 +59,16 @@ router.post('/start', verifyToken, checkRole(['admin']), async (req, res) => {
         // Invalida cache após ETL
         cache.invalidatePattern('opportunities:*');
 
+        // ✅ AUDIT LOG: Registra conclusão do ETL (em background)
+        await logAction(userId, 'ETL_COMPLETE', `ETL ${type} concluído com sucesso. JobId: ${jobId}`);
+
         return {
           success: true,
           ...response.data
         };
       } catch (error) {
+        // ✅ AUDIT LOG: Registra erro do ETL (em background)
+        await logAction(userId, 'ETL_ERROR', `ETL ${type} falhou. JobId: ${jobId}, Erro: ${error.message}`);
         throw new Error(error.response?.data?.detail || error.message);
       }
     });
@@ -72,7 +82,12 @@ router.post('/start', verifyToken, checkRole(['admin']), async (req, res) => {
     });
 
   } catch (error) {
+    const userId = req.user?.id || 'system';
     console.error('❌ Erro ao iniciar ETL:', error);
+    
+    // ✅ AUDIT LOG: Registra erro ao iniciar ETL
+    await logAction(userId, 'ETL_START_ERROR', `Erro ao iniciar ETL: ${error.message}`);
+    
     res.status(500).json({
       error: 'Erro ao iniciar ETL',
       details: error.message
