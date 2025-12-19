@@ -6,10 +6,56 @@ Este guia explica como configurar todos os serviços do projeto no Railway, incl
 
 ## 📋 Índice
 
-1. [AI Service](#ai-service)
-2. [Backup Worker](#backup-worker)
-3. [Scheduler Worker](#scheduler-worker)
-4. [Troubleshooting Comum](#troubleshooting-comum)
+1. [Backend](#backend)
+2. [AI Service](#ai-service)
+3. [Backup Worker](#backup-worker)
+4. [Scheduler Worker](#scheduler-worker)
+5. [Troubleshooting Comum](#troubleshooting-comum)
+
+---
+
+## 🚀 Backend
+
+### Configuração Básica
+
+1. **Criar Service no Railway**
+   - "+ New" → "Add New Service" → "GitHub Repo"
+   - Selecione o repositório `agro-ai-prototype`
+
+2. **Configurar Build & Deploy**
+   - **Root Directory:** `backend`
+   - **Dockerfile Path:** `Dockerfile` (ou deixe vazio)
+   - **Start Command:** `npm start` (ou `node server.js`)
+
+3. **Variáveis de Ambiente OBRIGATÓRIAS**
+   ```bash
+   DATABASE_URL=postgresql://...
+   DIRECT_URL=postgresql://...  # Preferível
+   JWT_SECRET=...
+   PYTHON_API_URL=https://seu-ai-service.railway.app  # URL do AI Service no Railway
+   INTERNAL_API_KEY=...  # ⚠️ CRÍTICO: Mesma chave do AI Service
+   PORT=3001
+   ```
+
+### ⚠️ IMPORTANTE: INTERNAL_API_KEY
+
+**A variável `INTERNAL_API_KEY` DEVE estar configurada no Backend com o MESMO valor do AI Service.**
+
+- **Por quê?** O Backend precisa enviar o header `X-Internal-API-Key` em todas as requisições ao AI Service
+- **O que acontece se não configurar?** Todas as requisições ao AI Service retornarão `401 Unauthorized`
+- **Como gerar?** Use uma string aleatória segura (ex: `openssl rand -hex 32`)
+
+### Erro: "401 Unauthorized" ao chamar AI Service
+
+**Sintomas:**
+- Logs mostram: `❌ Requisição sem X-Internal-API-Key: GET /api/v1/weather/extreme-events`
+- Todas as requisições ao AI Service retornam 401
+
+**Solução:**
+1. Verifique se `INTERNAL_API_KEY` está configurada no Backend
+2. Verifique se `INTERNAL_API_KEY` está configurada no AI Service
+3. **Ambas devem ter o MESMO valor**
+4. Faça redeploy de ambos os serviços após configurar
 
 ---
 
@@ -135,11 +181,19 @@ Veja o [Guia Completo de Backup](./GUIA_BACKUP_RAILWAY.md) para detalhes.
 
 ## 📋 Checklist por Service
 
+### Backend
+- [ ] Root Directory: `backend`
+- [ ] Dockerfile Path: `Dockerfile` (ou vazio)
+- [ ] Start Command: `npm start` (ou `node server.js`)
+- [ ] Variables: `DATABASE_URL`, `JWT_SECRET`, `PYTHON_API_URL`, `INTERNAL_API_KEY` ⚠️
+- [ ] **CRÍTICO:** `INTERNAL_API_KEY` deve ser igual ao AI Service
+
 ### AI Service
 - [ ] Root Directory: `ai-service`
 - [ ] Dockerfile Path: `Dockerfile` (ou vazio)
 - [ ] Start Command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-- [ ] Variables: `DATABASE_URL`, `OPENAI_API_KEY`, `INTERNAL_API_KEY`
+- [ ] Variables: `DATABASE_URL`, `OPENAI_API_KEY`, `INTERNAL_API_KEY` ⚠️
+- [ ] **CRÍTICO:** `INTERNAL_API_KEY` deve ser igual ao Backend
 
 ### Backup Worker
 - [ ] Root Directory: vazio (ou `./`)

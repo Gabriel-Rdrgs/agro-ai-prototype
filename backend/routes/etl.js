@@ -13,6 +13,27 @@ const cache = require('../utils/cache');
 const { logAction } = require('../services/auditService'); // ✅ AUDIT LOG
 
 const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://ai-service:8000';
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY;
+
+// ✅ SEGURANÇA: Helper para criar instância axios configurada com autenticação interna
+function createPythonAxiosClient() {
+  const client = axios.create({
+    baseURL: PYTHON_API_URL,
+    timeout: 600000, // 10 minutos (ETL pode demorar)
+  });
+  
+  // Adiciona header de autenticação em todas as requisições
+  if (INTERNAL_API_KEY) {
+    client.defaults.headers.common['X-Internal-API-Key'] = INTERNAL_API_KEY;
+  } else {
+    console.warn('⚠️ AVISO: INTERNAL_API_KEY não configurado. Requisições ao Python podem falhar em produção.');
+  }
+  
+  return client;
+}
+
+// Instância do cliente axios para Python (com autenticação)
+const pythonAxios = createPythonAxiosClient();
 
 /**
  * POST /api/admin/etl/start
@@ -48,10 +69,9 @@ router.post('/start', verifyToken, checkRole(['admin']), async (req, res) => {
         
         jobQueue.updateProgress(jobId, 30, 'Processando dados...');
         
-        const response = await axios.post(
-          `${PYTHON_API_URL}${endpoint}`,
-          params,
-          { timeout: 600000 } // 10 minutos
+        const response = await pythonAxios.post(
+          endpoint,
+          params
         );
 
         jobQueue.updateProgress(jobId, 90, 'Finalizando...');
