@@ -55,9 +55,11 @@ Veja o [Guia Completo de Backup](./GUIA_BACKUP_RAILWAY.md) para detalhes.
 ### Configuração Rápida
 
 1. **Root Directory:** Vazio (ou `./`)
-2. **Dockerfile Path:** `Dockerfile.backup-worker`
+2. **Dockerfile Path:** `Dockerfile` (ou deixe vazio - Railway detecta automaticamente)
 3. **Start Command:** `python scripts/backup_worker.py --once`
 4. **Variables:** `DATABASE_URL` ou `DIRECT_URL`
+
+**Nota:** O `Dockerfile` na raiz é específico para o backup worker. Outros serviços usam seus próprios Dockerfiles em subdiretórios.
 
 ---
 
@@ -101,7 +103,7 @@ Veja o [Guia Completo de Backup](./GUIA_BACKUP_RAILWAY.md) para detalhes.
 
 **Solução:**
 - **AI Service / Scheduler:** Root Directory = `ai-service`
-- **Backup Worker:** Root Directory = vazio, Dockerfile Path = `Dockerfile.backup-worker`
+- **Backup Worker:** Root Directory = vazio, Dockerfile Path = `Dockerfile` (ou vazio)
 - **Backend:** Root Directory = `backend`
 
 ### Erro: "Dockerfile not found"
@@ -141,7 +143,7 @@ Veja o [Guia Completo de Backup](./GUIA_BACKUP_RAILWAY.md) para detalhes.
 
 ### Backup Worker
 - [ ] Root Directory: vazio (ou `./`)
-- [ ] Dockerfile Path: `Dockerfile.backup-worker`
+- [ ] Dockerfile Path: `Dockerfile` (ou vazio)
 - [ ] Start Command: `python scripts/backup_worker.py --once`
 - [ ] Variables: `DATABASE_URL` ou `DIRECT_URL`
 - [ ] Cron Schedule configurado (se usar `--once`)

@@ -20,7 +20,8 @@ refactor(docs): organiza documentação e corrige configuração Railway Backup
 - Reduz de ~39 para 12 arquivos .md organizados
 
 ### 🔧 Configuração Railway Backup
-- Cria Dockerfile.backup-worker para Railway
+- Cria Dockerfile na raiz para Railway detectar automaticamente
+- Railway detecta Dockerfile quando Root Directory está vazio
 - Adiciona schedule às dependências do backup worker
 - Atualiza guia de backup com configuração correta
 - Corrige referências ao Dockerfile do backup
@@ -36,7 +37,8 @@ refactor(docs): organiza documentação e corrige configuração Railway Backup
 - docs/GUIA_RAILWAY.md (consolidado)
 - docs/GUIA_TESTES.md (consolidado)
 - docs/GUIA_PROPHET.md (consolidado)
-- Dockerfile.backup-worker (novo)
+- Dockerfile (novo, na raiz - usado pelo Railway)
+- Dockerfile.backup-worker (mantido como referência)
 - scripts/backup_worker.py (adiciona schedule às dependências)
 ```
 
@@ -46,7 +48,7 @@ refactor(docs): organiza documentação e corrige Railway Backup
 
 - Consolida 13 arquivos .md em 5 guias organizados
 - Remove arquivos temporários
-- Cria Dockerfile.backup-worker para Railway
+- Cria Dockerfile na raiz para Railway detectar automaticamente
 - Adiciona índice de documentação (docs/README.md)
 ```
 

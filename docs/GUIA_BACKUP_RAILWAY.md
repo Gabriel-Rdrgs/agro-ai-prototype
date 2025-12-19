@@ -40,13 +40,13 @@ Você tem **duas opções** para rodar backups no Railway:
 
 ### Passo 2: Configurar Root Directory e Dockerfile
 
-⚠️ **IMPORTANTE:** O Dockerfile do backup está na raiz como `Dockerfile.backup-worker`
+⚠️ **IMPORTANTE:** O Dockerfile do backup está na raiz como `Dockerfile`
 
 1. Vá em **"Settings"** do novo service
 2. Na seção **"Build & Deploy"**, configure:
    - **Root Directory:** Deixe vazio (ou `./`) - código está na raiz
-   - **Dockerfile Path:** `Dockerfile.backup-worker` ⚠️ **CRÍTICO**
-   - Isso diz ao Railway para usar o Dockerfile específico do backup
+   - **Dockerfile Path:** `Dockerfile` (ou deixe vazio) ⚠️ **CRÍTICO**
+   - O Railway detectará automaticamente o `Dockerfile` na raiz
 3. Clique em **"Save"**
 3. Clique em **"Save"**
 
@@ -184,8 +184,9 @@ Se você quiser persistir os backups:
 **Causa:** Dockerfile Path não configurado ou incorreto.
 
 **Solução:** 
-- Configure o Dockerfile Path como `Dockerfile.backup-worker` em Settings → Build & Deploy
-- Verifique se o arquivo existe na raiz do repositório
+- Configure o Root Directory como vazio (ou `./`)
+- Configure o Dockerfile Path como `Dockerfile` (ou deixe vazio)
+- Verifique se o arquivo `Dockerfile` existe na raiz do repositório
 
 ### Erro: "Script de backup não encontrado"
 
@@ -204,7 +205,7 @@ Se você quiser persistir os backups:
 **Causa:** PostgreSQL client não instalado no container.
 
 **Solução:** 
-- O `Dockerfile.backup-worker` já inclui `postgresql-client-17` (compatível com Supabase)
+- O `Dockerfile` na raiz já inclui `postgresql-client-17` (compatível com Supabase)
 - Faça redeploy do service para aplicar
 
 ### Erro: "server version mismatch" (pg_dump versão diferente do servidor)
@@ -250,7 +251,7 @@ Se você quiser persistir os backups:
 ### Configuração Inicial
 - [ ] Service criado no Railway
 - [ ] Root Directory configurado (vazio ou `./`)
-- [ ] Dockerfile Path: `Dockerfile.backup-worker` ⚠️
+- [ ] Dockerfile Path: `Dockerfile` (ou vazio) ⚠️
 - [ ] Start Command configurado (`--once` ou `--schedule`)
 - [ ] Variáveis de ambiente adicionadas (`DATABASE_URL` ou `DIRECT_URL`)
 - [ ] Cron schedule configurado (se usar `--once`)
@@ -278,9 +279,12 @@ Se você quiser persistir os backups:
 ## 📝 Notas Finais
 
 **Estrutura do Projeto:**
-- `Dockerfile.backup-worker` - Dockerfile do backup worker (na raiz)
+- `Dockerfile` - Dockerfile do backup worker (na raiz, usado quando Root Directory está vazio)
+- `Dockerfile.backup-worker` - Cópia de referência (não usado pelo Railway)
 - `scripts/backup_postgres.py` - Script de backup
 - `scripts/backup_worker.py` - Worker de agendamento
+
+**Nota:** O Railway detecta automaticamente o `Dockerfile` na raiz quando o Root Directory está vazio. Para outros serviços (AI Service, Backend), use os Dockerfiles em seus respectivos diretórios.
 
 **Para verificar rapidamente se o backup está funcionando:**
 1. Railway Dashboard → Service de Backup → **Logs**
