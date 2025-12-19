@@ -2,6 +2,8 @@
 import React, { useEffect, useState } from 'react';
 import { OpportunityService } from '../../services/opportunityService';
 import { PdfService } from '../../services/pdfService'; // 🔙 Trazendo o PDF de volta
+import api from '../../services/api';
+import html2canvas from 'html2canvas';
 import { 
   Chart as ChartJS, 
   CategoryScale, 
@@ -47,6 +49,8 @@ const Dashboard = () => {
   const [fuelData, setFuelData] = useState(null);
   const [trendData, setTrendData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [includeFullList, setIncludeFullList] = useState(false);
 
  useEffect(() => {
     const fetchData = async () => {
@@ -137,8 +141,50 @@ const Dashboard = () => {
     fetchData();
   }, []);
 
+  // 🔙 Função para Abrir Modal de Exportação
+  const handleOpenExportModal = () => {
+    setShowExportModal(true);
+  };
+
   // 🔙 Função para Gerar o PDF Geral do Dashboard
-  const handleExportDashboard = () => {
+  const handleExportDashboard = async () => {
+    setShowExportModal(false);
+    
+    // Busca dados de tendências de mercado
+    let marketTrendsData = null;
+    let chartImage = null;
+    
+    try {
+      const response = await api.get('/analytics/trends?product=Tomate&days=90');
+      if (response.data.success) {
+        marketTrendsData = response.data;
+        
+        // Tenta capturar o gráfico como imagem (com compressão)
+        try {
+          // Aguarda um pouco para garantir que o gráfico está renderizado
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          const chartElement = document.querySelector('[data-chart="market-trends"]');
+          if (chartElement) {
+            const canvas = await html2canvas(chartElement, {
+              backgroundColor: '#0f172a',
+              scale: 1.5, // ✅ Reduzido de 2 para 1.5 (menor tamanho)
+              logging: false,
+              useCORS: true,
+              width: chartElement.offsetWidth,
+              height: chartElement.offsetHeight
+            });
+            // ✅ Usa JPEG com qualidade 0.7 para compressão (ao invés de PNG)
+            chartImage = canvas.toDataURL('image/jpeg', 0.7);
+          }
+        } catch (canvasError) {
+          console.warn('Erro ao capturar gráfico:', canvasError);
+        }
+      }
+    } catch (error) {
+      console.warn('Erro ao buscar tendências de mercado para PDF:', error);
+    }
+
     // Cálculo seguro do Volume Total (Remove texto como 'sc', 'cx')
     const totalVolume = opportunities.reduce((acc, curr) => {
         const volString = String(curr.volume || '0'); 
@@ -162,8 +208,11 @@ const Dashboard = () => {
             dieselAvg: stats.dieselAvg,
             fuelByState: fuelData // Passamos os dados do gráfico para fazer tabela
         },
+        // ✅ NOVO: Dados de Tendências de Mercado
+        marketTrends: marketTrendsData,
+        marketTrendsChartImage: chartImage, // Imagem do gráfico capturada
         top5: opportunities.slice(0, 5),
-        saved: opportunities
+        saved: includeFullList ? opportunities : null // Só inclui se o usuário escolher
     };
 
     PdfService.generateDashboardReport(dashboardData, 'Gestor Agro');
@@ -204,7 +253,7 @@ const Dashboard = () => {
             
             {/* 🔙 BOTÃO DE EXPORTAR VOLTOU */}
             <button 
-                onClick={handleExportDashboard}
+                onClick={handleOpenExportModal}
                 style={{
                     background: 'linear-gradient(45deg, #00d9ff, #00b8d9)',
                     color: '#0f172a',
@@ -220,6 +269,99 @@ const Dashboard = () => {
             >
                 📄 Exportar Panorama
             </button>
+            
+            {/* Modal de Exportação */}
+            {showExportModal && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    background: 'rgba(0, 0, 0, 0.7)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 1000
+                }}>
+                    <div style={{
+                        background: 'var(--bg-card)',
+                        padding: '24px',
+                        borderRadius: '12px',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        minWidth: '400px',
+                        maxWidth: '500px'
+                    }}>
+                        <h3 style={{margin: '0 0 20px 0', color: 'var(--text-primary)'}}>
+                            📄 Opções de Exportação
+                        </h3>
+                        
+                        <div style={{marginBottom: '20px'}}>
+                            <label style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px',
+                                cursor: 'pointer',
+                                color: 'var(--text-primary)',
+                                fontSize: '0.95rem'
+                            }}>
+                                <input
+                                    type="checkbox"
+                                    checked={includeFullList}
+                                    onChange={(e) => setIncludeFullList(e.target.checked)}
+                                    style={{
+                                        width: '18px',
+                                        height: '18px',
+                                        cursor: 'pointer'
+                                    }}
+                                />
+                                <span>Incluir lista completa de oportunidades</span>
+                            </label>
+                            <p style={{
+                                margin: '8px 0 0 28px',
+                                fontSize: '0.85rem',
+                                color: '#94a3b8'
+                            }}>
+                                Se desmarcado, apenas as top 5 oportunidades serão incluídas
+                            </p>
+                        </div>
+                        
+                        <div style={{
+                            display: 'flex',
+                            gap: '10px',
+                            justifyContent: 'flex-end'
+                        }}>
+                            <button
+                                onClick={() => setShowExportModal(false)}
+                                style={{
+                                    padding: '8px 16px',
+                                    background: 'transparent',
+                                    border: '1px solid rgba(255,255,255,0.2)',
+                                    color: 'var(--text-primary)',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={handleExportDashboard}
+                                style={{
+                                    padding: '8px 16px',
+                                    background: 'linear-gradient(45deg, #00d9ff, #00b8d9)',
+                                    color: '#0f172a',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    fontWeight: 'bold',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                Gerar PDF
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {/* 👇 BOTÃO DE CORREÇÃO (TEMPORÁRIO) */}
             <button 
                 onClick={handleFixData}
@@ -332,29 +474,36 @@ const Dashboard = () => {
 
     return (
         <tr key={op.id} style={{borderBottom: '1px solid #f1f5f9'}}>
-            <td style={{padding: '12px'}}>
-                <div style={{fontWeight: '500', color: '#1e293b'}}>
-                    {op.product}
-                    {/* Ícone de IA se otimizado */}
-                    {details.isOptimized && <span title="Otimizado por IA" style={{fontSize:'0.8em', marginLeft:'4px'}}>🤖</span>}
-                </div>
-                <div style={{fontSize: '0.8rem', color: '#64748b'}}>
-                    📍 {origin.city || 'N/A'}, {origin.state || ''}
-                </div>
-            </td>
-            
+            {/* Coluna 1: Produto (apenas produto) */}
             <td style={{padding: '12px', fontSize:'0.9rem'}}>
-                🚛 {dest.name || op.sellLocation || 'N/A'}
+                {op.product}
+                {/* Ícone de IA se otimizado */}
+                {details.isOptimized && <span title="Otimizado por IA" style={{fontSize:'0.8em', marginLeft:'4px'}}>🤖</span>}
             </td>
             
-            {/* AQUI ESTAVA O ERRO: Agora usamos as variáveis seguras */}
-            <td style={{padding: '12px'}}>R$ {buyPrice.toFixed(2)}</td>
-            <td style={{padding: '12px'}}>R$ {sellPrice.toFixed(2)}</td>
+            {/* Coluna 2: Cidade/Estado de Origem */}
+            <td style={{padding: '12px', fontSize:'0.9rem'}}>
+                {origin.city || 'N/A'}, {origin.state || ''}
+            </td>
             
-            <td style={{padding: '12px', fontWeight: 'bold', color: estimatedProfit > 0 ? '#10b981' : '#ef4444'}}>
+            {/* Coluna 3: Destino */}
+            <td style={{padding: '12px', fontSize:'0.9rem'}}>
+                {dest.name || dest.city || op.sellLocation || 'N/A'}
+                {dest.state && `, ${dest.state}`}
+            </td>
+            
+            {/* Coluna 4: Compra */}
+            <td style={{padding: '12px', fontSize:'0.9rem'}}>R$ {buyPrice.toFixed(2)}</td>
+            
+            {/* Coluna 5: Venda */}
+            <td style={{padding: '12px', fontSize:'0.9rem'}}>R$ {sellPrice.toFixed(2)}</td>
+            
+            {/* Coluna 6: Lucro Liq. */}
+            <td style={{padding: '12px', fontSize:'0.9rem', fontWeight: 'bold', color: estimatedProfit > 0 ? '#10b981' : '#ef4444'}}>
                 R$ {estimatedProfit.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
             </td>
             
+            {/* Coluna 7: ROI */}
             <td style={{padding: '12px'}}>
                 <span style={{
                     background: roi > 20 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)',

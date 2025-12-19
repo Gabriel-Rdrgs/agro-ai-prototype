@@ -293,27 +293,254 @@ if (scenarioData.result.details?.fuel_breakdown) {
     doc.setTextColor(0, 0, 0);
     doc.text('3. Top 5 Oportunidades (Maior ROI)', 14, yPos);
     
-    const top5Rows = data.top5.map(opp => [
-        opp.product || '-',
-        `${opp.city || ''} - ${opp.state || ''}`,
-        opp.sellLocation || opp.destState || '-',
-        `R$ ${(opp.buyPrice || 0).toFixed(2)}`,
-        `R$ ${(opp.sellPrice || 0).toFixed(2)}`,
-        `${(opp.roi || 0).toFixed(1)}%`
-    ]);
+    const top5Rows = data.top5.map(opp => {
+        // Extração segura dos dados
+        const financial = opp.financials || {};
+        const origin = opp.origin || {};
+        const dest = opp.destination || {};
+        
+        const buyPrice = financial.buyPrice || 0;
+        const sellPrice = financial.sellPrice || 0;
+        const roi = (financial.roi !== null && financial.roi !== undefined && !isNaN(financial.roi) && typeof financial.roi === 'number') 
+            ? parseFloat(financial.roi) 
+            : 0;
+        
+        // Cálculo de lucro estimado (Baseado em 1000kg/1ton)
+        const estimatedProfit = (sellPrice - buyPrice) * 1000;
+        
+        return [
+            opp.product || '-',
+            origin.name || origin.ceasaName || `${origin.city || ''} - ${origin.state || ''}` || '-',
+            dest.name || dest.city || opp.sellLocation || '-',
+            `R$ ${buyPrice.toFixed(2)}`,
+            `R$ ${sellPrice.toFixed(2)}`,
+            `R$ ${estimatedProfit.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`,
+            `${roi.toFixed(1)}%`
+        ];
+    });
 
     autoTable(doc, {
         startY: yPos + 5,
-        head: [['Produto', 'Origem', 'Destino', 'Compra', 'Venda', 'ROI']],
+        head: [['Produto', 'Origem', 'Destino', 'Compra', 'Venda', 'Lucro Liq.', 'ROI']],
         body: top5Rows,
         theme: 'grid',
         headStyles: { fillColor: darkBg, textColor: primaryColor },
         styles: { fontSize: 9, halign: 'center' },
-        columnStyles: { 0: { halign: 'left' }, 1: { halign: 'left' }, 2: { halign: 'left' } }
+        columnStyles: { 
+            0: { halign: 'left' }, 
+            1: { halign: 'left' }, 
+            2: { halign: 'left' },
+            5: { halign: 'right' },
+            6: { halign: 'center' }
+        }
     });
 
-    // --- 4. Histórico Completo REMOVIDO! ---
-    // (A secção de histórico que pediste para tirar foi apagada daqui)
+    // --- 4. Tendências de Mercado ---
+    yPos = doc.lastAutoTable.finalY + 15;
+    
+    // Verifica se há espaço na página, se não, cria nova página
+    if (yPos > 250) {
+        doc.addPage();
+        yPos = 20;
+    }
+    
+    if (data.marketTrends && data.marketTrends.statistics) {
+        doc.setFontSize(14);
+        doc.setTextColor(0, 0, 0);
+        doc.setFont('helvetica', 'bold');
+        doc.text('4. Tendências de Mercado', 14, yPos);
+        yPos += 10;
+        
+        const stats = data.marketTrends.statistics;
+        const trend = data.marketTrends.trend || {};
+        
+        // Estatísticas principais (CORRIGIDO: usando nomes corretos dos campos)
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(0, 0, 0);
+        
+        const statsData = [
+            ['Métrica', 'Valor'],
+            ['Preço Atual', `R$ ${(stats.current || 0).toFixed(2)}`],
+            ['Preço Médio', `R$ ${(stats.average || 0).toFixed(2)}`],
+            ['Preço Mínimo', `R$ ${(stats.min || 0).toFixed(2)}`],
+            ['Preço Máximo', `R$ ${(stats.max || 0).toFixed(2)}`],
+            ['Volatilidade', `${(stats.volatility || 0).toFixed(2)}%`],
+            ['Tendência', trend.direction === 'up' ? '📈 Alta' : trend.direction === 'down' ? '📉 Baixa' : '➡️ Estável'],
+            ['Variação 7d vs 30d', `${(trend.changePercent || 0).toFixed(2)}%`]
+        ];
+        
+        autoTable(doc, {
+            startY: yPos + 5,
+            head: [statsData[0]],
+            body: statsData.slice(1),
+            theme: 'striped',
+            headStyles: { fillColor: darkBg, textColor: primaryColor },
+            styles: { fontSize: 9, halign: 'left' },
+            columnStyles: { 
+                0: { halign: 'left', fontStyle: 'bold' }, 
+                1: { halign: 'right' }
+            }
+        });
+        
+        yPos = doc.lastAutoTable.finalY + 15;
+        
+        // Informações adicionais
+        if (data.marketTrends.chart && data.marketTrends.chart.labels) {
+            doc.setFontSize(9);
+            doc.setTextColor(100, 100, 100);
+            doc.setFont('helvetica', 'italic');
+            doc.text(`Período analisado: ${data.marketTrends.chart.labels.length} pontos de dados`, 14, yPos);
+            yPos += 5;
+            doc.text(`Produto: ${data.marketTrends.product || 'Tomate'} | Região: ${data.marketTrends.region || 'Total (Brasil)'}`, 14, yPos);
+            yPos += 10;
+        }
+        
+        // Gráfico de Tendências (imagem ou tabela)
+        if (data.marketTrends.chart && data.marketTrends.chart.labels && data.marketTrends.chart.datasets) {
+            // Verifica se há espaço, se não, cria nova página
+            if (yPos > 200) {
+                doc.addPage();
+                yPos = 20;
+            }
+            
+            doc.setFontSize(12);
+            doc.setTextColor(0, 0, 0);
+            doc.setFont('helvetica', 'bold');
+            doc.text('Gráfico de Evolução de Preços', 14, yPos);
+            yPos += 8;
+            
+            // Se temos a imagem do gráfico, adiciona ela (com compressão)
+            if (data.marketTrendsChartImage) {
+                try {
+                    const imgWidth = 180; // mm
+                    const imgHeight = 80; // mm (mantém proporção)
+                    
+                    // ✅ Adiciona imagem com compressão (JPEG já vem comprimido)
+                    doc.addImage(
+                        data.marketTrendsChartImage,
+                        'JPEG', // ✅ Mudado de PNG para JPEG (menor tamanho)
+                        14,
+                        yPos,
+                        imgWidth,
+                        imgHeight,
+                        undefined, // alias
+                        'FAST' // ✅ Modo FAST para compressão adicional
+                    );
+                    yPos += imgHeight + 10;
+                } catch (imgError) {
+                    console.warn('Erro ao adicionar imagem do gráfico:', imgError);
+                    // Fallback para tabela se a imagem falhar
+                    yPos += 5;
+                }
+            }
+            
+            // Tabela com últimos 10 pontos (sempre incluída como complemento)
+            if (yPos > 240) {
+                doc.addPage();
+                yPos = 20;
+            }
+            
+            doc.setFontSize(10);
+            doc.setTextColor(0, 0, 0);
+            doc.setFont('helvetica', 'bold');
+            doc.text('Dados Detalhados (Últimos 10 pontos)', 14, yPos);
+            yPos += 6;
+            
+            // Pega os últimos 10 pontos de dados
+            const labels = data.marketTrends.chart.labels.slice(-10);
+            const historical = data.marketTrends.chart.datasets.historical.slice(-10);
+            const ma7 = data.marketTrends.chart.datasets.ma7 ? data.marketTrends.chart.datasets.ma7.slice(-10) : [];
+            
+            const chartRows = labels.map((label, index) => [
+                label,
+                `R$ ${historical[index].toFixed(2)}`,
+                ma7[index] ? `R$ ${ma7[index].toFixed(2)}` : '-'
+            ]);
+            
+            autoTable(doc, {
+                startY: yPos + 3,
+                head: [['Data', 'Preço Histórico', 'Média Móvel 7d']],
+                body: chartRows,
+                theme: 'grid',
+                headStyles: { fillColor: darkBg, textColor: primaryColor },
+                styles: { fontSize: 8, halign: 'center' },
+                columnStyles: { 
+                    0: { halign: 'left' },
+                    1: { halign: 'right' },
+                    2: { halign: 'right' }
+                }
+            });
+            
+            yPos = doc.lastAutoTable.finalY + 10;
+        }
+    }
+    
+    // --- 5. Resumo Completo de Oportunidades (Opcional) ---
+    if (data.saved && data.saved.length > 0) {
+        // Verifica se há espaço na página, se não, cria nova página
+        if (yPos > 250) {
+            doc.addPage();
+            yPos = 20;
+        }
+        
+        doc.setFontSize(14);
+        doc.setTextColor(0, 0, 0);
+        doc.setFont('helvetica', 'bold');
+        doc.text('5. Resumo Completo de Oportunidades', 14, yPos);
+        yPos += 10;
+        
+        // Limita a 20 oportunidades para não sobrecarregar o PDF
+        const allOppsRows = data.saved.slice(0, 20).map(opp => {
+            const financial = opp.financials || {};
+            const origin = opp.origin || {};
+            const dest = opp.destination || {};
+            
+            const buyPrice = financial.buyPrice || 0;
+            const sellPrice = financial.sellPrice || 0;
+            const roi = (financial.roi !== null && financial.roi !== undefined && !isNaN(financial.roi) && typeof financial.roi === 'number') 
+                ? parseFloat(financial.roi) 
+                : 0;
+            
+            const estimatedProfit = (sellPrice - buyPrice) * 1000;
+            
+            return [
+                opp.product || '-',
+                origin.name || origin.ceasaName || `${origin.city || ''} - ${origin.state || ''}` || '-',
+                dest.name || dest.city || opp.sellLocation || '-',
+                `R$ ${buyPrice.toFixed(2)}`,
+                `R$ ${sellPrice.toFixed(2)}`,
+                `R$ ${estimatedProfit.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`,
+                `${roi.toFixed(1)}%`
+            ];
+        });
+        
+        if (allOppsRows.length > 0) {
+            autoTable(doc, {
+                startY: yPos + 5,
+                head: [['Produto', 'Origem', 'Destino', 'Compra', 'Venda', 'Lucro Liq.', 'ROI']],
+                body: allOppsRows,
+                theme: 'striped',
+                headStyles: { fillColor: darkBg, textColor: primaryColor },
+                styles: { fontSize: 8, halign: 'center' },
+                columnStyles: { 
+                    0: { halign: 'left' }, 
+                    1: { halign: 'left' }, 
+                    2: { halign: 'left' },
+                    5: { halign: 'right' },
+                    6: { halign: 'center' }
+                }
+            });
+            
+            if (data.saved.length > 20) {
+                yPos = doc.lastAutoTable.finalY + 5;
+                doc.setFontSize(9);
+                doc.setTextColor(100, 100, 100);
+                doc.setFont('helvetica', 'italic');
+                doc.text(`* Mostrando 20 de ${data.saved.length} oportunidades totais`, 14, yPos);
+            }
+        }
+    }
 
     // Rodapé
     const pageHeight = doc.internal.pageSize.height;

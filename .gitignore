@@ -196,3 +196,4 @@ COMMIT_MESSAGE.txt
 backups/
 *.sql
 *.sql.gz
+COMMIT_MESSAGE_DASHBOARD_PDF.md

@@ -306,13 +306,16 @@ const MarketTrendsChart = ({ onError = null }) => {
   };
 
   return (
-    <div style={{
-      background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.8) 0%, rgba(30, 41, 59, 0.8) 100%)',
-      borderRadius: '16px',
-      padding: '24px',
-      border: '1px solid rgba(148, 163, 184, 0.1)',
-      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
-    }}>
+    <div 
+      data-chart="market-trends"
+      style={{
+        background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.8) 0%, rgba(30, 41, 59, 0.8) 100%)',
+        borderRadius: '16px',
+        padding: '24px',
+        border: '1px solid rgba(148, 163, 184, 0.1)',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
+      }}
+    >
       {/* Cabeçalho */}
       <div style={{ marginBottom: '20px' }}>
         <h3 style={{
