@@ -1204,7 +1204,74 @@ app.post('/api/ai/recommendation', verifyToken, async (req, res) => {
   }
 });
 
-// 7. Radar de Mercado
+// 7. Chat RAG (Assistente Agronômico) - ✅ NOVO
+app.post('/api/ai/chat/query', verifyToken, async (req, res) => {
+  try {
+    // Debug: Verifica se req.body está disponível
+    if (!req.body) {
+      console.error("❌ CRÍTICO: req.body está undefined no /chat/query!");
+      return res.status(400).json({ error: 'req.body não disponível. Verifique middleware express.json()' });
+    }
+    
+    // Validação: question é obrigatório
+    if (!req.body.question || typeof req.body.question !== 'string' || req.body.question.trim().length === 0) {
+      return res.status(400).json({ error: 'Campo \"question\" é obrigatório e deve ser uma string não vazia' });
+    }
+    
+    const safePayload = {
+      question: req.body.question.trim()
+    };
+
+    console.log(`📤 [Node -> Python] Chat RAG: \"${safePayload.question.substring(0, 50)}...\"`);
+    
+    // Chama Python com timeout maior (RAG pode demorar com LLM)
+    const response = await pythonAxios.post(
+      '/api/v1/chat/query',
+      safePayload,
+      { timeout: 60000 } // 60 segundos
+    );
+    
+    // Normaliza formato da resposta para o frontend
+    const pythonData = response.data || {};
+    
+    res.json({
+      answer: pythonData.answer || 'Desculpe, não consegui gerar uma resposta.',
+      sources: pythonData.sources || []
+    });
+    
+  } catch (error) {
+    console.error("❌ Erro Chat RAG Node:", error.message);
+    
+    if (error.code === 'ECONNREFUSED') {
+      return res.status(503).json({ 
+        error: 'Serviço Python indisponível',
+        details: 'O serviço de IA não está respondendo. Verifique se está rodando.'
+      });
+    }
+    if (error.code === 'ECONNABORTED') {
+      return res.status(504).json({ 
+        error: 'Timeout ao processar consulta RAG',
+        details: 'O serviço demorou muito para responder (60s)'
+      });
+    }
+    if (error.response) {
+      const statusCode = error.response.status;
+      const pythonError = error.response.data?.detail || error.response.data?.error || error.message;
+      
+      return res.status(statusCode).json({ 
+        error: 'Erro no serviço de IA',
+        details: pythonError
+      });
+    }
+    
+    res.status(500).json({ 
+      error: 'Erro ao processar consulta RAG',
+      details: error.message
+    });
+  }
+});
+
+// 8. Radar de Mercado
 app.post('/market/scan', verifyToken, async (req, res) => {
   try {
     const response = await pythonAxios.post(

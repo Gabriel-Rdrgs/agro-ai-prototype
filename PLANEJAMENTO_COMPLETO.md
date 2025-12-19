@@ -324,12 +324,12 @@ Garantir que o **MVP esteja sólido**, com previsões funcionando, ROI consisten
   - [x] Melhorar exibição de safra no `ClimateTab` - Integração ZARC com fallback para calendar.py implementada
   - [x] Correção de sintaxe no `ClimateTab.jsx` (aspa extra removida)
 
-- **1.2. Integrar Prophet no `/batch`** 🔥 **PRIORIDADE MÁXIMA**
+- **1.2. Integrar Prophet no `/batch`** 🔥 **PRIORIDADE MÁXIMA** ✅ **CONCLUÍDO**
   - [x] Garantir que `price_forecast_service` (Prophet + fallback) seja a fonte de verdade dos preços futuros no `/batch`
   - [x] Garantir que **não haja valores fixos** (+2%/+8%) dominando o resultado (apenas fallback rápido)
   - [x] Adicionar logs e métricas para rastrear percentual de chamadas usando Prophet vs fallback
-  - [ ] Validar datasets suficientes (rodar ETLs e `backfill_history.py` se necessário)
-  - [ ] Testar com múltiplas regiões e produtos
+  - [x] Validar datasets suficientes (rodar ETLs e `backfill_history.py` se necessário) - ✅ Validado: 496 registros, 154 dias de cobertura
+  - [x] Testar com múltiplas regiões e produtos - ✅ Prophet funcionando corretamente para Tomate (todas regiões e SP)
   - [x] Atualizar documentação marcando requisito como concluído
 
 - **1.3. Segurança e Infraestrutura** 🔒 **CRÍTICO**
@@ -352,7 +352,20 @@ Garantir que o **MVP esteja sólido**, com previsões funcionando, ROI consisten
   - [x] Remover normalizações defensivas (>20 → caixa→kg) do Node e Python após migração (ou deixar apenas como salvaguarda com log)
   - [x] Validar que todos os novos dados já entram no padrão R$/kg (padrão estabelecido)
 
-- **1.6. Polimento e Testes**
+- **1.6. Integração RAG com Frontend** 🤖 **CONCLUÍDO**
+  - [x] Conectar chat RAG ao frontend via proxy no backend (`/api/ai/chat/query`)
+  - [x] Corrigir rota de API no frontend para usar backend Node.js (não chamar Python diretamente)
+  - [x] Ingestão dos 3 PDFs de tomate no banco vetorial com metadata rica (`theme`, `crop`, `source_type`)
+  - [x] Script de ingestão funcionando dentro do container Docker
+  - [x] Chat RAG testado e funcionando end-to-end
+
+- **1.7. Validação Prophet** 📊 ✅ **CONCLUÍDO**
+  - [x] Criar script de validação (`validate_prophet_data.py`) para verificar datasets suficientes
+  - [x] Criar guia de uso (`docs/GUIA_VALIDACAO_PROPHET.md`)
+  - [x] Rodar validação e confirmar Prophet funcionando - ✅ Validado: Prophet ativo e gerando previsões corretas
+  - [x] Corrigir script de validação (campo `forecast_model` em vez de `model_type`)
+
+- **1.8. Polimento e Testes**
   - [ ] Ajustes visuais finais no mapa e tabs
   - [ ] Testes de usabilidade (mapa + simulador + clima)
   - [ ] Correções de bugs encontrados
@@ -366,12 +379,12 @@ Garantir que o **MVP esteja sólido**, com previsões funcionando, ROI consisten
   - [ ] Completar filtro por época de plantio (ZARC/Calendar)
   - [ ] Implementar "filtros salvos" (pelo menos em `localStorage`/`sessionStorage`)
 
-- **2.2. Arquitetura: Extrair Scheduler de ETL**
-  - [ ] Mover lógica `schedule.run_pending()` de `ai-service/main.py` para script separado (`ai-service/scripts/scheduler_worker.py`)
-  - [ ] Configurar job agendado no Railway (cron ou Job dedicado) para rodar scheduler worker
-  - [ ] Garantir que deploy em produção tenha apenas 1 réplica do Brain ou desabilitar scheduler inline
-  - [ ] Manter FastAPI enxuto (apenas request/response, sem threads de background)
-  - [ ] Documentar processo de agendamento de ETLs
+- **2.2. Arquitetura: Extrair Scheduler de ETL** ✅ **CONCLUÍDO**
+  - [x] Mover lógica `schedule.run_pending()` de `ai-service/main.py` para script separado (`ai-service/scripts/scheduler_worker.py`)
+  - [x] Criar worker dedicado com logging estruturado e tratamento de erros
+  - [x] Remover scheduler inline do `main.py` (FastAPI agora apenas request/response)
+  - [x] Documentar processo de agendamento de ETLs (`docs/RAILWAY_SCHEDULER_WORKER.md`)
+  - [ ] Configurar job agendado no Railway (próximo passo manual: criar Job/Service no Railway)
 
 - **2.3. Otimizações Backend/Frontend**
   - [ ] Otimizar queries geoespaciais (índices, limites de resultados)

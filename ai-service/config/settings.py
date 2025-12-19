@@ -31,13 +31,24 @@ class Settings(BaseSettings):
     # ========================================
     # BANCO DE DADOS
     # ========================================
-    database_url: str = os.getenv('DATABASE_URL', 'sqlite:///./agro_test.db')
+    # Prioriza DIRECT_URL (porta direta, sem pgbouncer) para Python/SQLAlchemy
+    database_url: str = os.getenv('DIRECT_URL') or os.getenv('DATABASE_URL', 'sqlite:///./agro_test.db')
     
     # 👇 O TRUQUE DE MESTRE: Validador que limpa a URL para o Python
     @field_validator('database_url')
     @classmethod
     def clean_database_url(cls, v: str) -> str:
         if v:
+            # Normaliza postgres:// → postgresql:// para SQLAlchemy
+            if v.startswith('postgres://'):
+                v = v.replace('postgres://', 'postgresql://', 1)
+            
+            # ✅ CORREÇÃO CRÍTICA: Converte porta 6543 (pgbouncer) para 5432 (direta)
+            # O pgbouncer exige formato especial de usuário que causa erro de autenticação
+            # Python/SQLAlchemy gerencia pooling nativamente, então pode usar porta direta
+            if ':6543/' in v or ':6543?' in v:
+                v = v.replace(':6543/', ':5432/').replace(':6543?', ':5432?')
+            
             # O Python (SQLAlchemy) odeia o parâmetro pgbouncer, mas o Prisma precisa dele.
             # Aqui nós removemos silenciosamente apenas para o Python.
             return v.replace('?pgbouncer=true', '').replace('&pgbouncer=true', '')

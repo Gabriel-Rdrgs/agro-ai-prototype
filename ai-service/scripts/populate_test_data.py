@@ -1,48 +1,97 @@
 #!/usr/bin/env python3
 """
 Script rápido para popular dados de teste na tabela CeasaPrice.
-Gera 90 dias de histórico sintético para testar o Prophet.
+Gera histórico sintético para testar o Prophet.
 
 Uso:
-    python scripts/populate_test_data.py
+    python scripts/populate_test_data.py [--product Tomate] [--region MG] [--days 180]
 """
 
 import os
 import sys
+import argparse
 from datetime import datetime, timedelta
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from dotenv import load_dotenv
 import random
 
 # Adiciona path para imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+from utils.database import get_engine
+
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    print("❌ Erro: DATABASE_URL não encontrado no .env")
-    sys.exit(1)
+# Configuração de produtos e regiões
+PRODUCTS_CONFIG = {
+    'Tomate': {
+        'base_price': 4.50,
+        'ceasa_names': {
+            'SP': 'CEAGESP - São Paulo',
+            'MG': 'CEASA-MG - Belo Horizonte',
+            'RJ': 'CEASA-RJ - Rio de Janeiro',
+            'GO': 'CEASA-GO - Goiânia',
+        }
+    },
+    'Soja': {
+        'base_price': 2.17,
+        'ceasa_names': {
+            'SP': 'CEAGESP - São Paulo',
+            'MG': 'CEASA-MG - Belo Horizonte',
+            'PR': 'CEASA-PR - Curitiba',
+        }
+    },
+    'Milho': {
+        'base_price': 1.00,
+        'ceasa_names': {
+            'SP': 'CEAGESP - São Paulo',
+            'MG': 'CEASA-MG - Belo Horizonte',
+            'PR': 'CEASA-PR - Curitiba',
+        }
+    }
+}
 
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+engine = get_engine()
 
-engine = create_engine(DATABASE_URL)
-
-def populate_test_data():
-    """Popula dados de teste para Tomate em SP"""
+def populate_test_data(product: str = 'Tomate', region: str = 'SP', days: int = 180):
+    """
+    Popula dados de teste para produto/região específicos.
+    
+    Args:
+        product: Nome do produto (Tomate, Soja, Milho)
+        region: Código UF (SP, MG, RJ, etc.)
+        days: Número de dias de histórico a gerar
+    """
     print("=" * 60)
-    print("🚀 Populando dados de teste para CeasaPrice")
+    print(f"🚀 Populando dados de teste para CeasaPrice")
+    print(f"   Produto: {product}")
+    print(f"   Região: {region}")
+    print(f"   Período: {days} dias")
     print("=" * 60)
     
-    # Preço base (R$/kg)
-    base_price = 4.50
+    # Valida produto
+    if product not in PRODUCTS_CONFIG:
+        print(f"❌ Produto '{product}' não reconhecido.")
+        print(f"   Produtos disponíveis: {', '.join(PRODUCTS_CONFIG.keys())}")
+        sys.exit(1)
+    
+    config = PRODUCTS_CONFIG[product]
+    base_price = config['base_price']
+    
+    # Valida região
+    if region not in config['ceasa_names']:
+        print(f"⚠️ Região '{region}' não tem CEASA configurada para {product}.")
+        print(f"   Usando nome genérico: CEASA-{region}")
+        ceasa_name = f"CEASA-{region}"
+    else:
+        ceasa_name = config['ceasa_names'][region]
+    
     today = datetime.now()
     
-    # Gera 90 dias de histórico
+    # Gera histórico
     prices = []
-    for i in range(90):
-        date = today - timedelta(days=90 - i)
+    for i in range(days):
+        date = today - timedelta(days=days - i)
         
         # Simula sazonalidade (preços mais altos no inverno)
         month = date.month
@@ -53,14 +102,18 @@ def populate_test_data():
         else:
             seasonal_factor = 1.0
         
-        # Adiciona variação aleatória
-        variation = random.uniform(-0.10, 0.10)  # ±10%
+        # Adiciona variação aleatória (maior para Tomate)
+        if product == 'Tomate':
+            variation = random.uniform(-0.15, 0.15)  # ±15% (mais volátil)
+        else:
+            variation = random.uniform(-0.08, 0.08)  # ±8% (grãos mais estáveis)
+        
         price = base_price * seasonal_factor * (1 + variation)
         
         prices.append({
-            "ceasa_region": "SP",
-            "ceasa_name": "CEAGESP - São Paulo",
-            "product_name": "Tomate",
+            "ceasa_region": region.upper(),
+            "ceasa_name": ceasa_name,
+            "product_name": product,
             "unit_type": "kg",
             "price_min": round(price * 0.95, 2),
             "price_max": round(price * 1.05, 2),
@@ -100,11 +153,46 @@ def populate_test_data():
                 conn.rollback()
     
     print(f"\n✅ {inserted} registros inseridos/atualizados")
-    print(f"📅 Período: {(today - timedelta(days=90)).strftime('%Y-%m-%d')} até {today.strftime('%Y-%m-%d')}")
+    print(f"📅 Período: {(today - timedelta(days=days)).strftime('%Y-%m-%d')} até {today.strftime('%Y-%m-%d')}")
     print("=" * 60)
-    print("\n💡 Agora você pode testar o Prophet:")
-    print("   python -c \"from services.price_forecast import price_forecast_service; result = price_forecast_service.forecast('Tomate', 'SP', 30); print('Status:', result['status'])\"")
+    print(f"\n💡 Agora você pode testar o Prophet:")
+    print(f"   python scripts/validate_prophet_data.py --product {product} --region {region}")
+
+def main():
+    """Função principal com argumentos CLI"""
+    parser = argparse.ArgumentParser(
+        description='Popula dados de teste na tabela CeasaPrice para validar Prophet.'
+    )
+    
+    parser.add_argument(
+        '--product',
+        type=str,
+        default='Tomate',
+        help='Produto (Tomate, Soja, Milho) - padrão: Tomate'
+    )
+    
+    parser.add_argument(
+        '--region',
+        type=str,
+        default='SP',
+        help='Código UF (SP, MG, RJ, etc.) - padrão: SP'
+    )
+    
+    parser.add_argument(
+        '--days',
+        type=int,
+        default=180,
+        help='Número de dias de histórico (padrão: 180)'
+    )
+    
+    args = parser.parse_args()
+    
+    populate_test_data(
+        product=args.product,
+        region=args.region,
+        days=args.days
+    )
 
 if __name__ == "__main__":
-    populate_test_data()
+    main()
 

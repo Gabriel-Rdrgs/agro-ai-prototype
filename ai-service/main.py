@@ -18,11 +18,8 @@ Correções aplicadas (baseadas em PDFs científicos):
 import sys
 import os
 import logging
-import time
-import schedule
 # Importação do ETL removida do nível superior para evitar erros no deploy
 # O ETL será importado apenas quando necessário (lazy import)
-from threading import Thread
 from datetime import datetime
 from contextlib import asynccontextmanager
 from routers import chat as chat_router
@@ -63,22 +60,6 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 settings = get_settings()
 
-# =======================================
-# ⚙️ ENGINE DO SCHEDULER (O Coração)
-# =======================================
-def run_scheduler_loop():
-    """
-    Função que roda em loop infinito numa thread separada
-    para verificar se há tarefas agendadas (ETL, Robôs).
-    """
-    logger.info("⏰ Thread do Scheduler iniciada e aguardando tarefas...")
-    while True:
-        try:
-            schedule.run_pending()
-            time.sleep(1) # Evita uso de 100% da CPU
-        except Exception as e:
-            logger.error(f"❌ Erro fatal no Scheduler Loop: {e}")
-            time.sleep(5)
 # ========================================
 # LIFESPAN (Startup/Shutdown Events)
 # ========================================
@@ -123,11 +104,10 @@ async def lifespan(app: FastAPI):
     logger.info("="*60)
     logger.info("✅ APLICAÇÃO PRONTA PARA RECEBER REQUISIÇÕES")
     logger.info("="*60)
-
-    scheduler_thread = Thread(target=run_scheduler_loop, daemon=True)
-    scheduler_thread.start()
-    # TODO: Extrair para um worker separado (Celery/Redis) antes de escalar horizontalmente.                                          
-    logger.info("✅ Background Jobs ativados.")                      
+    
+    # ✅ SCHEDULER EXTRAÍDO: Jobs agendados agora rodam em worker separado
+    # Para executar jobs agendados, rode: python scripts/scheduler_worker.py
+    # Isso evita execução duplicada em múltiplas réplicas do FastAPI
     
     yield  # Aplicação roda aqui
     

@@ -19,9 +19,15 @@ Base = declarative_base()
 def get_database_url() -> str:
     """
     Retorna URL do banco normalizada.
-    Prioridade: DATABASE_URL > PYTHON_DB_URL > SQLite (fallback)
+    Prioridade: DIRECT_URL > DATABASE_URL > PYTHON_DB_URL > SQLite (fallback)
+    
+    Para Python/SQLAlchemy:
+    - Usa DIRECT_URL se disponível (porta 5432, sem pgbouncer)
+    - Se usar DATABASE_URL com pgbouncer (porta 6543), converte para porta direta (5432)
+    - Remove parâmetros pgbouncer (Python não precisa deles)
     """
-    url = os.getenv('DATABASE_URL') or os.getenv('PYTHON_DB_URL')
+    # Prioriza DIRECT_URL (porta direta, sem pgbouncer)
+    url = os.getenv('DIRECT_URL') or os.getenv('DATABASE_URL') or os.getenv('PYTHON_DB_URL')
     
     if not url:
         logger.warning("⚠️ DATABASE_URL não definida, usando SQLite local para testes")
@@ -30,6 +36,13 @@ def get_database_url() -> str:
     # Normaliza postgres:// → postgresql:// para SQLAlchemy
     if url.startswith('postgres://'):
         url = url.replace('postgres://', 'postgresql://', 1)
+    
+    # ✅ CORREÇÃO CRÍTICA: Converte porta 6543 (pgbouncer) para 5432 (direta)
+    # O pgbouncer exige formato especial de usuário que causa erro de autenticação
+    # Python/SQLAlchemy gerencia pooling nativamente, então pode usar porta direta
+    if ':6543/' in url or ':6543?' in url:
+        logger.info("🔄 Convertendo URL de pgbouncer (6543) para conexão direta (5432)")
+        url = url.replace(':6543/', ':5432/').replace(':6543?', ':5432?')
     
     # Remove parâmetros de pooling que o SQLAlchemy gerencia nativamente
     url = url.replace('?pgbouncer=true', '').replace('&pgbouncer=true', '')

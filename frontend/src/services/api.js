@@ -28,13 +28,28 @@ api.interceptors.request.use(async (config) => {
 export const chatService = {
   askAgronomist: async (question) => {
     try {
-      // Use 'aiApi' em vez de 'api'
-      // Como o baseURL já tem /api/v1, aqui colocamos só o restante
-      const response = await aiApi.post('/chat/query', { question });
-      return response.data;
+      // ✅ Agora chamamos o backend Node.js, que faz proxy para o Python
+      const response = await api.post('/ai/chat/query', { question });
+      
+      // Normaliza para garantir o formato esperado pelo componente de chat
+      return {
+        answer: response.data.answer || response.data.message || 'Resposta não disponível',
+        sources: response.data.sources || []
+      };
     } catch (error) {
       console.error("Erro no Chat:", error);
-      throw error;
+
+      if (error.response?.status === 401) {
+        throw new Error('Sessão expirada ou inválida. Faça login novamente.');
+      }
+      if (error.response?.status === 402) {
+        throw new Error('Créditos da OpenAI esgotados. Contate o administrador.');
+      }
+      if (error.response?.status === 429) {
+        throw new Error('Muitas requisições. Aguarde alguns segundos e tente novamente.');
+      }
+
+      throw new Error(error.response?.data?.error || 'Erro ao consultar o assistente agronômico.');
     }
   }
 };

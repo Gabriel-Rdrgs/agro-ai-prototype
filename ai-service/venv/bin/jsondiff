@@ -1,4 +1,4 @@
-#!/home/soares/dev/agro-ai-prototype/ai-service/venv/bin/python3
+#!/home/soares/Área de Trabalho/agro-ai-prototype/ai-service/venv/bin/python3
 # -*- coding: utf-8 -*-
 
 from __future__ import print_function

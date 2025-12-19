@@ -33,7 +33,7 @@ end
 # Unset irrelevant variables.
 deactivate nondestructive
 
-set -gx VIRTUAL_ENV /home/soares/dev/agro-ai-prototype/ai-service/venv
+set -gx VIRTUAL_ENV '/home/soares/Área de Trabalho/agro-ai-prototype/ai-service/venv'
 
 set -gx _OLD_VIRTUAL_PATH $PATH
 set -gx PATH "$VIRTUAL_ENV/"bin $PATH

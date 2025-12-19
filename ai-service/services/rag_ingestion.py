@@ -1,9 +1,16 @@
 # ai-service/services/rag_ingestion.py
 import logging
 import os
+import sys
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
+
+# Garante que o diretório raiz (/app) esteja no PYTHONPATH quando rodar como script
+CURRENT_DIR = os.path.dirname(__file__)
+PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 # Importa a infraestrutura oficial de banco
 from utils.database import get_db_session 
@@ -32,7 +39,7 @@ class DocumentIngestionService:
             separators=["\n\n", "\n", " ", ""]
         )
 
-    def process_and_save(self, file_path: str):
+    def process_and_save(self, file_path: str, base_metadata: dict | None = None):
         """
         Lê PDF, gera vetores e salva no Postgres.
         """
@@ -55,12 +62,18 @@ class DocumentIngestionService:
             with get_db_session() as session:
                 count = 0
                 for i, chunk in enumerate(chunks):
+                    # Monta metadata rica combinando informações do PDF e do chunk
+                    metadata = {}
+                    if base_metadata:
+                        metadata.update(base_metadata)
+                    metadata.update({
+                        "source": os.path.basename(file_path),
+                        "page": chunk.metadata.get("page", 0)
+                    })
+
                     doc = Document(
                         content=chunk.page_content,
-                        metadata_={
-                            "source": os.path.basename(file_path),
-                            "page": chunk.metadata.get("page", 0)
-                        },
+                        metadata_=metadata,
                         embedding=vectors[i]
                     )
                     session.add(doc)
@@ -73,13 +86,54 @@ class DocumentIngestionService:
             logger.error(f"❌ Erro crítico na ingestão: {e}")
             raise e
 
-# --- EXECUÇÃO VIA DOCKER ---
+    # --- EXECUÇÃO VIA DOCKER ---
 if __name__ == "__main__":
     service = DocumentIngestionService()
-    # Certifique-se que este arquivo existe dentro do container
-    pdf_name = "Clima e Produção de Tomates no Brasil.pdf" 
-    
-    if os.path.exists(pdf_name):
-        service.process_and_save(pdf_name)
-    else:
-        logger.error(f"Arquivo {pdf_name} não encontrado. Colocou ele na pasta ai-service?")
+
+    # Lista de PDFs a serem ingeridos com metadata temática
+    pdf_configs = [
+        {
+            "paths": [
+                "Clima e Produção de Tomates no Brasil.pdf",
+                os.path.join("docs", "Clima e Produção de Tomates no Brasil.pdf"),
+            ],
+            "base_metadata": {
+                "crop": "Tomate",
+                "theme": "Clima",
+                "source_type": "ClimaProducao"
+            }
+        },
+        {
+            "paths": [
+                "Função Custo de Armazenagem de Tomate.pdf",
+                os.path.join("docs", "Função Custo de Armazenagem de Tomate.pdf"),
+            ],
+            "base_metadata": {
+                "crop": "Tomate",
+                "theme": "Armazenagem",
+                "source_type": "CustoArmazenagem"
+            }
+        },
+        {
+            "paths": [
+                "Épocas de Plantio e Métricas de Decisão paraCultivo de Tomate no Brasil.pdf",
+                os.path.join("docs", "Épocas de Plantio e Métricas de Decisão paraCultivo de Tomate no Brasil.pdf"),
+            ],
+            "base_metadata": {
+                "crop": "Tomate",
+                "theme": "PlantioDecisao",
+                "source_type": "EpocasPlantioDecisao"
+            }
+        }
+    ]
+
+    for cfg in pdf_configs:
+        existing_path = next((p for p in cfg["paths"] if os.path.exists(p)), None)
+        if existing_path:
+            logger.info(f"📚 Encontrado PDF para ingestão: {existing_path}")
+            service.process_and_save(existing_path, base_metadata=cfg["base_metadata"])
+        else:
+            logger.error(
+                f"Arquivo não encontrado em nenhum dos caminhos: {', '.join(cfg['paths'])}. "
+                f"Verifique se o PDF foi colocado na pasta correta dentro de ai-service."
+            )

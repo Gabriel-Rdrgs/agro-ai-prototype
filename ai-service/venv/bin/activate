@@ -38,7 +38,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV=/home/soares/dev/agro-ai-prototype/ai-service/venv
+VIRTUAL_ENV='/home/soares/Área de Trabalho/agro-ai-prototype/ai-service/venv'
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"

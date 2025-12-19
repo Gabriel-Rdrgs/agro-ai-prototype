@@ -1,4 +1,6 @@
-#!/home/soares/dev/agro-ai-prototype/ai-service/venv/bin/python3
+#!/bin/sh
+'''exec' "/home/soares/Área de Trabalho/agro-ai-prototype/ai-service/venv/bin/python3" "$0" "$@"
+' '''
 # -*- coding: utf-8 -*-
 import re
 import sys
