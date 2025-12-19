@@ -37,6 +37,7 @@ from dotenv import load_dotenv
 from config.settings import get_settings
 from routers import predictions_router, calculations_router, admin_router
 from routers import projections as projections_router
+from routers import health as health_router
 from utils.database import test_connection
 from utils.auth_middleware import verify_internal_api_key
 
@@ -255,8 +256,13 @@ app.include_router(
 
 app.include_router(
     admin_router,
-    prefix="/api/v1/admin", 
+    prefix="/api/v1/admin",
     tags=["🛠️ Administrativo"]
+)
+
+app.include_router(
+    health_router,
+    tags=["🏥 Health"]
 )
 
 app.include_router(
@@ -288,6 +294,12 @@ app.include_router(
     prefix="/api/v1/production",
     tags=["📊 Production Data (IBGE SIDRA)"]  # ✅ FASE 0 - Semana 4
 )
+
+app.include_router(
+    health_router.router,
+    tags=["🏥 Health"]
+)
+
 # ========================================
 # ROTAS RAIZ
 # ========================================

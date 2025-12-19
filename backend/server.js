@@ -120,7 +120,7 @@ app.use(express.json());
 // Rota para o Railway saber que o app está vivo
 app.get('/', (req, res) => res.send('Backend Agro-AI Online 🚀'));
 
-// Health check com verificação de banco e circuit breaker
+// Health check básico (rápido, para load balancers)
 app.get('/health', async (req, res) => {
   try {
     // Testa conexão com banco (com circuit breaker)
@@ -131,16 +131,111 @@ app.get('/health', async (req, res) => {
     res.json({ 
       status: 'ok',
       database: 'connected',
-      circuit_breaker: dbCircuitBreaker.getState()
+      circuit_breaker: dbCircuitBreaker.getState(),
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
     res.status(503).json({ 
       status: 'degraded',
       database: 'disconnected',
       error: error.message,
-      circuit_breaker: dbCircuitBreaker.getState()
+      circuit_breaker: dbCircuitBreaker.getState(),
+      timestamp: new Date().toISOString()
     });
   }
+});
+
+// Health check detalhado
+app.get('/health/detailed', async (req, res) => {
+  const checks = {
+    status: 'healthy',
+    service: 'agro-ai-backend',
+    version: process.env.npm_package_version || '1.0.0',
+    timestamp: new Date().toISOString(),
+    checks: {}
+  };
+  
+  // 1. Banco de Dados
+  try {
+    await dbCircuitBreaker.execute(async () => {
+      const result = await prisma.$queryRaw`SELECT version() as version`;
+      checks.checks.database = {
+        status: 'ok',
+        connected: true,
+        circuit_breaker: dbCircuitBreaker.getState(),
+        version: result[0]?.version?.substring(0, 50) || 'unknown'
+      };
+    });
+  } catch (error) {
+    checks.checks.database = {
+      status: 'error',
+      connected: false,
+      error: error.message,
+      circuit_breaker: dbCircuitBreaker.getState()
+    };
+  }
+  
+  // 2. Serviços Internos
+  const services = {
+    cache: cache ? 'online' : 'offline',
+    jobQueue: jobQueue ? 'online' : 'offline',
+    logger: logger ? 'online' : 'offline'
+  };
+  
+  checks.checks.services = {
+    status: Object.values(services).every(s => s === 'online') ? 'ok' : 'degraded',
+    services: services
+  };
+  
+  // 3. APIs Externas (configuração)
+  const externalApis = {
+    python: {
+      configured: !!process.env.PYTHON_API_URL,
+      url: process.env.PYTHON_API_URL || 'not_configured',
+      status: process.env.PYTHON_API_URL ? 'ok' : 'not_configured'
+    },
+    supabase: {
+      configured: !!process.env.SUPABASE_URL,
+      status: process.env.SUPABASE_URL ? 'ok' : 'not_configured'
+    }
+  };
+  
+  checks.checks.external = {
+    status: 'ok',
+    apis: externalApis
+  };
+  
+  // 4. Recursos do Sistema
+  try {
+    const memUsage = process.memoryUsage();
+    checks.checks.resources = {
+      status: 'ok',
+      memory: {
+        heap_used_mb: Math.round(memUsage.heapUsed / 1024 / 1024),
+        heap_total_mb: Math.round(memUsage.heapTotal / 1024 / 1024),
+        rss_mb: Math.round(memUsage.rss / 1024 / 1024)
+      },
+      uptime_seconds: Math.round(process.uptime())
+    };
+  } catch (error) {
+    checks.checks.resources = {
+      status: 'warning',
+      error: error.message
+    };
+  }
+  
+  // Status geral
+  const allHealthy = (
+    checks.checks.database.status === 'ok' &&
+    checks.checks.services.status === 'ok' &&
+    checks.checks.external.status === 'ok' &&
+    checks.checks.resources.status === 'ok'
+  );
+  
+  checks.status = allHealthy ? 'healthy' : 'degraded';
+  
+  const statusCode = allHealthy ? 200 : 503;
+  res.status(statusCode).json(checks);
 });
 
 // ============================================

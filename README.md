@@ -276,12 +276,38 @@ A camada de RAG fica em:
 
 ## 🧪 Testes
 
-- **Python**:
-  - Arquivos de teste em `ai-service/test_*.py` (ex.: `test_rag_chat.py`, `test_env.py`)
-- **Node**:
-  - Arquivo `backend/test.http` para requests manuais
-- **TODO**:
-  - Formalizar suíte Jest (backend) e Pytest (ai-service)
+### Testes Automatizados
+
+- **Python (Pytest)**: 15 testes
+  - `ai-service/tests/test_prophet.py` - 8 testes (previsão Prophet)
+  - `ai-service/tests/test_rag.py` - 7 testes (serviço RAG)
+  - Cobertura: `price_forecast.py` (60%), `rag_service.py` (85%)
+  
+- **Backend Node.js (Jest)**: 41 testes
+  - `backend/tests/api/` - 21 testes (endpoints críticos)
+  - `backend/tests/auth/` - 20 testes (autenticação e RBAC)
+  
+- **CI/CD**: GitHub Actions roda todos os testes automaticamente em cada push/PR
+  - Ver: `.github/workflows/test.yml`
+  - Status: [![Tests](https://github.com/Gabriel-Rdrgs/agro-ai-prototype/actions/workflows/test.yml/badge.svg)](https://github.com/Gabriel-Rdrgs/agro-ai-prototype/actions)
+
+### Como Rodar Localmente
+
+**Python:**
+```bash
+cd ai-service
+pytest tests/ -v
+```
+
+**Backend:**
+```bash
+cd backend
+npm test
+```
+
+Veja mais em:
+- `ai-service/tests/README.md`
+- `backend/tests/README.md`
 
 ---
 

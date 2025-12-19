@@ -395,10 +395,20 @@ Garantir que o **MVP esteja sólido**, com previsões funcionando, ROI consisten
 
 #### 🗓️ Semana 3 – Produção, Qualidade e Confiabilidade
 
-- **3.1. Backup e Monitoramento**
-  - [ ] Script de backup PostgreSQL (dump automatizado)
-  - [ ] Agendamento automático (cron/Job no Railway)
-  - [ ] Health checks melhorados (incluindo Python/Supabase)
+- **3.1. Backup e Monitoramento** ✅ **PARCIALMENTE CONCLUÍDO**
+  - [x] Script de backup PostgreSQL (dump automatizado) - ✅ Scripts Bash e Python criados
+    - [x] Script Bash (`scripts/backup_postgres.sh`) com compressão e retenção
+    - [x] Script Python (`scripts/backup_postgres.py`) com mesma funcionalidade
+    - [x] Documentação completa (`docs/GUIA_BACKUP_POSTGRES.md`)
+    - [x] Suporte a retenção automática de backups antigos
+    - [x] Suporte a compressão (gzip)
+  - [ ] Agendamento automático (cron/Job no Railway) - Próximo passo: configurar no Railway
+  - [x] Health checks melhorados (incluindo Python/Supabase) - ✅ Implementado
+    - [x] Health check básico (`/health`) - Rápido, para load balancers
+    - [x] Health check detalhado (`/health/detailed`) - Verificações completas
+    - [x] Endpoints específicos (`/health/database`, `/health/services`, `/health/external`)
+    - [x] Verificação de banco (Supabase), serviços internos, APIs externas, recursos
+    - [x] Backend Node.js também atualizado com health check detalhado
 
 - **3.2. Validação Prophet e Testes de IA**
   - [ ] Script de backtesting (comparar previsão vs. realidade histórica)
@@ -424,7 +434,13 @@ Garantir que o **MVP esteja sólido**, com previsões funcionando, ROI consisten
     - [x] Testes de `checkRole` (verificação de roles admin/user/moderator) - ✅ 6 testes
     - [x] Testes de rotas protegidas com RBAC (`/api/admin/etl/start`, `/api/auth/register`) - ✅ 7 testes
     - [x] Testes de tratamento de erros e edge cases - ✅ 2 testes
-  - [ ] Integrar testes no GitHub Actions (já existe workflow)
+  - [x] Integrar testes no GitHub Actions - ✅ Workflow atualizado
+    - [x] Job para testes Jest do backend (41 testes)
+    - [x] Job para testes Pytest do Python (15 testes)
+    - [x] Job para build do frontend (validação)
+    - [x] Geração de relatórios de cobertura
+    - [x] Upload de artifacts (coverage reports)
+    - [x] Resumo de resultados dos testes
 
 - **3.4. Documentação Essencial**
   - [ ] Atualizar `README` principal
