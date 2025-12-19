@@ -216,13 +216,17 @@ app.get('/api/opportunities', verifyToken, async (req, res) => {
     const cached = cache.get(cacheKey);
     
     if (cached) {
-      console.log('⚡ Cache HIT: /api/opportunities');
+      logger.debug('⚡ Cache HIT: /api/opportunities');
       return res.json(cached);
     }
 
-    console.log('🔍 Cache MISS: /api/opportunities - Buscando do banco...');
+    logger.info('🔍 Cache MISS: /api/opportunities - Buscando do banco...');
     
     // ✅ PERFORMANCE: Select apenas campos necessários (não busca tudo)
+    // ✅ OTIMIZAÇÃO: Limite padrão de 500 registros (evita queries muito grandes)
+    const limit = parseInt(req.query.limit) || 500;
+    const skip = parseInt(req.query.skip) || 0;
+    
     // Busca Oportunidades e Dólar em paralelo (com circuit breaker)
     const [opportunities, dollarRate] = await Promise.all([
         dbCircuitBreaker.execute(async () => {
@@ -246,13 +250,15 @@ app.get('/api/opportunities', verifyToken, async (req, res) => {
               season: true,
               createdAt: true
             },
-            orderBy: { createdAt: 'desc' }
+            orderBy: { createdAt: 'desc' },
+            take: Math.min(limit, 1000), // Máximo de 1000 registros
+            skip: skip
           });
         }),
         getDollarRate() // Função que já existe no seu arquivo
     ]);
     
-    console.log(`💵 Dólar Atual: R$ ${dollarRate}`);
+    logger.info(`💵 Dólar Atual: R$ ${dollarRate} | Oportunidades: ${opportunities.length}`);
 
 const formattedOpportunities = opportunities.map(opp => {
       let buyPrice = parseFloat(opp.buyPrice);
@@ -333,8 +339,23 @@ const formattedOpportunities = opportunities.map(opp => {
     
     res.json(formattedOpportunities);
   } catch (error) {
-    logger.error("❌ Erro opportunities:", { error: error.message, stack: error.stack });
-    res.status(500).json({ error: 'Erro interno' });
+    logger.error("❌ Erro ao buscar oportunidades:", {
+      error: error.message,
+      stack: error.stack,
+      path: req.path
+    });
+    
+    // Mensagem amigável para o usuário
+    const userMessage = error.code === 'P2002' 
+      ? 'Erro de duplicação de dados. Por favor, tente novamente.'
+      : error.code === 'P2003'
+      ? 'Erro de referência de dados. Verifique se os dados estão corretos.'
+      : 'Não foi possível carregar as oportunidades. Tente novamente em alguns instantes.';
+    
+    res.status(500).json({ 
+      error: userMessage,
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 

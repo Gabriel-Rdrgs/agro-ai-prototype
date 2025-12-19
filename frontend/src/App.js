@@ -33,20 +33,54 @@ function App() {
   const [selectedOpportunity, setSelectedOpportunity] = useState(null);
   
   // ✅ NOVO: Estado para filtros do mapa (compartilhado entre Sidebar e MapView)
-  const [mapFilters, setMapFilters] = useState({
-    roiMin: 0, // ✅ CORRIGIDO: Padrão de 0% (mas permite negativos)
-    roiMax: 1000,
-    rainMin: 0,
-    rainMax: 500,
-    selectedStates: [],
-    riskLevels: [],
-    products: []
-  });
+  // Carrega filtros salvos do localStorage ou usa valores padrão
+  const loadSavedFilters = () => {
+    try {
+      const saved = localStorage.getItem('agro_ai_map_filters');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          roiMin: parsed.roiMin ?? 0,
+          roiMax: parsed.roiMax ?? 1000,
+          rainMin: parsed.rainMin ?? 0,
+          rainMax: parsed.rainMax ?? 500,
+          selectedStates: Array.isArray(parsed.selectedStates) ? parsed.selectedStates : [],
+          riskLevels: Array.isArray(parsed.riskLevels) ? parsed.riskLevels : [],
+          products: Array.isArray(parsed.products) ? parsed.products : [],
+          plantingSeasons: Array.isArray(parsed.plantingSeasons) ? parsed.plantingSeasons : []
+        };
+      }
+    } catch (error) {
+      console.warn('⚠️ Erro ao carregar filtros salvos:', error);
+    }
+    // Valores padrão se não houver salvos ou erro
+    return {
+      roiMin: 0,
+      roiMax: 1000,
+      rainMin: 0,
+      rainMax: 500,
+      selectedStates: [],
+      riskLevels: [],
+      products: [],
+      plantingSeasons: []
+    };
+  };
+
+  const [mapFilters, setMapFilters] = useState(loadSavedFilters);
   
   // ✅ NOVO: Estado para dados de IA e risco (compartilhado)
   const [aiPredictions, setAiPredictions] = useState({});
   const [supplyRiskData, setSupplyRiskData] = useState({});
   
+  // ✅ NOVO: Salva filtros no localStorage sempre que mudarem
+  useEffect(() => {
+    try {
+      localStorage.setItem('agro_ai_map_filters', JSON.stringify(mapFilters));
+    } catch (error) {
+      console.warn('⚠️ Erro ao salvar filtros:', error);
+    }
+  }, [mapFilters]);
+
   // ✅ NOVO: Inicializa valores máximos dos filtros quando os dados chegam (mínimo sempre 0 por padrão)
   const filtersInitialized = useRef(false);
   useEffect(() => {
@@ -63,12 +97,17 @@ function App() {
       if (roiValues.length > 0) {
         const maxROI = Math.max(...roiValues);
         
-        // ✅ CORRIGIDO: Só atualiza o máximo, mantém mínimo em 0 (mas permite negativos manualmente)
-        setMapFilters(prev => ({
-          ...prev,
-          roiMax: Math.ceil(maxROI)
-          // roiMin permanece 0 (padrão), mas usuário pode digitar negativo se quiser
-        }));
+        // ✅ CORRIGIDO: Só atualiza o máximo se não houver filtro salvo, mantém mínimo em 0
+        setMapFilters(prev => {
+          // Se já tem um roiMax salvo (diferente de 1000 padrão), mantém
+          if (prev.roiMax !== 1000) {
+            return prev;
+          }
+          return {
+            ...prev,
+            roiMax: Math.ceil(maxROI)
+          };
+        });
         filtersInitialized.current = true;
       }
     }

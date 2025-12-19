@@ -31,3 +31,7 @@ schedule==1.2.2
 python-multipart==0.0.17
 psutil==6.1.0
 lxml==5.3.0
+# Testes
+pytest==8.3.3
+pytest-asyncio==0.24.0
+pytest-cov==6.0.0

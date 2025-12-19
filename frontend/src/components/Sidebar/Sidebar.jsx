@@ -655,16 +655,25 @@ const getFilteredOpportunities = () => {
           {/* Botão Limpar */}
           {(filters.selectedStates?.length > 0 || filters.riskLevels?.length > 0 || filters.plantingSeasons?.length > 0 || (filters.roiMin && filters.roiMin !== 0) || (filters.roiMax && filters.roiMax !== 1000)) && (
             <button
-              onClick={() => onFiltersChange({
-                roiMin: 0, // ✅ CORRIGIDO: Reset para 0 (não -100)
-                roiMax: 1000,
-                rainMin: 0,
-                rainMax: 500,
-                selectedStates: [],
-                riskLevels: [],
-                products: [],
-                plantingSeasons: []
-              })}
+              onClick={() => {
+                const defaultFilters = {
+                  roiMin: 0, // ✅ CORRIGIDO: Reset para 0 (não -100)
+                  roiMax: 1000,
+                  rainMin: 0,
+                  rainMax: 500,
+                  selectedStates: [],
+                  riskLevels: [],
+                  products: [],
+                  plantingSeasons: []
+                };
+                // Limpa também do localStorage
+                try {
+                  localStorage.removeItem('agro_ai_map_filters');
+                } catch (error) {
+                  console.warn('⚠️ Erro ao limpar filtros salvos:', error);
+                }
+                onFiltersChange(defaultFilters);
+              }}
               style={{
                 width: '100%',
                 padding: '10px 16px',

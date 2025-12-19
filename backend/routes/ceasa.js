@@ -5,6 +5,7 @@ const router = express.Router();
 const prisma = require('../utils/prisma');
 const { dbCircuitBreaker } = require('../utils/circuitBreaker');
 const { verifyToken, checkRole } = require('../authMiddleware');
+const logger = require('../utils/logger');
 
 // ============================================
 // 📈 ROTAS DE CEASA
@@ -16,26 +17,36 @@ const { verifyToken, checkRole } = require('../authMiddleware');
  */
 router.get('/latest', verifyToken, async (req, res) => {
   try {
-    console.log('📊 Buscando preços mais recentes...');
+    logger.info('📊 Buscando preços mais recentes...');
+    
+    // ✅ OTIMIZAÇÃO: Limite padrão de 100, máximo de 500
+    const limit = Math.min(parseInt(req.query.limit) || 100, 500);
     
     const prices = await prisma.ceasaPrice.findMany({
       orderBy: {
         price_date: 'desc'
       },
-      take: 100,
+      take: limit,
       distinct: ['ceasa_region'] // Um por região
     });
 
+    logger.debug(`✅ Preços encontrados: ${prices.length} registros`);
+    
     res.json({
       success: true,
       count: prices.length,
       data: prices
     });
   } catch (error) {
-    console.error('❌ Erro ao buscar preços recentes:', error.message);
+    logger.error('❌ Erro ao buscar preços recentes:', {
+      error: error.message,
+      stack: error.stack
+    });
+    
     res.status(500).json({ 
       success: false,
-      error: error.message 
+      error: 'Não foi possível carregar os preços recentes. Tente novamente em alguns instantes.',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -48,8 +59,11 @@ router.get('/latest', verifyToken, async (req, res) => {
 router.get('/region/:region', verifyToken, async (req, res) => {
   try {
     const region = req.params.region.toUpperCase();
-    console.log(`📍 Buscando preços da região: ${region}`);
+    logger.info(`📍 Buscando preços da região: ${region}`);
 
+    // ✅ OTIMIZAÇÃO: Limite padrão de 30, máximo de 200
+    const limit = Math.min(parseInt(req.query.limit) || 30, 200);
+    
     const prices = await prisma.ceasaPrice.findMany({
       where: {
         ceasa_region: region
@@ -57,16 +71,19 @@ router.get('/region/:region', verifyToken, async (req, res) => {
       orderBy: {
         price_date: 'desc'
       },
-      take: 30
+      take: limit
     });
 
     if (prices.length === 0) {
+      logger.warn(`⚠️ Nenhum preço encontrado para a região ${region}`);
       return res.status(404).json({
         success: false,
-        error: `Nenhum preço encontrado para a região ${region}`
+        error: `Nenhum preço encontrado para a região ${region}. Verifique se a região está correta.`
       });
     }
 
+    logger.debug(`✅ Preços encontrados para ${region}: ${prices.length} registros`);
+    
     res.json({
       success: true,
       region: region,
@@ -74,10 +91,16 @@ router.get('/region/:region', verifyToken, async (req, res) => {
       data: prices
     });
   } catch (error) {
-    console.error('❌ Erro ao buscar preços por região:', error.message);
+    logger.error('❌ Erro ao buscar preços por região:', {
+      error: error.message,
+      region: req.params.region,
+      stack: error.stack
+    });
+    
     res.status(500).json({ 
       success: false,
-      error: error.message 
+      error: 'Não foi possível carregar os preços da região. Tente novamente em alguns instantes.',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -90,8 +113,11 @@ router.get('/region/:region', verifyToken, async (req, res) => {
 router.get('/history/:product', verifyToken, async (req, res) => {
   try {
     const product = req.params.product;
-    console.log(`📉 Buscando histórico de: ${product}`);
+    logger.info(`📉 Buscando histórico de: ${product}`);
 
+    // ✅ OTIMIZAÇÃO: Limite padrão de 500, máximo de 2000
+    const limit = Math.min(parseInt(req.query.limit) || 500, 2000);
+    
     const prices = await prisma.ceasaPrice.findMany({
       where: {
         product_name: {
@@ -101,16 +127,20 @@ router.get('/history/:product', verifyToken, async (req, res) => {
       },
       orderBy: {
         price_date: 'asc'
-      }
+      },
+      take: limit
     });
 
     if (prices.length === 0) {
+      logger.warn(`⚠️ Nenhum histórico encontrado para ${product}`);
       return res.status(404).json({
         success: false,
-        error: `Nenhum histórico encontrado para ${product}`
+        error: `Nenhum histórico encontrado para "${product}". Verifique se o nome do produto está correto.`
       });
     }
 
+    logger.debug(`✅ Histórico encontrado para ${product}: ${prices.length} registros`);
+    
     res.json({
       success: true,
       product: product,
@@ -118,10 +148,16 @@ router.get('/history/:product', verifyToken, async (req, res) => {
       data: prices
     });
   } catch (error) {
-    console.error('❌ Erro ao buscar histórico:', error.message);
+    logger.error('❌ Erro ao buscar histórico:', {
+      error: error.message,
+      product: req.params.product,
+      stack: error.stack
+    });
+    
     res.status(500).json({ 
       success: false,
-      error: error.message 
+      error: 'Não foi possível carregar o histórico de preços. Tente novamente em alguns instantes.',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -134,7 +170,7 @@ router.get('/history/:product', verifyToken, async (req, res) => {
 router.get('/compare/:product', verifyToken, async (req, res) => {
   try {
     const product = req.params.product;
-    console.log(`⚖️ Comparando histórico vs projeções para: ${product}`);
+    logger.info(`⚖️ Comparando histórico vs projeções para: ${product}`);
     
     const [historical, projections] = await Promise.all([
       prisma.ceasaPrice.findMany({
@@ -148,7 +184,7 @@ router.get('/compare/:product', verifyToken, async (req, res) => {
         orderBy: {
           price_date: 'desc'
         },
-        take: 30
+        take: Math.min(parseInt(req.query.limit) || 30, 100) // ✅ OTIMIZAÇÃO: Limite máximo de 100
       }),
       prisma.ceasaPrice.findMany({
         where: {
@@ -161,7 +197,7 @@ router.get('/compare/:product', verifyToken, async (req, res) => {
         orderBy: {
           price_date: 'asc'
         },
-        take: 30
+        take: Math.min(parseInt(req.query.limit) || 30, 100) // ✅ OTIMIZAÇÃO: Limite máximo de 100
       })
     ]);
 
@@ -205,10 +241,11 @@ router.get('/compare/:product', verifyToken, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Erro ao comparar:', error.message);
+    logger.error('❌ Erro ao comparar:', { error: error.message, product, stack: error.stack });
     res.status(500).json({ 
       success: false,
-      error: error.message 
+      error: 'Não foi possível comparar histórico e projeções. Tente novamente em alguns instantes.',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -222,8 +259,11 @@ router.get('/:region/:product', verifyToken, async (req, res) => {
   try {
     const region = req.params.region.toUpperCase();
     const product = req.params.product;
-    console.log(`🔍 Buscando ${product} em ${region}`);
+    logger.info(`🔍 Buscando ${product} em ${region}`);
 
+    // ✅ OTIMIZAÇÃO: Limite padrão de 30, máximo de 200
+    const limit = Math.min(parseInt(req.query.limit) || 30, 200);
+    
     const prices = await prisma.ceasaPrice.findMany({
       where: {
         ceasa_region: region,
@@ -234,7 +274,8 @@ router.get('/:region/:product', verifyToken, async (req, res) => {
       },
       orderBy: {
         price_date: 'desc'
-      }
+      },
+      take: limit
     });
 
     if (prices.length === 0) {
@@ -252,10 +293,11 @@ router.get('/:region/:product', verifyToken, async (req, res) => {
       data: prices
     });
   } catch (error) {
-    console.error('❌ Erro na busca:', error.message);
+    logger.error('❌ Erro na busca:', { error: error.message, product, region, stack: error.stack });
     res.status(500).json({ 
       success: false,
-      error: error.message 
+      error: `Não foi possível buscar preços de ${product} em ${region}. Tente novamente em alguns instantes.`,
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -266,7 +308,7 @@ router.get('/:region/:product', verifyToken, async (req, res) => {
  */
 router.get('/stats/regions', verifyToken, async (req, res) => {
   try {
-    console.log('📊 Calculando estatísticas por região...');
+    logger.info('📊 Calculando estatísticas por região...');
 
     const stats = await prisma.ceasaPrice.groupBy({
       by: ['ceasa_region'],
@@ -290,10 +332,11 @@ router.get('/stats/regions', verifyToken, async (req, res) => {
       data: stats
     });
   } catch (error) {
-    console.error('❌ Erro ao buscar estatísticas:', error.message);
+    logger.error('❌ Erro ao buscar estatísticas por região:', { error: error.message, stack: error.stack });
     res.status(500).json({ 
       success: false,
-      error: error.message 
+      error: 'Não foi possível calcular as estatísticas por região. Tente novamente em alguns instantes.',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -304,7 +347,7 @@ router.get('/stats/regions', verifyToken, async (req, res) => {
  */
 router.get('/stats/products', verifyToken, async (req, res) => {
   try {
-    console.log('📊 Calculando estatísticas por produto...');
+    logger.info('📊 Calculando estatísticas por produto...');
 
     const stats = await prisma.ceasaPrice.groupBy({
       by: ['product_name'],
@@ -328,10 +371,11 @@ router.get('/stats/products', verifyToken, async (req, res) => {
       data: stats
     });
   } catch (error) {
-    console.error('❌ Erro ao buscar estatísticas:', error.message);
+    logger.error('❌ Erro ao buscar estatísticas por produto:', { error: error.message, stack: error.stack });
     res.status(500).json({ 
       success: false,
-      error: error.message 
+      error: 'Não foi possível calcular as estatísticas por produto. Tente novamente em alguns instantes.',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -343,8 +387,11 @@ router.get('/stats/products', verifyToken, async (req, res) => {
  */
 router.get('/historical', verifyToken, async (req, res) => {
   try {
-    const { product, region, limit = 100 } = req.query;
-    console.log('📅 Buscando dados históricos...');
+    const { product, region } = req.query;
+    logger.info('📅 Buscando dados históricos...');
+    
+    // ✅ OTIMIZAÇÃO: Limite padrão de 100, máximo de 500
+    const limit = Math.min(parseInt(req.query.limit) || 100, 500);
     
     const where = {
       is_projection: false
@@ -366,7 +413,7 @@ router.get('/historical', verifyToken, async (req, res) => {
       orderBy: {
         price_date: 'desc'
       },
-      take: parseInt(limit)
+      take: limit
     });
 
     res.json({
@@ -376,10 +423,11 @@ router.get('/historical', verifyToken, async (req, res) => {
       data: prices
     });
   } catch (error) {
-    console.error('❌ Erro ao buscar dados históricos:', error.message);
+    logger.error('❌ Erro ao buscar dados históricos:', { error: error.message, stack: error.stack });
     res.status(500).json({ 
       success: false,
-      error: error.message 
+      error: 'Não foi possível carregar os dados históricos. Tente novamente em alguns instantes.',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -391,8 +439,11 @@ router.get('/historical', verifyToken, async (req, res) => {
  */
 router.get('/projections', verifyToken, async (req, res) => {
   try {
-    const { product, region, limit = 100 } = req.query;
-    console.log('🔮 Buscando projeções...');
+    const { product, region } = req.query;
+    logger.info('🔮 Buscando projeções...');
+    
+    // ✅ OTIMIZAÇÃO: Limite padrão de 100, máximo de 500
+    const limit = Math.min(parseInt(req.query.limit) || 100, 500);
     
     const where = {
       is_projection: true
@@ -414,7 +465,7 @@ router.get('/projections', verifyToken, async (req, res) => {
       orderBy: {
         price_date: 'asc'
       },
-      take: parseInt(limit)
+      take: limit
     });
 
     res.json({
@@ -424,10 +475,11 @@ router.get('/projections', verifyToken, async (req, res) => {
       data: prices
     });
   } catch (error) {
-    console.error('❌ Erro ao buscar projeções:', error.message);
+    logger.error('❌ Erro ao buscar projeções:', { error: error.message, stack: error.stack });
     res.status(500).json({ 
       success: false,
-      error: error.message 
+      error: 'Não foi possível carregar as projeções. Tente novamente em alguns instantes.',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -439,7 +491,7 @@ router.get('/projections', verifyToken, async (req, res) => {
  */
 router.post('/import', verifyToken, checkRole(['admin']), async (req, res) => {
   try {
-    console.log(`🔄 Admin ${req.user.email} iniciando importação de preços...`);
+    logger.info(`🔄 Admin ${req.user.email} iniciando importação de preços...`);
     
     // Validação básica
     const { prices } = req.body;
@@ -462,10 +514,11 @@ router.post('/import', verifyToken, checkRole(['admin']), async (req, res) => {
       message: `${result.count} preços importados com sucesso`
     });
   } catch (error) {
-    console.error('❌ Erro ao importar preços:', error.message);
+    logger.error('❌ Erro ao importar preços:', { error: error.message, stack: error.stack });
     res.status(500).json({ 
       success: false,
-      error: error.message 
+      error: 'Não foi possível importar os preços. Verifique os dados e tente novamente.',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
