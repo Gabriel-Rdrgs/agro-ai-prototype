@@ -713,7 +713,23 @@ app.get('/api/weather/extreme-events', verifyToken, async (req, res) => {
     
     res.json(response.data);
   } catch (error) {
-    console.error("Erro ao buscar eventos extremos:", error.message);
+    logger.error("Erro ao buscar eventos extremos:", { error: error.message, code: error.code });
+    
+    // ✅ MELHORADO: Tratamento específico para timeout
+    if (error.code === 'ECONNABORTED') {
+      return res.status(504).json({
+        error: 'Timeout ao buscar eventos extremos',
+        details: 'O serviço demorou muito para responder (20s)'
+      });
+    }
+    
+    if (error.code === 'ECONNREFUSED') {
+      return res.status(503).json({
+        error: 'Serviço Python indisponível',
+        details: 'O serviço de IA não está respondendo'
+      });
+    }
+    
     res.status(500).json({ 
       error: 'Erro ao analisar eventos extremos',
       details: error.message
@@ -956,7 +972,302 @@ app.get('/api/calendar/planting-window', verifyToken, checkRole(['admin']), asyn
   }
 });
 
-// 4. Histórico e Tendências (Analytics)
+// 4. Histórico e Tendências de Mercado (Analytics) - ✅ MELHORADO COM FILTROS AVANÇADOS
+app.get('/api/analytics/trends', verifyToken, async (req, res) => {
+  try {
+    const { product, region, municipality, days = 90 } = req.query;
+    
+    if (!product) {
+      return res.status(400).json({ error: 'Parâmetro "product" é obrigatório' });
+    }
+    
+    const daysInt = Math.min(parseInt(days) || 90, 365); // Máximo 1 ano
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - daysInt);
+    
+    logger.info(`📈 Buscando tendências para ${product}${region ? ` (${region})` : ''}${municipality ? ` - ${municipality}` : ''} - últimos ${daysInt} dias`);
+    
+    // Busca dados históricos de CeasaPrice (apenas dados reais, não projeções)
+    const whereCondition = {
+      product_name: {
+        contains: product,
+        mode: 'insensitive'
+      },
+      price_date: {
+        gte: startDate
+      },
+      is_projection: false // Apenas dados reais
+    };
+    
+    // Filtro por estado (se fornecido e não for "Total")
+    if (region && region !== 'Total' && region !== '') {
+      whereCondition.ceasa_region = region.toUpperCase();
+    }
+    
+    // Filtro por município (ceasa_name contém o nome do município)
+    if (municipality && municipality !== 'Total' && municipality !== '') {
+      whereCondition.ceasa_name = {
+        contains: municipality,
+        mode: 'insensitive'
+      };
+    }
+    
+    const prices = await prisma.ceasaPrice.findMany({
+      where: whereCondition,
+      orderBy: {
+        price_date: 'asc'
+      },
+      select: {
+        price_date: true,
+        price_avg: true,
+        price_min: true,
+        price_max: true,
+        ceasa_region: true,
+        ceasa_name: true
+      }
+    });
+    
+    if (prices.length === 0) {
+      return res.status(404).json({
+        error: `Nenhum dado histórico encontrado para "${product}"${region ? ` em ${region}` : ''} nos últimos ${daysInt} dias.`
+      });
+    }
+    
+    // Agrupa por data (múltiplas regiões podem ter dados no mesmo dia)
+    const dailyPrices = {};
+    prices.forEach(price => {
+      const dateKey = price.price_date.toISOString().split('T')[0];
+      if (!dailyPrices[dateKey]) {
+        dailyPrices[dateKey] = {
+          dates: [],
+          prices: [],
+          min: [],
+          max: []
+        };
+      }
+      dailyPrices[dateKey].prices.push(Number(price.price_avg));
+      dailyPrices[dateKey].min.push(Number(price.price_min));
+      dailyPrices[dateKey].max.push(Number(price.price_max));
+    });
+    
+    // Calcula médias diárias e ordena por data
+    const sortedDates = Object.keys(dailyPrices).sort();
+    const historicalData = sortedDates.map(date => ({
+      date,
+      price: dailyPrices[date].prices.reduce((a, b) => a + b, 0) / dailyPrices[date].prices.length,
+      min: Math.min(...dailyPrices[date].min),
+      max: Math.max(...dailyPrices[date].max)
+    }));
+    
+    // Calcula médias móveis
+    const calculateMovingAverage = (data, window) => {
+      const result = [];
+      for (let i = 0; i < data.length; i++) {
+        const start = Math.max(0, i - window + 1);
+        const slice = data.slice(start, i + 1);
+        const avg = slice.reduce((sum, item) => sum + item.price, 0) / slice.length;
+        result.push(avg);
+      }
+      return result;
+    };
+    
+    const ma7 = calculateMovingAverage(historicalData, 7);
+    const ma30 = calculateMovingAverage(historicalData, 30);
+    const ma90 = calculateMovingAverage(historicalData, 90);
+    
+    // Identifica direção da tendência (últimos 7 dias vs últimos 30 dias)
+    const recent7Avg = historicalData.slice(-7).reduce((sum, item) => sum + item.price, 0) / Math.min(7, historicalData.length);
+    const recent30Avg = historicalData.slice(-30).reduce((sum, item) => sum + item.price, 0) / Math.min(30, historicalData.length);
+    const changePercent = ((recent7Avg - recent30Avg) / recent30Avg) * 100;
+    
+    let trendDirection = 'stable';
+    if (changePercent > 5) trendDirection = 'up';
+    else if (changePercent < -5) trendDirection = 'down';
+    
+    // Estatísticas resumidas
+    const currentPrice = historicalData[historicalData.length - 1]?.price || 0;
+    const minPrice = Math.min(...historicalData.map(d => d.price));
+    const maxPrice = Math.max(...historicalData.map(d => d.price));
+    const avgPrice = historicalData.reduce((sum, d) => sum + d.price, 0) / historicalData.length;
+    
+    // Formata dados para gráfico
+    const labels = historicalData.map(d => {
+      const date = new Date(d.date);
+      return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    });
+    
+    const datasets = {
+      historical: historicalData.map(d => Number(d.price.toFixed(2))),
+      ma7: ma7.map(v => Number(v.toFixed(2))),
+      ma30: ma30.map(v => Number(v.toFixed(2))),
+      ma90: ma90.map(v => Number(v.toFixed(2))),
+      min: historicalData.map(d => Number(d.min.toFixed(2))),
+      max: historicalData.map(d => Number(d.max.toFixed(2)))
+    };
+    
+    res.json({
+      success: true,
+      product,
+      region: region && region !== 'Total' ? region : 'Total (Brasil)',
+      municipality: municipality && municipality !== 'Total' ? municipality : null,
+      period: {
+        days: daysInt,
+        startDate: sortedDates[0],
+        endDate: sortedDates[sortedDates.length - 1]
+      },
+      trend: {
+        direction: trendDirection,
+        changePercent: Number(changePercent.toFixed(2)),
+        recent7Avg: Number(recent7Avg.toFixed(2)),
+        recent30Avg: Number(recent30Avg.toFixed(2))
+      },
+      statistics: {
+        current: Number(currentPrice.toFixed(2)),
+        average: Number(avgPrice.toFixed(2)),
+        min: Number(minPrice.toFixed(2)),
+        max: Number(maxPrice.toFixed(2)),
+        volatility: Number(((maxPrice - minPrice) / avgPrice * 100).toFixed(2)) // Coeficiente de variação
+      },
+      chart: {
+        labels,
+        datasets
+      },
+      dataPoints: historicalData.length
+    });
+    
+  } catch (error) {
+    logger.error('❌ Erro ao buscar tendências:', { error: error.message, stack: error.stack });
+    res.status(500).json({ 
+      error: 'Erro ao buscar tendências de mercado',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// ✅ NOVO: Endpoint para listar produtos disponíveis
+app.get('/api/analytics/products', verifyToken, async (req, res) => {
+  try {
+    const products = await prisma.ceasaPrice.findMany({
+      where: {
+        is_projection: false
+      },
+      select: {
+        product_name: true
+      },
+      distinct: ['product_name'],
+      orderBy: {
+        product_name: 'asc'
+      }
+    });
+    
+    const productList = products.map(p => p.product_name).filter((v, i, a) => a.indexOf(v) === i);
+    
+    res.json({
+      success: true,
+      products: productList
+    });
+  } catch (error) {
+    logger.error('❌ Erro ao listar produtos:', { error: error.message });
+    res.status(500).json({ 
+      error: 'Erro ao listar produtos',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// ✅ NOVO: Endpoint para listar estados disponíveis
+app.get('/api/analytics/regions', verifyToken, async (req, res) => {
+  try {
+    const { product } = req.query;
+    
+    const whereCondition = {
+      is_projection: false
+    };
+    
+    if (product) {
+      whereCondition.product_name = {
+        contains: product,
+        mode: 'insensitive'
+      };
+    }
+    
+    const regions = await prisma.ceasaPrice.findMany({
+      where: whereCondition,
+      select: {
+        ceasa_region: true
+      },
+      distinct: ['ceasa_region'],
+      orderBy: {
+        ceasa_region: 'asc'
+      }
+    });
+    
+    const regionList = regions.map(r => r.ceasa_region).filter((v, i, a) => a.indexOf(v) === i);
+    
+    res.json({
+      success: true,
+      regions: regionList
+    });
+  } catch (error) {
+    logger.error('❌ Erro ao listar regiões:', { error: error.message });
+    res.status(500).json({ 
+      error: 'Erro ao listar regiões',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// ✅ NOVO: Endpoint para listar municípios (CEASAs) disponíveis
+app.get('/api/analytics/municipalities', verifyToken, async (req, res) => {
+  try {
+    const { product, region } = req.query;
+    
+    const whereCondition = {
+      is_projection: false
+    };
+    
+    if (product) {
+      whereCondition.product_name = {
+        contains: product,
+        mode: 'insensitive'
+      };
+    }
+    
+    if (region && region !== 'Total') {
+      whereCondition.ceasa_region = region.toUpperCase();
+    }
+    
+    const municipalities = await prisma.ceasaPrice.findMany({
+      where: whereCondition,
+      select: {
+        ceasa_name: true,
+        ceasa_region: true
+      },
+      distinct: ['ceasa_name'],
+      orderBy: {
+        ceasa_name: 'asc'
+      }
+    });
+    
+    const municipalityList = municipalities.map(m => ({
+      name: m.ceasa_name,
+      region: m.ceasa_region
+    })).filter((v, i, a) => a.findIndex(item => item.name === v.name) === i);
+    
+    res.json({
+      success: true,
+      municipalities: municipalityList
+    });
+  } catch (error) {
+    logger.error('❌ Erro ao listar municípios:', { error: error.message });
+    res.status(500).json({ 
+      error: 'Erro ao listar municípios',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// Mantém endpoint antigo para compatibilidade (deprecated)
 app.get('/api/analytics/trend', verifyToken, async (req, res) => {
   try {
     const { product, city } = req.query;
@@ -985,7 +1296,7 @@ app.get('/api/analytics/trend', verifyToken, async (req, res) => {
     
     res.json({ labels, data });
   } catch (error) {
-    console.error("Erro Trend:", error);
+    logger.error("Erro Trend:", error);
     res.status(500).json({ error: 'Erro ao buscar tendência' });
   }
 });

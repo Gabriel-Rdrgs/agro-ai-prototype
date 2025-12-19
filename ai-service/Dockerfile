@@ -3,10 +3,19 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# 1. Instala dependências do sistema (necessário para Pandas/Numpy)
+# 1. Instala dependências do sistema (necessário para Pandas/Numpy e backups)
+# Instala postgresql-client mais recente para compatibilidade com PostgreSQL 17
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
+    wget \
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    && sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
+    && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql-keyring.gpg \
+    && apt-get update \
+    && apt-get install -y postgresql-client-17 \
     && rm -rf /var/lib/apt/lists/*
 
 # 2. Copia e instala dependências Python

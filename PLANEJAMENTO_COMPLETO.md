@@ -395,14 +395,18 @@ Garantir que o **MVP esteja sólido**, com previsões funcionando, ROI consisten
 
 #### 🗓️ Semana 3 – Produção, Qualidade e Confiabilidade
 
-- **3.1. Backup e Monitoramento** ✅ **PARCIALMENTE CONCLUÍDO**
+- **3.1. Backup e Monitoramento** ✅ **CONCLUÍDO**
   - [x] Script de backup PostgreSQL (dump automatizado) - ✅ Scripts Bash e Python criados
     - [x] Script Bash (`scripts/backup_postgres.sh`) com compressão e retenção
     - [x] Script Python (`scripts/backup_postgres.py`) com mesma funcionalidade
     - [x] Documentação completa (`docs/GUIA_BACKUP_POSTGRES.md`)
     - [x] Suporte a retenção automática de backups antigos
     - [x] Suporte a compressão (gzip)
-  - [ ] Agendamento automático (cron/Job no Railway) - Próximo passo: configurar no Railway
+  - [x] Agendamento automático (cron/Job no Railway) - ✅ `scripts/backup_worker.py` criado
+    - [x] Worker de backup com suporte a modo `--once` (Cron Job) e `--schedule` (Service contínuo)
+    - [x] Documentação completa (`docs/GUIA_BACKUP_RAILWAY.md`)
+    - [x] Checklist de configuração (`docs/CHECKLIST_BACKUP_RAILWAY.md`)
+    - [x] Configuração via variáveis de ambiente (BACKUP_DIR, BACKUP_RETENTION_DAYS, BACKUP_COMPRESS, BACKUP_SCHEDULE_TIME)
   - [x] Health checks melhorados (incluindo Python/Supabase) - ✅ Implementado
     - [x] Health check básico (`/health`) - Rápido, para load balancers
     - [x] Health check detalhado (`/health/detailed`) - Verificações completas
@@ -410,10 +414,11 @@ Garantir que o **MVP esteja sólido**, com previsões funcionando, ROI consisten
     - [x] Verificação de banco (Supabase), serviços internos, APIs externas, recursos
     - [x] Backend Node.js também atualizado com health check detalhado
 
-- **3.2. Validação Prophet e Testes de IA**
-  - [ ] Script de backtesting (comparar previsão vs. realidade histórica)
-  - [ ] Validar previsões com dados históricos (erro médio, desvio)
-  - [ ] Ajustar hiperparâmetros se necessário
+- **3.2. Validação Prophet e Testes de IA** ✅ **PARCIALMENTE CONCLUÍDO**
+  - [x] Script de backtesting (comparar previsão vs. realidade histórica) - ✅ `scripts/backtest_prophet.py` criado com métricas completas (MAE, RMSE, MAPE, Coverage)
+  - [x] Documentação de uso - ✅ `docs/GUIA_BACKTESTING_PROPHET.md` criado
+  - [ ] Validar previsões com dados históricos (erro médio, desvio) - Próximo passo: executar backtests e analisar resultados
+  - [ ] Ajustar hiperparâmetros se necessário - Depende dos resultados do backtesting
   - [x] **Testes de integração Pytest para Prophet:** ✅ **CONCLUÍDO E VALIDADO**
     - [x] Testar `price_forecast_service.forecast` com dados sintéticos - ✅ 8 testes criados e **TODOS PASSANDO**
     - [x] Validar comportamento Prophet vs fallback em diferentes cenários - ✅ Testes de fallback implementados e validados
@@ -442,19 +447,21 @@ Garantir que o **MVP esteja sólido**, com previsões funcionando, ROI consisten
     - [x] Upload de artifacts (coverage reports)
     - [x] Resumo de resultados dos testes
 
-- **3.4. Documentação Essencial**
-  - [ ] Atualizar `README` principal
-  - [ ] Documentar APIs principais (pelo menos via md ou Swagger básico)
-  - [ ] Criar guia de uso para cliente (fluxo principal da aplicação)
-  - [ ] Documentar contrato único de schema para tabela `documents` (evitar drift entre Prisma/SQLAlchemy)
+- **3.4. Documentação Essencial** ✅ **CONCLUÍDO**
+  - [x] Atualizar `README` principal - ✅ Seções atualizadas (testes, health checks, backup, RAG)
+  - [x] Documentar APIs principais - ✅ `docs/API_REFERENCE.md` criado com todos os endpoints
+  - [x] Criar guia de uso para cliente - ✅ `docs/GUIA_USO_CLIENTE.md` criado
+  - [x] Documentar contrato único de schema para tabela `documents` - ✅ `docs/SCHEMA_DOCUMENTS_CONTRACT.md` criado
 
 ---
 
 #### 🗓️ Semana 4 – Preparação para Evolução e Tendências
 
-- **4.1. Dashboard de Tendências de Mercado**
-  - [ ] Backend – Endpoint de tendências (médias móveis, direção do preço)
-  - [ ] Frontend – Gráficos de tendência com filtros de período
+- **4.1. Dashboard de Tendências de Mercado** ✅ **CONCLUÍDO**
+  - [x] Backend – Endpoint de tendências (médias móveis, direção do preço) - ✅ `/api/analytics/trends` criado
+  - [x] Frontend – Gráficos de tendência com filtros de período - ✅ `MarketTrendsChart.jsx` criado e integrado ao Dashboard
+  - [x] Filtros avançados (Produto, Estado, Município, Período) - ✅ Implementado com opção "Total" para agregação
+  - [x] Endpoints auxiliares para listar opções disponíveis - ✅ `/api/analytics/products`, `/regions`, `/municipalities`
 
 - **4.2. Novo Mapa (Pesquisa + Protótipo)**
   - [ ] Pesquisar Google Maps API (recursos, custos, limitações)

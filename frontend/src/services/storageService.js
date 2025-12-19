@@ -1,23 +1,20 @@
 // frontend/src/services/storageService.js
-import { aiApi } from './api'; 
+import api from './api'; // ✅ CORRIGIDO: Usa o backend Node.js, não o Python diretamente
 
 export const StorageService = {
   /**
    * Pede para a IA simular o cenário de armazenagem com volatilidade climática.
-   * Endpoint: POST /predict/storage
+   * Endpoint: POST /api/ai/storage (via backend Node.js)
    */
   simulateScenario: async (data) => {
-    // Payload que o Python espera (SimulationRequest)
-    // Suporta tanto camelCase quanto snake_case para compatibilidade
+    // Payload que o backend espera
     const payload = {
       product: data.product || 'Tomate',
       state: data.state || 'SP',
-      // Garante numérico para evitar erro de validação no Pydantic
       current_price: parseFloat(data.current_price || data.currentPrice || 0) || 0,
       buy_price: parseFloat(data.buy_price || data.buyPrice || 0) || 0,
       storage_cost_per_day: parseFloat(data.storage_cost_per_day || data.storageCost || 0.03) || 0.03,
       accumulated_rainfall: parseFloat(data.accumulated_rainfall || data.rain || 0) || 0,
-      // ✅ DADOS CLIMÁTICOS REAIS por estado
       daily_rain: Array.isArray(data.daily_rain || data.rainData) ? (data.daily_rain || data.rainData) : [],
       lat: parseFloat(data.lat || 0) || 0,
       lng: parseFloat(data.lng || 0) || 0
@@ -26,10 +23,8 @@ export const StorageService = {
     try {
       console.log("📡 Enviando simulação para IA:", payload);
 
-      // CORREÇÃO DE ROTA:
-      // 1. Removemos '/api/v1' se o backend não tiver esse prefixo global no main.py
-      // 2. Corrigimos de '/predictions' para '/predict' (conforme seu main.py)
-      const response = await aiApi.post('/predict/storage', payload, {
+      // ✅ CORRIGIDO: Chama o backend Node.js que faz proxy para o Python
+      const response = await api.post('/ai/storage', payload, {
         timeout: 90000 // 90 segundos (análise climática pode demorar)
       });
       
@@ -48,7 +43,7 @@ export const StorageService = {
       }
       
       // Retorna erro mais amigável
-      const errorMessage = error.response?.data?.detail || error.response?.data?.message || error.message || "Erro desconhecido ao simular armazenagem";
+      const errorMessage = error.response?.data?.detail || error.response?.data?.error || error.response?.data?.message || error.message || "Erro desconhecido ao simular armazenagem";
       throw new Error(errorMessage);
     }
   }

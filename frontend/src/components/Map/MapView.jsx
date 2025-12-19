@@ -266,8 +266,8 @@ const MapView = React.forwardRef((props, ref) => {
         // ✅ OTIMIZADO: Processa em batches para evitar sobrecarga (mesmo com cache)
         // Cache ajuda, mas muitas requisições simultâneas ainda podem sobrecarregar
         const batchSize = 8; // ✅ Balanceado: 8 por vez para velocidade sem sobrecarga
-        const loadedCountRef = { current: Object.keys(riskData).length }; // ✅ NOVO: Começa com dados existentes
-        const initialTotal = Object.keys(riskData).length;
+        const loadedCountRef = { current: 0 }; // ✅ CORRIGIDO: Começa em 0, não com dados existentes
+        const finalTotal = total; // ✅ CORRIGIDO: Total é apenas as oportunidades que precisam de dados
         
         for (let i = 0; i < oppsNeedingData.length; i += batchSize) {
           const batch = oppsNeedingData.slice(i, i + batchSize);
@@ -285,13 +285,13 @@ const MapView = React.forwardRef((props, ref) => {
                   16
                 );
                 loadedCountRef.current++;
-                setSupplyRiskProgress({ loaded: loadedCountRef.current, total: initialTotal + total });
+                setSupplyRiskProgress({ loaded: loadedCountRef.current, total: finalTotal });
                 return { oppId: opp.id, risk };
               } catch (err) {
                 console.debug(`Erro ao buscar risco para ${opp.id}:`, err.message);
                 processedSupplyRiskRef.current.delete(opp.id); // ✅ NOVO: Remove se falhar para permitir retry
                 loadedCountRef.current++;
-                setSupplyRiskProgress({ loaded: loadedCountRef.current, total: initialTotal + total });
+                setSupplyRiskProgress({ loaded: loadedCountRef.current, total: finalTotal });
                 return { oppId: opp.id, risk: null };
               }
             })
@@ -339,7 +339,7 @@ const MapView = React.forwardRef((props, ref) => {
       setSupplyRiskProgress({ loaded: 0, total: 0 });
       supplyRiskLoadingRef.current = false;
     }
-  }, [showSupplyRisk, opportunities, supplyRiskData]);
+  }, [showSupplyRisk, opportunities]); // ✅ CORRIGIDO: Removido supplyRiskData da dependência para evitar loop infinito
   
   // ✅ NOVO: Limpa cache do frontend quando toggle é desativado
   useEffect(() => {
@@ -1012,7 +1012,7 @@ return (
         {showSupplyRisk && !customRoute && geojsonMunicipios && (
           <>
             {/* ✅ MELHORADO: Indicador de progresso com feedback visual */}
-            {supplyRiskLoading && (
+            {supplyRiskLoading && supplyRiskProgress.total > 0 && supplyRiskProgress.loaded < supplyRiskProgress.total && (
               <div style={{
                 position: 'absolute',
                 top: '50%',
@@ -1034,31 +1034,29 @@ return (
                 <div style={{ fontWeight: '600', marginBottom: '8px' }}>
                   Carregando Regiões Comprometidas...
                 </div>
-                {supplyRiskProgress.total > 0 && (
-                  <div style={{ 
-                    marginTop: '12px',
-                    fontSize: '12px',
-                    color: '#94a3b8'
+                <div style={{ 
+                  marginTop: '12px',
+                  fontSize: '12px',
+                  color: '#94a3b8'
+                }}>
+                  {supplyRiskProgress.loaded} / {supplyRiskProgress.total} regiões
+                  <div style={{
+                    marginTop: '8px',
+                    width: '100%',
+                    height: '4px',
+                    background: 'rgba(0, 217, 255, 0.2)',
+                    borderRadius: '2px',
+                    overflow: 'hidden'
                   }}>
-                    {supplyRiskProgress.loaded} / {supplyRiskProgress.total} regiões
                     <div style={{
-                      marginTop: '8px',
-                      width: '100%',
-                      height: '4px',
-                      background: 'rgba(0, 217, 255, 0.2)',
-                      borderRadius: '2px',
-                      overflow: 'hidden'
-                    }}>
-                      <div style={{
-                        width: `${(supplyRiskProgress.loaded / supplyRiskProgress.total) * 100}%`,
-                        height: '100%',
-                        background: 'linear-gradient(90deg, #00d9ff 0%, #00a8cc 100%)',
-                        transition: 'width 0.3s ease',
-                        boxShadow: '0 0 8px rgba(0, 217, 255, 0.5)'
-                      }} />
-                    </div>
+                      width: `${Math.min((supplyRiskProgress.loaded / supplyRiskProgress.total) * 100, 100)}%`,
+                      height: '100%',
+                      background: 'linear-gradient(90deg, #00d9ff 0%, #00a8cc 100%)',
+                      transition: 'width 0.3s ease',
+                      boxShadow: '0 0 8px rgba(0, 217, 255, 0.5)'
+                    }} />
                   </div>
-                )}
+                </div>
               </div>
             )}
             {Object.entries(supplyRiskData).map(([oppId, riskData]) => {

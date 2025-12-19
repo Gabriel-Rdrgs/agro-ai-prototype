@@ -263,6 +263,26 @@ export const OpportunityService = {
     }
   },
 
+  // ✅ NOVO: Buscar tendências de mercado completas (com médias móveis)
+  getMarketTrends: async (product, region = null, days = 90) => {
+    try {
+      const params = new URLSearchParams({
+        product,
+        days: days.toString()
+      });
+      
+      if (region) {
+        params.append('region', region);
+      }
+      
+      const response = await api.get(`/analytics/trends?${params.toString()}`);
+      return response.data;
+    } catch (error) {
+      console.error("Erro Market Trends:", error);
+      throw error;
+    }
+  },
+
   // ✅ NOVO: Calcular todos os ROIs
   calculateAllROI: async () => {
     try {

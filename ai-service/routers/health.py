@@ -11,7 +11,9 @@ from typing import Dict, Any
 
 from sqlalchemy import text
 from utils.database import get_engine, get_database_url
-from config.settings import settings
+from config.settings import get_settings
+
+settings = get_settings()
 
 logger = logging.getLogger(__name__)
 

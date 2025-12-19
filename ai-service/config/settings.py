@@ -105,3 +105,7 @@ def get_settings() -> Settings:
     if _settings is None:
         _settings = Settings()
     return _settings
+
+
+# Exporta instância direta para compatibilidade (usado em alguns lugares)
+settings = get_settings()

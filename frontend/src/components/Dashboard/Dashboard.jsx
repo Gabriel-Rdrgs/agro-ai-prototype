@@ -14,6 +14,7 @@ import {
   Legend 
 } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
+import MarketTrendsChart from './MarketTrendsChart'; // ✅ NOVO: Componente de Tendências
 import '../../styles/dashboard.css';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend);
@@ -273,7 +274,7 @@ const Dashboard = () => {
                 </div>
             </div>
             <div className="chart-section">
-                <h4 style={{margin: '0 0 15px 0', color: '#94a3b8', fontSize: '0.9rem'}}>📈 Tendência de Preços</h4>
+                <h4 style={{margin: '0 0 15px 0', color: '#94a3b8', fontSize: '0.9rem'}}>📈 Tendência de Preços (Legado)</h4>
                 <div style={{height: '220px'}}>
                     {trendData ? (
                         <Line data={trendData} options={commonOptions} />
@@ -282,6 +283,13 @@ const Dashboard = () => {
                     )}
                 </div>
             </div>
+        </div>
+
+        {/* ✅ NOVO: Dashboard de Tendências de Mercado Completo */}
+        <div style={{ marginBottom: '30px' }}>
+          <MarketTrendsChart 
+            onError={(error) => console.error('Erro no gráfico de tendências:', error)}
+          />
         </div>
 
         {/* --- 🔙 TABELA DE MONITORAMENTO DE OPORTUNIDADES (A TUA LISTA DE VOLTA) --- */}

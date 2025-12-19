@@ -34,6 +34,10 @@ async def verify_internal_api_key(request: Request, call_next):
         "/favicon.ico"
     ]
     
+    # ✅ CORREÇÃO: Permite requisições OPTIONS (preflight CORS) sem autenticação
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    
     # Se o path é público, passa direto
     if request.url.path in public_paths or request.url.path.startswith("/docs") or request.url.path.startswith("/redoc"):
         return await call_next(request)

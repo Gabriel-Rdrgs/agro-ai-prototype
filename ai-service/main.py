@@ -261,11 +261,6 @@ app.include_router(
 )
 
 app.include_router(
-    health_router,
-    tags=["🏥 Health"]
-)
-
-app.include_router(
     chat_router.router, 
     prefix="/api/v1/chat", 
     tags=["AI Chat"]

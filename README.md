@@ -37,34 +37,47 @@ O Agro-AI Prototype é um **Sistema de Suporte à Decisão (DSS)** para operaç�
 ### Componentes
 
 **Frontend (React)**
-- SPA com mapas, dashboards, tabelas e simuladores
+- SPA com mapas interativos (Leaflet), dashboards, tabelas e simuladores
 - Comunicação via Axios com o backend Node
-- Usa tokens JWT para proteger as rotas autenticadas
+- Autenticação via Supabase Auth (JWT tokens)
+- Filtros avançados com persistência em localStorage
+- Componentes principais:
+  - `MapView.jsx` - Mapa com oportunidades, filtros, heatmap
+  - `AgronomicChat.jsx` - Chat RAG para consultas agronômicas
+  - `Sidebar.jsx` - Filtros de oportunidades (ROI, estados, produtos, safras)
 
 **Backend (Node.js + Express)**
-- Autenticação (login, registro, refresh token) com JWT
-- Exposição de endpoints de negócio:
-  - `/api/opportunities` – oportunidades de arbitragem
-  - `/api/weather` – clima consolidado por coordenada
-  - `/api/analytics/trend` – histórico de preços
-  - `/api/ai/storage`, `/api/ai/batch` – ponte para IA em Python
-  - `/calc/production`, `/calc/arbitrage` – simuladores
-  - `/api/ceasa/*` – dados CEASA
+- Autenticação via Supabase Auth (JWT)
+- RBAC (Role-Based Access Control) - Admin/User
+- Endpoints principais:
+  - `GET /api/opportunities` – Lista oportunidades (com cache, paginação)
+  - `POST /api/ai/batch` – Processamento em lote com Prophet
+  - `POST /api/ai/chat/query` – Chat RAG (proxy para Python)
+  - `GET /api/ceasa/*` – Dados CEASA (preços, sincronização)
+  - `POST /api/admin/etl/start` – Iniciar ETL (requer admin)
+  - `GET /health` – Health check básico
+  - `GET /health/detailed` – Health check detalhado
 - Orquestração com o serviço Python via `PYTHON_API_URL`
+- Cache em memória (LRU) para performance
+- Circuit breaker para proteção do banco
 
 **AI Service (Python + FastAPI)**
 - Endpoints sob `/api/v1/*`:
-  - `/predict/storage`, `/predict/batch`, `/predict/market/scan`
-  - `/calc/production`, `/calc/arbitrage`
-  - `/admin/*` (ETL, correções de dados)
-  - `/chat/*` (RAG)
-  - `/weather/*` (inteligência climática)
+  - `POST /predict/storage` – Análise de armazenagem com IA
+  - `POST /predict/batch` – Previsão em lote (Prophet)
+  - `POST /calc/production` – Cálculo de ROI de produção
+  - `POST /calc/arbitrage` – Cálculo de arbitragem interestadual
+  - `POST /chat/query` – Chat RAG (consultas agronômicas)
+  - `GET /health` – Health check básico
+  - `GET /health/detailed` – Health check completo
+  - `GET /admin/*` – Ferramentas administrativas (ETL, cache)
 - Módulos de serviço:
-  - `storage_advisor.py` – análise de armazenagem
-  - `market_intelligence.py` – sazonalidade e tendências
-  - `arbitrage_calculator.py` – arbitragem interestadual
-  - `fuel_pricing.py` – preços de combustível por estado
-  - `rag_service.py` / `rag_ingestion.py` – RAG em PDFs
+  - `price_forecast.py` – Prophet + fallback para previsão de preços
+  - `storage_advisor.py` – Análise de armazenagem
+  - `market_intelligence.py` – Sazonalidade e tendências
+  - `arbitrage_calculator.py` – Arbitragem interestadual
+  - `rag_service.py` – RAG em documentos PDFs
+  - `rag_ingestion.py` – Ingestão de PDFs no banco vetorial
 
 **Banco de Dados (PostgreSQL)**
 - **Prisma** no backend (schema em `backend/prisma/schema.prisma`)
@@ -244,24 +257,35 @@ npm start
 
 ## 🧠 RAG – Documentos Agrícolas
 
-A camada de RAG fica em:
+A camada de RAG permite consultar documentos técnicos agrícolas em linguagem natural.
 
-- `ai-service/services/rag_service.py`
-- `ai-service/services/rag_ingestion.py`
-- Modelo `Document` em `backend/prisma/schema.prisma`
+### Arquivos Principais
+- `ai-service/services/rag_service.py` - Serviço RAG (busca vetorial + LLM)
+- `ai-service/services/rag_ingestion.py` - Ingestão de PDFs
+- Modelo `Document` em `backend/prisma/schema.prisma` (com `embedding vector(1536)`)
 
 ### Fluxo
 
 1. **Ingestão de PDFs**:
-   - Script lê PDFs, extrai texto, gera chunks e embeddings
-   - Salva em tabela `documents` com coluna `embedding (vector(1536))`
+   ```bash
+   # Dentro do container Docker
+   docker exec -it agro_brain python services/rag_ingestion.py
+   ```
+   - Script lê PDFs, extrai texto, gera chunks (1000 chars, overlap 200)
+   - Gera embeddings via OpenAI (`text-embedding-3-small`)
+   - Salva em tabela `documents` com metadata rica (crop, theme, source_type)
 
 2. **Consulta**:
-   - Endpoint `POST /api/v1/chat/ask` recebe `{"question": "..."}`
+   - Frontend: `POST /api/ai/chat/query` → Backend → `POST /api/v1/chat/query` (Python)
    - Gera embedding da pergunta
-   - Faz busca vetorial no Postgres
-   - Envia contexto + pergunta para LLM
-   - Responde em linguagem natural, citando fontes (nome do PDF, página, etc.)
+   - Busca vetorial no Postgres (pgvector, top 8 chunks)
+   - Envia contexto + pergunta para LLM (`gpt-4o-mini`)
+   - Responde em linguagem natural, citando fontes (PDF, página)
+
+### Documentos Ingeridos
+- ✅ Clima e Produção de Tomates no Brasil.pdf
+- ✅ Função Custo de Armazenagem de Tomate.pdf
+- ✅ Épocas de Plantio e Métricas de Decisão para Cultivo de Tomate no Brasil.pdf
 
 ---
 
@@ -271,6 +295,50 @@ A camada de RAG fica em:
 - **NASA POWER** – radiação solar diária para análise de fotossíntese / brix
 - **AwesomeAPI** – cotação do dólar em tempo real
 - **CEASA / Agrolink** – dados de preços de hortifrúti (via ETL Python)
+- **OpenAI** – Embeddings (`text-embedding-3-small`) e LLM (`gpt-4o-mini`) para RAG
+- **Supabase** – Banco de dados PostgreSQL + Auth + PostGIS + pgvector
+
+---
+
+## 🏥 Health Checks e Monitoramento
+
+### Endpoints de Health Check
+
+**Backend Node.js:**
+- `GET /health` - Health check básico (rápido, para load balancers)
+- `GET /health/detailed` - Health check completo (banco, serviços, APIs, recursos)
+
+**Python AI Service:**
+- `GET /health` - Health check básico
+- `GET /health/detailed` - Health check completo
+- `GET /health/database` - Verifica apenas banco
+- `GET /health/services` - Verifica apenas serviços
+- `GET /health/external` - Verifica apenas APIs externas
+
+Veja mais em: `docs/GUIA_HEALTH_CHECKS.md`
+
+---
+
+## 💾 Backup e Manutenção
+
+### Scripts de Backup
+
+**Backup PostgreSQL:**
+```bash
+# Script Bash
+./scripts/backup_postgres.sh --compress --retention 7
+
+# Script Python
+python scripts/backup_postgres.py --compress --retention 7
+```
+
+**Funcionalidades:**
+- Backup completo do banco (pg_dump)
+- Compressão opcional (gzip) - Economiza ~70-80% de espaço
+- Retenção automática (remove backups antigos)
+- Logging detalhado
+
+Veja mais em: `docs/GUIA_BACKUP_POSTGRES.md`
 
 ---
 
@@ -321,6 +389,25 @@ Veja mais em:
 - [ ] Multi-tenant architecture para suportar múltiplas organizações
 - [ ] Mobile app com React Native + offline-first
 - [ ] Integração Blockchain para rastreabilidade de lote
+
+---
+
+## 📚 Documentação
+
+### Documentos Principais
+
+- **[API Reference](docs/API_REFERENCE.md)** - Documentação completa de todos os endpoints
+- **[Guia de Uso](docs/GUIA_USO_CLIENTE.md)** - Guia para usuários finais
+- **[Health Checks](docs/GUIA_HEALTH_CHECKS.md)** - Guia de monitoramento e health checks
+- **[Backup PostgreSQL](docs/GUIA_BACKUP_POSTGRES.md)** - Guia de backup e restauração
+- **[CI/CD](docs/GUIA_CI_CD.md)** - Guia de integração contínua e deploy
+- **[Schema Documents](docs/SCHEMA_DOCUMENTS_CONTRACT.md)** - Contrato de schema da tabela `documents`
+
+### Documentação Técnica
+
+- **[Análise Arquitetural](docs/ANALISE_ARQUITETURAL_COMPLETA.md)** - Análise completa da arquitetura
+- **[Testes Automatizados](docs/RESUMO_TESTES_AUTOMATIZADOS.md)** - Resumo dos testes Python
+- **[Resultados dos Testes](docs/RESULTADOS_TESTES.md)** - Métricas e cobertura de código
 
 ---
 
