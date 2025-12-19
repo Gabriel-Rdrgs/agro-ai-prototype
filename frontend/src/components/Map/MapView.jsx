@@ -1,4 +1,4 @@
-import React, { useState, useImperativeHandle, useEffect, useRef } from 'react';
+import React, { useState, useImperativeHandle, useEffect, useRef, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, GeoJSON, Polyline, Tooltip } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import 'leaflet/dist/leaflet.css';
@@ -142,7 +142,8 @@ const MapView = React.forwardRef((props, ref) => {
   
   // ✅ NOVO: Recebe dados de IA e risco via props (compartilhados)
   const aiPredictions = props.aiPredictions || {};
-  const supplyRiskData = props.supplyRiskData || {};
+  // Memoiza supplyRiskData para evitar mudanças desnecessárias nas dependências do useEffect
+  const supplyRiskData = useMemo(() => props.supplyRiskData || {}, [props.supplyRiskData]);
   
   // ✅ NOVO: Callbacks para atualizar dados de IA e risco
   // Usa useRef para manter referência estável e evitar re-renders
