@@ -64,6 +64,9 @@ class ArbitrageRequest(BaseModel):
     destination_state: str
     planting_month: int = 1
     area_ha: float = 10.0
+    # ✅ NOVO: Coordenadas específicas da origem (opcional, usa estado se não fornecido)
+    origin_lat: Optional[float] = None
+    origin_lng: Optional[float] = None
 
 # --- 4. SLIDER / PROCESSAMENTO EM LOTE (BATCH) ---
 class BatchItem(BaseModel):
@@ -89,6 +92,13 @@ class MarketScanRequest(BaseModel):
     origin_state: str = "SP"
     volume: float = 1000.0
     month: Optional[int] = None
+
+class BestOpportunitiesRequest(BaseModel):
+    """Requisição para buscar as melhores oportunidades automaticamente"""
+    products: Optional[List[str]] = None  # Se None, busca todos os produtos disponíveis
+    max_results: int = Field(default=10, ge=1, le=50)  # Quantas oportunidades retornar
+    min_roi: Optional[float] = None  # ROI mínimo (filtro opcional)
+    month: Optional[int] = Field(default=None, ge=1, le=12)  # Mês de plantio (opcional)
 
 
 # --- 5. RECOMENDAÇÃO AUTOMÁTICA (IA) ---
@@ -195,6 +205,36 @@ class PriceForecastItem(BaseModel):
     price: float
     lower: float  # Intervalo inferior (80% confiança)
     upper: float   # Intervalo superior (80% confiança)
+
+class BestOpportunityItem(BaseModel):
+    """Item individual de melhor oportunidade"""
+    product: str
+    origin_state: str
+    origin_city: Optional[str] = None
+    destination_state: str
+    destination_name: str
+    roi: float
+    net_profit: float
+    buy_price: float
+    sell_price: float
+    freight: float
+    distance_km: int
+    volume_kg: float
+    confidence_score: float = 0.8
+    # ✅ NOVO: Datas de referência dos preços
+    buy_price_date: Optional[str] = None  # Data do preço de compra (ISO format)
+    sell_price_date: Optional[str] = None  # Data do preço de venda (ISO format)
+    price_source: Optional[str] = "Banco de Dados (Último registro)"  # Fonte dos dados
+    # ✅ NOVO: Informações sobre o cálculo
+    area_ha: float = 10.0  # Área usada no cálculo (padrão: 10 ha)
+    calculation_note: Optional[str] = "Cálculo baseado em 10 hectares (área padrão)"  # Nota sobre o cálculo
+
+class BestOpportunitiesResponse(BaseModel):
+    """Resposta com as melhores oportunidades encontradas"""
+    status: str
+    total_scanned: int
+    opportunities: List[BestOpportunityItem]
+    scan_duration_seconds: float
 
 class PriceForecastResponse(BaseModel):
     """Resposta completa de previsão de preços"""

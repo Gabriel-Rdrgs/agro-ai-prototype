@@ -12,6 +12,8 @@ import math
 from models.schemas import SimulationRequest
 from config.crops import get_crop_specs
 from config.mathematical_formulas import calculate_storage_cost, DAILY_LOSS_RATE
+from config.soybean_formulas import calculate_soybean_storage_cost, SOYBEAN_DAILY_LOSS_RATE
+from config.corn_formulas import calculate_corn_storage_cost, CORN_DAILY_LOSS_RATE
 from services.market_intelligence import get_predicted_market_price, get_seasonality_factor
 from utils.database import get_engine
 
@@ -209,29 +211,54 @@ class StorageAdvisor:
 
             # --- C. CUSTOS REAIS (ACUMULADOS) ---
             # ✅ USA FÓRMULA OFICIAL: C(x,t) = Cf + Cv + Cp
+            # ✅ NOVO: Detecta produto e usa função apropriada (Tomate vs Soja)
             # IMPORTANTE: Calcula custo por kg para manter consistência com preços (R$/kg)
             # Usa quantidade padrão de 10000 kg (10 toneladas) para distribuir custo fixo de forma mais realista
             # Câmaras frias comerciais geralmente armazenam volumes maiores, reduzindo custo fixo por kg
             quantity_standard_kg = 10000.0  # 10 toneladas (quantidade padrão comercial)
             time_months = (day + 1) / 30.0  # Converte dias para meses (dia+1 para incluir o dia atual)
             
-            # Calcula custo de armazenagem para quantidade padrão
-            storage_costs = calculate_storage_cost(
-                quantity_kg=quantity_standard_kg,
-                time_months=time_months,
-                price_per_kg=c_price
-            )
+            # ✅ NOVO: Detecta produto e usa função apropriada
+            product_name = data.product.strip().capitalize() if data.product else 'Tomate'
+            
+            if product_name == 'Soja':
+                # Usa função de armazenagem de soja
+                storage_costs = calculate_soybean_storage_cost(
+                    quantity_kg=quantity_standard_kg,
+                    time_months=time_months,
+                    price_per_kg=c_price
+                )
+                # Taxa de comissão menor para soja (mercado exportação)
+                commission_rate = 0.08  # 8% (menor que tomate)
+            elif product_name == 'Milho':
+                # Usa função de armazenagem de milho
+                storage_costs = calculate_corn_storage_cost(
+                    quantity_kg=quantity_standard_kg,
+                    time_months=time_months,
+                    price_per_kg=c_price
+                )
+                # Taxa de comissão intermediária para milho
+                commission_rate = 0.10  # 10% (intermediário)
+            else:
+                # Usa função de armazenagem de tomate (padrão)
+                storage_costs = calculate_storage_cost(
+                    quantity_kg=quantity_standard_kg,
+                    time_months=time_months,
+                    price_per_kg=c_price
+                )
+                # Taxa de comissão CEASA para tomate
+                commission_rate = 0.17  # 17% CEASA
             
             # Normaliza custo para R$/kg (divide pela quantidade padrão)
-            # Isso distribui o custo fixo (R$ 1700/mês) entre mais kg, reduzindo o custo unitário
+            # Isso distribui o custo fixo entre mais kg, reduzindo o custo unitário
             storage_cost_per_kg = storage_costs["total_cost"] / quantity_standard_kg
             
             # Custo por kg = preço de compra + custos de armazenagem por kg até o dia
             accumulated_ops_cost_per_kg = b_price + storage_cost_per_kg
             
             # Taxas de Saída (Incidem sobre o valor de venda por kg)
-            commission_per_kg = my_sell_price * 0.17  # 17% CEASA sobre preço de venda
-            packaging_per_kg = storage_costs["packaging_cost"] / quantity_standard_kg  # R$ 0,10/kg (normalizado)
+            commission_per_kg = my_sell_price * commission_rate
+            packaging_per_kg = storage_costs["packaging_cost"] / quantity_standard_kg
             
             # Custo total por kg = custo de compra + armazenagem + taxas
             total_exit_cost_per_kg = accumulated_ops_cost_per_kg + commission_per_kg + packaging_per_kg

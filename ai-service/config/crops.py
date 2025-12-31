@@ -4,55 +4,20 @@ Especificações agronômicas de culturas.
 Gerenciador central que une dados científicos (Tomate) e dados gerais (Legado).
 """
 
-# ✅ AQUI ESTÁ A MÁGICA: Importamos a verdade científica do novo arquivo
+# ✅ AQUI ESTÁ A MÁGICA: Importamos a verdade científica dos novos arquivos
 from .agronomic_params import TOMATO_SPECS
+from .soybean_params import SOYBEAN_SPECS
+from .corn_params import CORN_SPECS
 
 CROPS_SPECS = {
     # 🍅 TOMATE: Agora vem limpo e validado do arquivo agronomic_params.py
     'Tomate': TOMATO_SPECS,
     
-    # 🌽 MILHO & SOJA: Mantidos hardcoded (Legado) como você pediu
-    'Soja': {
-        'base_productivity': 60,            # sacas/ha (60kg)
-        'base_cost_ha': 4500.00,
-        'unit_weight_kg': 60.0,
-        'temp_min_critical': 15.0,
-        'temp_max_critical': 40.0,
-        'ideal_rain_cycle': 800.0,
-        'min_rain_cycle': 600.0,
-        'max_rain_cycle': 1000.0,
-        'rain_logistics_limit': 25.0,
-        'min_solar_mj': 12.0,
-        'storage_loss_rate_daily': 0.001,
-        'energy_cost_daily_kg': 0.02,
-        'energy_cost_daily_unit': 1.20,
-        'packaging_cost_kg': 0.05,
-        'fixed_cost_monthly': 500.00,
-        'fixed_cost_unit': 0.50,
-        'volatility_factor': 0.8,
-        'truck_capacity': 550,
-    },
+    # 🌾 SOJA: Agora vem limpo e validado do arquivo soybean_params.py
+    'Soja': SOYBEAN_SPECS,
     
-    'Milho': {
-        'base_productivity': 150,           # sacas/ha
-        'base_cost_ha': 5000.00,
-        'unit_weight_kg': 60.0,
-        'temp_min_critical': 10.0,
-        'temp_max_critical': 38.0,
-        'ideal_rain_cycle': 700.0,
-        'min_rain_cycle': 500.0,
-        'max_rain_cycle': 900.0,
-        'rain_logistics_limit': 25.0,
-        'min_solar_mj': 15.0,
-        'storage_loss_rate_daily': 0.001,
-        'energy_cost_daily_kg': 0.02,
-        'energy_cost_daily_unit': 1.20,
-        'packaging_cost_kg': 0.05,
-        'fixed_cost_monthly': 500.00,
-        'fixed_cost_unit': 0.50,
-        'volatility_factor': 0.9,
-        'truck_capacity': 550,
-    },
+    # 🌽 MILHO: Agora vem limpo e validado do arquivo corn_params.py
+    'Milho': CORN_SPECS,
     
     'Default': {
         'base_productivity': 100,

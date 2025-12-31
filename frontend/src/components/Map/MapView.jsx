@@ -8,6 +8,7 @@ import { createRiskIcon } from '../../data/mapIcons';
 import { OpportunityService } from '../../services/opportunityService';
 import { getPlantingSeasonStatus } from '../../utils/plantingCalendar';
 import OpportunityModal from './OpportunityModal';
+import ComparisonModal from './ComparisonModal';
 import "../../styles/mapview.css"; 
 
 // Fix Leaflet icon
@@ -110,6 +111,7 @@ const MapView = React.forwardRef((props, ref) => {
   // Modal state
   const [modalOpportunity, setModalOpportunity] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isComparisonModalOpen, setIsComparisonModalOpen] = useState(false);
   
   // 1. Estado para saber se o mouse está em cima da linha
   const [hoveredFlowId, setHoveredFlowId] = useState(null);
@@ -738,15 +740,35 @@ return (
         onMouseLeave={(e) => !e.buttons && setLegendVisible(false)}
       >
         <h4 className="legend-title">
-          📊 Legenda ROI {legendVisible ? '' : '(pressione para ver)'}
+          📊 Legenda {legendVisible ? '' : '(pressione para ver)'}
         </h4>
         {legendVisible && (
           <div className="legend-content">
+            <div style={{ marginBottom: '12px', fontWeight: 'bold', color: theme.colors.accent, fontSize: '11px' }}>
+              ROI:
+            </div>
             <div className="legend-item"><div className="legend-dot high" /> Alto (&gt;100%)</div>
             <div className="legend-item"><div className="legend-dot medium" /> Médio (50-100%)</div>
             <div className="legend-item"><div className="legend-dot low" /> Baixo (&lt;50%)</div>
-            <hr />
+            <hr style={{ margin: '12px 0', borderColor: 'rgba(255,255,255,0.2)' }} />
+            <div style={{ marginBottom: '12px', fontWeight: 'bold', color: theme.colors.accent, fontSize: '11px' }}>
+              Produtos:
+            </div>
+            <div className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '16px' }}>🍅</span>
+              <span>Tomate</span>
+            </div>
+            <div className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '16px' }}>🌾</span>
+              <span>Soja</span>
+            </div>
+            <div className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '16px' }}>🌽</span>
+              <span>Milho</span>
+            </div>
+            <hr style={{ margin: '12px 0', borderColor: 'rgba(255,255,255,0.2)' }} />
             <div className="legend-risk">🔴 Borda vermelha = Alto risco</div>
+            <div className="legend-risk" style={{ marginTop: '4px' }}>⚠️ Badge = Eventos extremos</div>
           </div>
         )}
       </div>
@@ -1145,8 +1167,43 @@ return (
         {!customRoute && (
           <MarkerClusterGroup
             chunkedLoading
+            maxClusterRadius={60}
             showCoverageOnHover={false}
             spiderfyOnMaxZoom={true}
+            zoomToBoundsOnClick={true}
+            iconCreateFunction={(cluster) => {
+              const count = cluster.getChildCount();
+              const products = new Set();
+              cluster.getAllChildMarkers().forEach(marker => {
+                const opp = marker.options?.opportunity || marker.opportunity;
+                if (opp?.product) products.add(opp.product);
+              });
+              
+              // Cores diferentes baseadas nos produtos no cluster
+              let bgColor = '#3b82f6'; // Azul padrão
+              if (products.has('Soja')) bgColor = '#fbbf24'; // Amarelo para soja
+              else if (products.has('Tomate')) bgColor = '#ef4444'; // Vermelho para tomate
+              else if (products.size > 1) bgColor = '#8b5cf6'; // Roxo para múltiplos produtos
+              
+              return L.divIcon({
+                html: `<div style="
+                  background: ${bgColor};
+                  color: white;
+                  border-radius: 50%;
+                  width: ${count < 10 ? '40' : count < 100 ? '45' : '50'}px;
+                  height: ${count < 10 ? '40' : count < 100 ? '45' : '50'}px;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  font-weight: bold;
+                  font-size: ${count < 10 ? '14' : count < 100 ? '16' : '18'}px;
+                  border: 3px solid white;
+                  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                ">${count}</div>`,
+                className: 'marker-cluster-custom',
+                iconSize: L.point(count < 10 ? 40 : count < 100 ? 45 : 50, count < 10 ? 40 : count < 100 ? 45 : 50)
+              });
+            }}
             polygonOptions={{
                 fillColor: theme.colors.accent,
                 color: theme.colors.accent,
@@ -1171,12 +1228,16 @@ return (
                 // 1. CORREÇÃO: Coordenadas em 'coords'
                 position={[opp.coords?.lat || 0, opp.coords?.lng || 0]}
                 
-                // 2. CORREÇÃO: Risco e ROI nos novos endereços + eventos extremos
+                // ✅ NOVO: Armazena oportunidade no marker para uso no clustering
+                opportunity={opp}
+                
+                // 2. CORREÇÃO: Risco e ROI nos novos endereços + eventos extremos + produto
                 icon={createRiskIcon(
                   opp.financials?.roi || 0, 
                   opp.details?.riskLevel || 1,
                   hasExtremeEvents,
-                  extremeSeverity
+                  extremeSeverity,
+                  opp.product // ✅ NOVO: Passa o produto para diferenciar ícones
                 )}
                 
                 eventHandlers={{
@@ -1412,6 +1473,50 @@ return (
           setModalOpportunity(null);
         }}
       />
+
+      {/* Modal de Comparação */}
+      <ComparisonModal
+        opportunities={filteredOpportunities}
+        isOpen={isComparisonModalOpen}
+        onClose={() => setIsComparisonModalOpen(false)}
+      />
+
+      {/* Botão de Comparação */}
+      {filteredOpportunities && filteredOpportunities.length > 1 && (
+        <button
+          onClick={() => setIsComparisonModalOpen(true)}
+          style={{
+            position: 'fixed',
+            bottom: '20px',
+            right: '20px',
+            zIndex: 1000,
+            padding: '12px 20px',
+            background: `linear-gradient(135deg, ${theme.colors.accent} 0%, rgba(0, 217, 255, 0.8) 100%)`,
+            border: `2px solid ${theme.colors.accent}`,
+            borderRadius: theme.borderRadius,
+            color: theme.colors.background,
+            fontSize: '14px',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            boxShadow: '0 4px 12px rgba(0, 217, 255, 0.4)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            transition: 'all 0.3s ease'
+          }}
+          onMouseEnter={(e) => {
+            e.target.style.transform = 'scale(1.05)';
+            e.target.style.boxShadow = '0 6px 16px rgba(0, 217, 255, 0.6)';
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.transform = 'scale(1)';
+            e.target.style.boxShadow = '0 4px 12px rgba(0, 217, 255, 0.4)';
+          }}
+        >
+          <span>🔄</span>
+          <span>Comparar Oportunidades</span>
+        </button>
+      )}
     </div>
   );
 });

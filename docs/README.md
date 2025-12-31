@@ -34,12 +34,22 @@ Bem-vindo à documentação do projeto Agro-AI Prototype. Este índice organiza 
 - **[Guia de Testes](./GUIA_TESTES.md)** - Testes automatizados
 - **[Guia do Prophet](./GUIA_PROPHET.md)** - Previsões e validação
 
+## ⚡ Performance e Otimização
+
+- **[Guia de Otimização de Performance](./OTIMIZACAO_PERFORMANCE.md)** - Diagnóstico, cache, índices, pré-cálculo
+
 ---
 
 ## 📊 Especificações Técnicas
 
 - **[Schema Contract](./SCHEMA_DOCUMENTS_CONTRACT.md)** - Contrato de schema de documentos
 - **[API Reference](./API_REFERENCE.md)** - Documentação da API REST
+
+## 🗺️ Google Maps (Opcional)
+
+- **[Ativação Futura do Google Maps](./GOOGLE_MAPS_ATIVACAO_FUTURA.md)** - Guia de ativação quando necessário
+- **[Como Obter a Chave da API](./GUIA_OBTER_GOOGLE_MAPS_API_KEY.md)** - Passo a passo completo
+- **[Implementação Técnica](./IMPLEMENTACAO_DISTANCE_MATRIX.md)** - Detalhes técnicos da implementação
 
 ---
 

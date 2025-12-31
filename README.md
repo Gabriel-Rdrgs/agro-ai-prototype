@@ -1,440 +1,682 @@
-# 🌾 Agro-AI Prototype (AgroArbitrage IA)
+<div align="center">
 
-**Plataforma de Inteligência Agrícola para Arbitragem, Clima, Logística e RAG em Documentos Técnicos**
+# 🌾 Agro-AI Prototype
 
-Este repositório contém um sistema full-stack composto por:
-- **Frontend** React (dashboard, mapas, simuladores)
-- **Backend** Node.js/Express (API pública, autenticação, orquestração)
-- **Serviço de IA** em Python/FastAPI (cálculos, predições, RAG)
-- **Banco de dados** PostgreSQL com **PostGIS** e **pgvector**
+**Plataforma de Inteligência Agrícola com IA para Arbitragem, Clima e Consultas Agronômicas**
 
-Foco atual: **tomate de mesa** no Brasil, com base em PDFs técnicos (Embrapa, UFG, ZARC) e integrações CEASA/Agrolink.
+[![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
+[![React](https://img.shields.io/badge/React-19.2-blue.svg)](https://reactjs.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-teal.svg)](https://fastapi.tiangolo.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-blue.svg)](https://www.postgresql.org/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
----
+[🚀 Funcionalidades](#-funcionalidades-principais) • [📋 Pré-requisitos](#-pré-requisitos) • [⚙️ Instalação](#️-como-instalar-e-rodar) • [🏗️ Arquitetura](#️-arquitetura-do-sistema) • [📚 Documentação](#-documentação)
 
-## 📌 Visão Geral
-
-O Agro-AI Prototype é um **Sistema de Suporte à Decisão (DSS)** para operações agrícolas e de arbitragem de hortifrúti, com 3 pilares principais:
-
-### 1. Arbitragem e fluxo comercial
-- Oportunidades entre origens (CEASA/produção) e destinos (centros consumidores)
-- Cálculo de ROI real considerando frete, dólar, sazonalidade e risco
-
-### 2. Inteligência climática e produtiva
-- Consumo de APIs climáticas (Open-Meteo, NASA POWER)
-- Análise de armazenagem com base em perdas diárias, radiação, chuva e calendário de plantio
-- Simulações de produção e arbitragem interestadual
-
-### 3. Camada de IA / RAG em PDFs
-- Ingestão de documentos técnicos (PDFs agrícolas)
-- Vetorização com OpenAI Embeddings (`text-embedding-3-small`)
-- Busca semântica com pgvector e resposta via LLM (`gpt-4o-mini`)
+</div>
 
 ---
 
-## 🏗 Arquitetura Técnica
+## 📖 O Que É Este Projeto?
 
-### Componentes
+O **Agro-AI Prototype** é um sistema completo de inteligência artificial para o agronegócio brasileiro. Ele ajuda produtores rurais, comerciantes e investidores a tomar decisões mais inteligentes sobre quando e onde comprar/vender produtos agrícolas, considerando:
 
-**Frontend (React)**
-- SPA com mapas interativos (Leaflet), dashboards, tabelas e simuladores
-- Comunicação via Axios com o backend Node
-- Autenticação via Supabase Auth (JWT tokens)
-- Filtros avançados com persistência em localStorage
-- Componentes principais:
-  - `MapView.jsx` - Mapa com oportunidades, filtros, heatmap
-  - `AgronomicChat.jsx` - Chat RAG para consultas agronômicas
-  - `Sidebar.jsx` - Filtros de oportunidades (ROI, estados, produtos, safras)
+- 💰 **Preços de mercado** (CEASA, Agrolink, CONAB)
+- 🌤️ **Condições climáticas** (chuva, temperatura, radiação solar)
+- 📊 **Previsões de preços** (usando IA - Prophet)
+- 📚 **Conhecimento técnico** (consultas em documentos científicos via chat IA)
+- 🗺️ **Oportunidades de arbitragem** (comprar em um estado e vender em outro)
 
-**Backend (Node.js + Express)**
-- Autenticação via Supabase Auth (JWT)
-- RBAC (Role-Based Access Control) - Admin/User
-- Endpoints principais:
-  - `GET /api/opportunities` – Lista oportunidades (com cache, paginação)
-  - `POST /api/ai/batch` – Processamento em lote com Prophet
-  - `POST /api/ai/chat/query` – Chat RAG (proxy para Python)
-  - `GET /api/ceasa/*` – Dados CEASA (preços, sincronização)
-  - `POST /api/admin/etl/start` – Iniciar ETL (requer admin)
-  - `GET /health` – Health check básico
-  - `GET /health/detailed` – Health check detalhado
-- Orquestração com o serviço Python via `PYTHON_API_URL`
-- Cache em memória (LRU) para performance
-- Circuit breaker para proteção do banco
+### 🎯 Para Quem É Este Sistema?
 
-**AI Service (Python + FastAPI)**
-- Endpoints sob `/api/v1/*`:
-  - `POST /predict/storage` – Análise de armazenagem com IA
-  - `POST /predict/batch` – Previsão em lote (Prophet)
-  - `POST /calc/production` – Cálculo de ROI de produção
-  - `POST /calc/arbitrage` – Cálculo de arbitragem interestadual
-  - `POST /chat/query` – Chat RAG (consultas agronômicas)
-  - `GET /health` – Health check básico
-  - `GET /health/detailed` – Health check completo
-  - `GET /admin/*` – Ferramentas administrativas (ETL, cache)
-- Módulos de serviço:
-  - `price_forecast.py` – Prophet + fallback para previsão de preços
-  - `storage_advisor.py` – Análise de armazenagem
-  - `market_intelligence.py` – Sazonalidade e tendências
-  - `arbitrage_calculator.py` – Arbitragem interestadual
-  - `rag_service.py` – RAG em documentos PDFs
-  - `rag_ingestion.py` – Ingestão de PDFs no banco vetorial
-
-**Banco de Dados (PostgreSQL)**
-- **Prisma** no backend (schema em `backend/prisma/schema.prisma`)
-- Extensões:
-  - `postgis` – campo `geom` para oportunidades (consultas geoespaciais)
-  - `vector` – campo `embedding` em `Document` para RAG
-- Principais modelos:
-  - `Opportunity`, `PriceHistory`
-  - `User`, `RefreshToken`, `AuditLog`
-  - `CeasaPrice`, `CeasaSyncLog`
-  - `FuelPrice`
-  - `Document` (chunks de PDFs + embeddings)
+| Público | Como Usa |
+|--------|----------|
+| **Produtores Rurais** | Descobrem a melhor época de plantio, analisam condições climáticas e consultam documentos técnicos |
+| **Comerciantes/Atacadistas** | Encontram oportunidades de compra/venda entre diferentes regiões do Brasil |
+| **Investidores** | Analisam ROI (retorno sobre investimento) de operações agrícolas |
+| **Agrônomos** | Consultam rapidamente documentos técnicos (Embrapa, UFG, ZARC) via chat IA |
 
 ---
 
-## 🧭 Fluxo de Dados (alto nível)
+## ✨ Funcionalidades Principais
 
-1. **Dados de mercado**
-   - ETLs em `ai-service/scripts/` consultam CEASA/Agrolink periodicamente
-   - Dados são gravados em `CeasaPrice` e relacionados a `Opportunity`/`PriceHistory`
+### 1. 🗺️ Mapa Interativo de Oportunidades
 
-2. **Dados climáticos e radiação**
-   - `services/climate/intelligence.py` consulta:
-     - Open-Meteo (histórico + previsão)
-     - NASA POWER (radiação solar diária)
-   - Resultados cacheados (LRU + TTL configurável) para redução de latência
+Visualize no mapa do Brasil todas as oportunidades de compra/venda de produtos agrícolas:
 
-3. **Cálculos e simulações**
-   - Backend consolida dados do Prisma + respostas da IA em Python
-   - Usuário interage via frontend:
-     - Mapa → escolhe origem/destino
-     - Formulário → preenche parâmetros de produção/armazenagem
-   - Resultados voltam como JSON prontos para gráficos
+- **Marcadores coloridos** por ROI (verde = alto, vermelho = baixo)
+- **Filtros avançados**: por produto, estado, ROI mínimo, época de plantio
+- **Heatmap** de regiões com maior concentração de oportunidades
+- **Badges de eventos extremos**: granizo, ondas de calor/frio, tempestades
+- **Modal detalhado** com 4 abas:
+  - 💰 **Financeiro**: ROI, preços, frete, lucro projetado
+  - 🌡️ **Clima**: previsão de chuva, temperatura, eventos extremos
+  - 📊 **Qualidade**: shelf-life, perdas estimadas, condições de armazenagem
+  - 🤖 **IA**: recomendação automática (COMPRAR / NÃO COMPRAR / AGUARDAR)
 
-4. **RAG em documentos**
-   - PDFs técnicos são ingeridos via scripts usando `rag_ingestion.py`
-   - Texto é quebrado em chunks, vetorizado com OpenAI Embeddings
-   - Queries do usuário caem em `/api/v1/chat/ask`
-   - Serviço RAG faz:
-     - Busca vetorial (pgvector)
-     - Montagem de contexto
-     - Chamada ao LLM (`gpt-4o-mini`)
-     - Resposta citando fontes (metadados dos chunks)
+### 2. 📊 Dashboard de Análises
+
+- **Gráficos de tendências** de preços (últimos 90 dias)
+- **Melhores oportunidades** do momento (ordenadas por ROI)
+- **Favoritos**: salve oportunidades para acompanhar
+- **Análise de mercado**: médias móveis, sazonalidade
+
+### 3. 🤖 Chat Agronômico com IA (RAG)
+
+Faça perguntas em linguagem natural sobre cultivos agrícolas:
+
+**Exemplos de perguntas:**
+- "Qual a época ideal de plantio de tomate em Goiás?"
+- "Quais as temperaturas ideais para soja na fase de floração?"
+- "Como calcular o custo de armazenagem de milho?"
+
+**Como funciona:**
+1. Você faz uma pergunta
+2. O sistema busca nos documentos técnicos (PDFs da Embrapa, UFG, ZARC)
+3. A IA responde citando as fontes (qual PDF, qual página)
+
+**Documentos disponíveis:**
+- ✅ Clima e Produção de Tomates no Brasil
+- ✅ Função Custo de Armazenagem de Tomate
+- ✅ Épocas de Plantio e Métricas de Decisão para Cultivo de Tomate
+- 🔄 Soja e Milho (em implementação)
+
+### 4. 💰 Calculadoras de ROI
+
+#### **Calculadora de Produção**
+Calcule o retorno sobre investimento de uma produção agrícola:
+- Área plantada (hectares)
+- Custo por hectare
+- Produtividade esperada
+- Preço de venda projetado
+- **Resultado**: ROI, lucro líquido, análise de risco
+
+#### **Calculadora de Arbitragem**
+Encontre oportunidades de comprar em um estado e vender em outro:
+- Origem e destino (estados/cidades)
+- Produto e volume
+- **Resultado**: ROI considerando frete, dólar, perdas, comissões
+
+### 5. 🌤️ Análise Climática Inteligente
+
+- **Previsão de 16 dias** (Open-Meteo)
+- **Radiação solar** (NASA POWER) - importante para fotossíntese
+- **Eventos extremos**: granizo, ondas de calor/frio, tempestades tropicais
+- **Comparação histórica**: chuva atual vs. mesmo período do ano anterior
+- **Análise de risco climático**: impacto na produtividade
+
+### 6. 📈 Previsão de Preços com IA (Prophet)
+
+O sistema usa **Prophet** (Facebook) para prever preços futuros:
+- **7 dias à frente**: preço projetado
+- **30 dias à frente**: tendência de longo prazo
+- **Sazonalidade**: considera padrões históricos (ex: preços altos no inverno)
+- **Fallback inteligente**: se não houver dados suficientes, usa modelos alternativos
+
+### 7. 🏪 Integração com Mercados (ETL Automatizado)
+
+Dados coletados automaticamente de:
+- **CEASA** (SP, PR, MG, RJ, RS, GO, BA, PE)
+- **Agrolink** (portal de preços agrícolas)
+- **CONAB** (Companhia Nacional de Abastecimento)
+- **IBGE SIDRA** (dados de produção agrícola)
+- **ZARC** (Zoneamento Agrícola de Risco Climático - MAPA)
 
 ---
 
-## 📦 Stack Tecnológico
+## 🏗️ Arquitetura do Sistema
 
-| Camada        | Tecnologia principal           |
-|---------------|--------------------------------|
-| Frontend      | React 18, Leaflet, Chart.js   |
-| Backend       | Node.js, Express, Prisma ORM  |
-| IA / ML / RAG | Python 3.12, FastAPI, LangChain, OpenAI |
-| Banco         | PostgreSQL + PostGIS + pgvector |
-| Infra         | Vercel, Railway, Render       |
+### 📐 Diagrama de Componentes
 
----
-
-## 🚀 Como Rodar o Projeto Localmente
-
-### Pré-requisitos
-
-- Node.js 18+
-- Python 3.10+
-- PostgreSQL (local, Supabase ou Neon)
-- Git
-- Chave OpenAI (`OPENAI_API_KEY`) para a camada de RAG
-
-### 1️⃣ Banco de Dados
-
-Crie um banco PostgreSQL, habilitando as extensões:
-
-```sql
-CREATE EXTENSION IF NOT EXISTS postgis;
-CREATE EXTENSION IF NOT EXISTS vector;
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    👤 USUÁRIO (Navegador)                    │
+│              React App (Dashboard, Mapa, Chat)             │
+└──────────────────────┬──────────────────────────────────────┘
+                       │ HTTPS (JWT Token)
+                       │
+┌──────────────────────▼──────────────────────────────────────┐
+│            🔵 BACKEND NODE.JS (Porta 3001)                  │
+│  • Express.js (API REST)                                    │
+│  • Autenticação (Supabase Auth)                             │
+│  • Cache em memória (LRU)                                   │
+│  • Jobs assíncronos (ETL)                                   │
+└──────┬───────────────────────────────┬──────────────────────┘
+       │                               │
+       │ Prisma ORM                    │ HTTP + API Key
+       │                               │
+       ↓                               ↓
+┌──────────────────────┐    ┌──────────────────────────────────┐
+│  🗄️ POSTGRESQL        │    │  🐍 AI SERVICE PYTHON (8000)     │
+│  (Supabase)          │    │  • FastAPI                        │
+│  • PostGIS           │    │  • Prophet (ML)                   │
+│  • pgvector          │    │  • RAG (OpenAI)                    │
+│  • Dados de negócio  │    │  • Cálculos complexos              │
+└──────────────────────┘    └──────┬────────────────────────────┘
+                                    │
+                    ┌───────────────┼───────────────┐
+                    │               │               │
+                    ↓               ↓               ↓
+        ┌──────────────────┐  ┌──────────┐  ┌──────────────┐
+        │  🗄️ POSTGRESQL    │  │  🤖 OPENAI│  │  🌐 APIs      │
+        │  (Vetores RAG)   │  │  • Embed │  │  • Open-Meteo │
+        │                  │  │  • LLM   │  │  • NASA POWER │
+        └──────────────────┘  └──────────┘  │  • CEASA      │
+                                             │  • Agrolink   │
+                                             │  • IBGE       │
+                                             └──────────────┘
 ```
 
-Configure `DATABASE_URL` para apontar para esse banco (ver seções de `.env` abaixo).
+### 🔄 Fluxo de Dados: Exemplo Prático
 
-### 2️⃣ Backend (Node.js – porta 3001)
+**Cenário:** Usuário pergunta "Qual a época ideal de plantio de tomate em Goiás?"
+
+```
+1. 👤 Usuário digita pergunta no chat
+   ↓
+2. 📱 Frontend (React) → POST /api/ai/chat/query
+   ↓
+3. 🔵 Backend (Node.js) → Valida JWT → Proxy para Python
+   ↓
+4. 🐍 AI Service (Python) → RAG Service
+   ├─→ Gera embedding da pergunta (OpenAI)
+   ├─→ Busca no banco vetorial (pgvector) → Top 8 chunks similares
+   ├─→ Monta contexto + pergunta
+   └─→ Chama LLM (gpt-4o-mini) → Resposta + fontes
+   ↓
+5. 📱 Frontend exibe resposta com citações (PDF, página)
+```
+
+### 📦 Stack Tecnológico Completo
+
+| Camada | Tecnologias | Versão | Para Que Serve |
+|--------|-------------|--------|----------------|
+| **Frontend** | React, Leaflet, Chart.js, Axios | React 19.2 | Interface do usuário (mapas, gráficos, chat) |
+| **Backend** | Node.js, Express, Prisma, Supabase Auth | Node 18+ | API REST, autenticação, orquestração |
+| **IA/ML** | Python, FastAPI, Prophet, LangChain, OpenAI | Python 3.12 | Previsões, RAG, cálculos complexos |
+| **Banco** | PostgreSQL, PostGIS, pgvector | PostgreSQL 15+ | Dados de negócio + vetores para RAG |
+| **Infra** | Railway, Vercel, Docker | - | Hospedagem e containers |
+| **Observabilidade** | Sentry, Winston | - | Monitoramento de erros e logs |
+
+---
+
+## 📋 Pré-requisitos
+
+### Para Usuários Finais (Apenas Usar o Sistema)
+
+✅ **Nenhum pré-requisito técnico!**  
+O sistema roda na nuvem. Basta acessar via navegador.
+
+### Para Desenvolvedores (Rodar Localmente)
+
+| Requisito | Versão Mínima | Como Verificar |
+|-----------|---------------|----------------|
+| **Node.js** | 18+ | `node --version` |
+| **Python** | 3.10+ | `python --version` |
+| **PostgreSQL** | 12+ | `psql --version` |
+| **Git** | Qualquer | `git --version` |
+| **Docker** (opcional) | 20+ | `docker --version` |
+
+### Chaves de API Necessárias
+
+| API | Obrigatória? | Como Obter | Para Que Serve |
+|-----|--------------|------------|----------------|
+| **OpenAI** | ✅ Sim | [platform.openai.com](https://platform.openai.com) | RAG (chat agronômico) |
+| **Supabase** | ✅ Sim | [supabase.com](https://supabase.com) | Banco de dados + Auth |
+| **Google Maps** | ⚠️ Opcional | [console.cloud.google.com](https://console.cloud.google.com) | Cálculo preciso de distâncias (fallback: Haversine) |
+
+---
+
+## ⚙️ Como Instalar e Rodar
+
+### 🐳 Opção 1: Docker Compose (Recomendado - Mais Fácil)
+
+```bash
+# 1. Clone o repositório
+git clone https://github.com/Gabriel-Rdrgs/agro-ai-prototype.git
+cd agro-ai-prototype
+
+# 2. Configure as variáveis de ambiente
+# Copie e edite os arquivos .env (veja seção "Configuração" abaixo)
+
+# 3. Inicie todos os serviços
+docker-compose up -d
+
+# 4. Acesse:
+# - Frontend: http://localhost:3000
+# - Backend: http://localhost:3001
+# - AI Service: http://localhost:8000/docs
+```
+
+### 💻 Opção 2: Instalação Manual (Passo a Passo)
+
+#### **Passo 1: Banco de Dados**
+
+```bash
+# Crie um banco PostgreSQL (local ou Supabase)
+# Habilite as extensões necessárias:
+
+psql -U seu_usuario -d agro_ai << EOF
+CREATE EXTENSION IF NOT EXISTS postgis;
+CREATE EXTENSION IF NOT EXISTS vector;
+EOF
+```
+
+#### **Passo 2: Backend (Node.js)**
 
 ```bash
 cd backend
+
+# Instale dependências
 npm install
-```
 
-Crie um `.env` (veja exemplo em `backend/.env.example`):
+# Configure variáveis de ambiente
+cp .env.example .env
+# Edite .env com suas credenciais
 
-```env
-DATABASE_URL=postgresql://user:password@localhost:5432/agro_ai
-JWT_SECRET=algum_token_seguro_aqui
-PYTHON_API_URL=http://localhost:8000
-PORT=3001
-AWESOME_API_URL=https://economia.awesomeapi.com.br
-```
-
-Rode migrations e seed:
-
-```bash
+# Rode migrations do banco
 npx prisma migrate dev --name init
+
+# Popule dados iniciais (opcional)
 node prisma/seed.js
-```
 
-Inicie o backend:
-
-```bash
+# Inicie o servidor
 npm run dev
-# http://localhost:3001
+# ✅ Backend rodando em http://localhost:3001
 ```
 
-### 3️⃣ AI Service (Python – porta 8000)
+#### **Passo 3: AI Service (Python)**
 
 ```bash
 cd ai-service
+
+# Crie ambiente virtual
 python -m venv venv
 
-# Windows
+# Ative o ambiente virtual
+# Windows:
 .\venv\Scripts\activate
-# Mac/Linux
+# Mac/Linux:
 source venv/bin/activate
 
+# Instale dependências
 pip install -r requirements.txt
+
+# Configure variáveis de ambiente
+cp .env.example .env
+# Edite .env com suas credenciais
+
+# Inicie o servidor
+uvicorn main:app --reload --port 8000
+# ✅ AI Service rodando em http://localhost:8000/docs
 ```
 
-Crie `.env` em `ai-service/`:
+#### **Passo 4: Frontend (React)**
+
+```bash
+cd frontend
+
+# Instale dependências
+npm install
+
+# Configure variáveis de ambiente
+cp .env.local.example .env.local
+# Edite .env.local com a URL do backend
+
+# Inicie o servidor de desenvolvimento
+npm start
+# ✅ Frontend rodando em http://localhost:3000
+```
+
+### ⚙️ Configuração de Variáveis de Ambiente
+
+#### **Backend (`backend/.env`)**
 
 ```env
-DATABASE_URL=postgresql://user:password@localhost:5432/agro_ai
+# Banco de Dados
+DATABASE_URL=postgresql://usuario:senha@localhost:5432/agro_ai
+DIRECT_URL=postgresql://usuario:senha@localhost:5432/agro_ai
+
+# Autenticação
+JWT_SECRET=seu_jwt_secret_super_seguro_aqui
+SUPABASE_URL=https://seu-projeto.supabase.co
+SUPABASE_ANON_KEY=sua_chave_anon_aqui
+SUPABASE_SERVICE_ROLE_KEY=sua_chave_service_role_aqui
+
+# Serviços
+PYTHON_API_URL=http://localhost:8000
+INTERNAL_API_KEY=chave_compartilhada_entre_node_e_python
+PORT=3001
+
+# APIs Externas
+AWESOME_API_URL=https://economia.awesomeapi.com.br
+
+# Observabilidade (Opcional)
+SENTRY_DSN=sua_dsn_do_sentry_aqui
+```
+
+#### **AI Service (`ai-service/.env`)**
+
+```env
+# Banco de Dados
+DATABASE_URL=postgresql://usuario:senha@localhost:5432/agro_ai
+
+# OpenAI (Obrigatório para RAG)
 OPENAI_API_KEY=sk-...
+
+# Google Maps (Opcional)
+GOOGLE_MAPS_API_KEY=sua_chave_aqui
+
+# Autenticação Interna
+INTERNAL_API_KEY=chave_compartilhada_entre_node_e_python
+
+# Ambiente
 ENVIRONMENT=development
 PORT=8000
 ```
 
-Inicie o serviço:
-
-```bash
-uvicorn main:app --reload --port 8000
-# http://localhost:8000/docs
-```
-
-### 4️⃣ Frontend (React – porta 3000)
-
-```bash
-cd frontend
-npm install
-```
-
-Crie `.env.local`:
+#### **Frontend (`frontend/.env.local`)**
 
 ```env
 REACT_APP_API_URL=http://localhost:3001
-REACT_APP_MAP_TOKEN=seu_token_de_mapa_aqui
+REACT_APP_MAP_TOKEN=seu_token_do_leaflet_aqui
 ```
 
-Inicie o frontend:
+---
 
-```bash
-npm start
-# http://localhost:3000
+## 🎯 Como Usar o Sistema
+
+### 🗺️ Visualizando Oportunidades no Mapa
+
+1. **Acesse o mapa** (aba "Mapa" no menu)
+2. **Use os filtros** na lateral:
+   - Produto (Tomate, Soja, Milho)
+   - Estado de origem
+   - ROI mínimo desejado
+   - Época de plantio
+3. **Clique em um marcador** para ver detalhes completos
+4. **Analise as 4 abas**:
+   - 💰 Financeiro: ROI, preços, lucro
+   - 🌡️ Clima: previsão, eventos extremos
+   - 📊 Qualidade: shelf-life, perdas
+   - 🤖 IA: recomendação automática
+
+### 🤖 Fazendo Perguntas ao Chat Agronômico
+
+1. **Acesse o chat** (aba "Chat Agronômico")
+2. **Digite sua pergunta** em linguagem natural:
+   - "Qual a temperatura ideal para tomate?"
+   - "Como calcular custo de armazenagem?"
+   - "Qual época de plantio em Goiás?"
+3. **Aguarde a resposta** (pode levar alguns segundos)
+4. **Veja as fontes** citadas (qual PDF, qual página)
+
+### 💰 Calculando ROI de Produção
+
+1. **Acesse a calculadora** (aba "Simulador")
+2. **Preencha os dados**:
+   - Produto
+   - Estado
+   - Área (hectares)
+   - Custo por hectare
+   - Produtividade esperada
+   - Preço de venda
+3. **Clique em "Calcular"**
+4. **Veja o resultado**: ROI, lucro líquido, análise de risco
+
+### 📊 Analisando Tendências de Mercado
+
+1. **Acesse o dashboard** (aba "Dashboard")
+2. **Veja gráficos** de tendências de preços
+3. **Explore as melhores oportunidades** do momento
+4. **Salve favoritos** para acompanhar
+
+---
+
+## 🏗️ Estrutura do Projeto
+
+```
+agro-ai-prototype/
+│
+├── 📱 frontend/                 # Aplicação React
+│   ├── src/
+│   │   ├── components/          # Componentes React
+│   │   │   ├── Map/            # Mapa interativo
+│   │   │   ├── Chat/           # Chat RAG
+│   │   │   ├── Dashboard/      # Dashboard
+│   │   │   └── ...
+│   │   ├── services/            # Serviços de API
+│   │   └── utils/              # Utilitários
+│   └── package.json
+│
+├── 🔵 backend/                  # API Node.js
+│   ├── server.js               # Servidor principal
+│   ├── routes/                 # Rotas da API
+│   ├── utils/                  # Utilitários (cache, jobs)
+│   ├── prisma/
+│   │   └── schema.prisma       # Schema do banco
+│   └── package.json
+│
+├── 🐍 ai-service/               # Serviço de IA (Python)
+│   ├── main.py                 # FastAPI app
+│   ├── routers/                # Endpoints da API
+│   ├── services/                # Lógica de negócio
+│   │   ├── rag_service.py      # RAG (chat IA)
+│   │   ├── price_forecast.py   # Prophet (previsões)
+│   │   ├── storage_advisor.py  # Análise de armazenagem
+│   │   └── ...
+│   ├── config/                 # Configurações
+│   │   ├── crops.py            # Especificações de culturas
+│   │   ├── calendar.py         # Calendário de plantio
+│   │   └── ...
+│   ├── models/                 # Modelos de dados
+│   ├── scripts/                # Scripts ETL
+│   └── requirements.txt
+│
+├── 📚 docs/                     # Documentação
+│   ├── ANALISE_EXAUSTIVA_ARQUITETURA.md
+│   ├── API_REFERENCE.md
+│   └── ...
+│
+└── 🐳 docker-compose.yml        # Orquestração Docker
 ```
 
 ---
 
 ## 🔐 Segurança
 
-- **JWT**:
-  - Usado para proteger rotas do backend e do serviço Python
-  - `JWT_SECRET` **não** deve ser commitado
-- **CORS**:
-  - Backend Node e FastAPI usam CORS; configure origens permitidas para produção
-- **Senhas**:
-  - Senhas de usuário armazenadas com hash (bcrypt)
-- **Auditoria**:
-  - Tabela `AuditLog` prevista para rastrear ações críticas (login, criação de oportunidade, etc.)
+### ✅ Medidas Implementadas
 
----
+| Recurso | Descrição |
+|---------|-----------|
+| **Autenticação JWT** | Tokens seguros via Supabase Auth |
+| **RBAC** | Controle de acesso por roles (admin/analyst) |
+| **API Key Interna** | Comunicação segura entre Node.js e Python |
+| **CORS** | Proteção contra requisições não autorizadas |
+| **Hash de Senhas** | Bcrypt para armazenamento seguro |
+| **Audit Logs** | Rastreamento de ações críticas |
+| **Circuit Breaker** | Proteção contra sobrecarga do banco |
 
-## 🧠 RAG – Documentos Agrícolas
+### ⚠️ Boas Práticas
 
-A camada de RAG permite consultar documentos técnicos agrícolas em linguagem natural.
-
-### Arquivos Principais
-- `ai-service/services/rag_service.py` - Serviço RAG (busca vetorial + LLM)
-- `ai-service/services/rag_ingestion.py` - Ingestão de PDFs
-- Modelo `Document` em `backend/prisma/schema.prisma` (com `embedding vector(1536)`)
-
-### Fluxo
-
-1. **Ingestão de PDFs**:
-   ```bash
-   # Dentro do container Docker
-   docker exec -it agro_brain python services/rag_ingestion.py
-   ```
-   - Script lê PDFs, extrai texto, gera chunks (1000 chars, overlap 200)
-   - Gera embeddings via OpenAI (`text-embedding-3-small`)
-   - Salva em tabela `documents` com metadata rica (crop, theme, source_type)
-
-2. **Consulta**:
-   - Frontend: `POST /api/ai/chat/query` → Backend → `POST /api/v1/chat/query` (Python)
-   - Gera embedding da pergunta
-   - Busca vetorial no Postgres (pgvector, top 8 chunks)
-   - Envia contexto + pergunta para LLM (`gpt-4o-mini`)
-   - Responde em linguagem natural, citando fontes (PDF, página)
-
-### Documentos Ingeridos
-- ✅ Clima e Produção de Tomates no Brasil.pdf
-- ✅ Função Custo de Armazenagem de Tomate.pdf
-- ✅ Épocas de Plantio e Métricas de Decisão para Cultivo de Tomate no Brasil.pdf
-
----
-
-## 🛰 Integrações Externas
-
-- **Open-Meteo** – previsão e histórico de clima
-- **NASA POWER** – radiação solar diária para análise de fotossíntese / brix
-- **AwesomeAPI** – cotação do dólar em tempo real
-- **CEASA / Agrolink** – dados de preços de hortifrúti (via ETL Python)
-- **OpenAI** – Embeddings (`text-embedding-3-small`) e LLM (`gpt-4o-mini`) para RAG
-- **Supabase** – Banco de dados PostgreSQL + Auth + PostGIS + pgvector
-
----
-
-## 🏥 Health Checks e Monitoramento
-
-### Endpoints de Health Check
-
-**Backend Node.js:**
-- `GET /health` - Health check básico (rápido, para load balancers)
-- `GET /health/detailed` - Health check completo (banco, serviços, APIs, recursos)
-
-**Python AI Service:**
-- `GET /health` - Health check básico
-- `GET /health/detailed` - Health check completo
-- `GET /health/database` - Verifica apenas banco
-- `GET /health/services` - Verifica apenas serviços
-- `GET /health/external` - Verifica apenas APIs externas
-
-Veja mais em: `docs/GUIA_HEALTH_CHECKS.md`
-
----
-
-## 💾 Backup e Manutenção
-
-### Scripts de Backup
-
-**Backup PostgreSQL:**
-```bash
-# Script Bash
-./scripts/backup_postgres.sh --compress --retention 7
-
-# Script Python
-python scripts/backup_postgres.py --compress --retention 7
-```
-
-**Funcionalidades:**
-- Backup completo do banco (pg_dump)
-- Compressão opcional (gzip) - Economiza ~70-80% de espaço
-- Retenção automática (remove backups antigos)
-- Logging detalhado
-
-Veja mais em: `docs/GUIA_BACKUP_POSTGRES.md`
+- ❌ **NUNCA** commite arquivos `.env` no Git
+- ✅ Use variáveis de ambiente para secrets
+- ✅ Configure CORS adequadamente em produção
+- ✅ Use HTTPS em produção
+- ✅ Mantenha dependências atualizadas
 
 ---
 
 ## 🧪 Testes
 
-### Testes Automatizados
+### Rodar Testes
 
-- **Python (Pytest)**: 15 testes
-  - `ai-service/tests/test_prophet.py` - 8 testes (previsão Prophet)
-  - `ai-service/tests/test_rag.py` - 7 testes (serviço RAG)
-  - Cobertura: `price_forecast.py` (60%), `rag_service.py` (85%)
-  
-- **Backend Node.js (Jest)**: 41 testes
-  - `backend/tests/api/` - 21 testes (endpoints críticos)
-  - `backend/tests/auth/` - 20 testes (autenticação e RBAC)
-  
-- **CI/CD**: GitHub Actions roda todos os testes automaticamente em cada push/PR
-  - Ver: `.github/workflows/test.yml`
-  - Status: [![Tests](https://github.com/Gabriel-Rdrgs/agro-ai-prototype/actions/workflows/test.yml/badge.svg)](https://github.com/Gabriel-Rdrgs/agro-ai-prototype/actions)
-
-### Como Rodar Localmente
-
-**Python:**
 ```bash
+# Testes Python (AI Service)
 cd ai-service
 pytest tests/ -v
-```
 
-**Backend:**
-```bash
+# Testes Backend (Node.js)
 cd backend
 npm test
 ```
 
-Veja mais em:
-- `ai-service/tests/README.md`
-- `backend/tests/README.md`
+### Cobertura Atual
+
+| Componente | Cobertura | Status |
+|------------|-----------|--------|
+| **Python (Pytest)** | ~60-85% | ✅ Bom |
+| **Backend (Jest)** | 41 testes | ✅ Bom |
+| **Frontend** | Em desenvolvimento | ⚠️ Pendente |
 
 ---
 
-## 🗺 Roadmap
+## 🚀 Deploy em Produção
 
-- [ ] Refinar camada de RAG para cobrir múltiplos PDFs de tomate (Embrapa/UFG/ZARC)
-- [ ] Adicionar reranking e filtros por metadata (estado, tipo de risco, fase da cultura)
-- [ ] Integrar PostGIS para queries geoespaciais avançadas (raio, rotas)
-- [ ] Implementar notificações (WhatsApp / SMS) para oportunidades críticas
-- [ ] Evoluir scheduler de ETL para Celery + Redis
-- [ ] Multi-tenant architecture para suportar múltiplas organizações
-- [ ] Mobile app com React Native + offline-first
-- [ ] Integração Blockchain para rastreabilidade de lote
+### Opções de Hospedagem
 
----
+| Serviço | Para O Que Serve | Custo Estimado |
+|---------|------------------|----------------|
+| **Railway** | Backend + AI Service | ~$20-50/mês |
+| **Vercel** | Frontend (React) | Grátis (hobby) |
+| **Supabase** | Banco PostgreSQL | Grátis (até 500MB) |
 
-## 📚 Documentação
+### Passos para Deploy
 
-### Documentos Principais
+1. **Configure variáveis de ambiente** nos serviços de hospedagem
+2. **Rode migrations** do banco (`npx prisma migrate deploy`)
+3. **Ingira PDFs no RAG** (execute `rag_ingestion.py`)
+4. **Configure ETL** (scheduler worker ou cron job)
+5. **Monitore** via Sentry e health checks
 
-- **[API Reference](docs/API_REFERENCE.md)** - Documentação completa de todos os endpoints
-- **[Guia de Uso](docs/GUIA_USO_CLIENTE.md)** - Guia para usuários finais
-- **[Health Checks](docs/GUIA_HEALTH_CHECKS.md)** - Guia de monitoramento e health checks
-- **[Backup PostgreSQL](docs/GUIA_BACKUP_POSTGRES.md)** - Guia de backup e restauração
-- **[CI/CD](docs/GUIA_CI_CD.md)** - Guia de integração contínua e deploy
-- **[Schema Documents](docs/SCHEMA_DOCUMENTS_CONTRACT.md)** - Contrato de schema da tabela `documents`
-
-### Documentação Técnica
-
-- **[Análise Arquitetural](docs/ANALISE_ARQUITETURAL_COMPLETA.md)** - Análise completa da arquitetura
-- **[Testes Automatizados](docs/RESUMO_TESTES_AUTOMATIZADOS.md)** - Resumo dos testes Python
-- **[Resultados dos Testes](docs/RESULTADOS_TESTES.md)** - Métricas e cobertura de código
+Veja guias detalhados em:
+- 📖 [Guia Railway](docs/GUIA_RAILWAY.md)
+- 📖 [Guia CI/CD](docs/GUIA_CI_CD.md)
 
 ---
 
-## 📄 Contribuindo
+## 📊 Status do Projeto
 
-Pull requests são bem-vindas! Para mudanças maiores:
+### ✅ Funcionalidades Implementadas
 
-1. Faça um fork do repositório
-2. Crie uma branch (`git checkout -b feature/AmazingFeature`)
-3. Commit suas mudanças (`git commit -m 'Add AmazingFeature'`)
-4. Push para a branch (`git push origin feature/AmazingFeature`)
-5. Abra um Pull Request
+- [x] Mapa interativo com oportunidades
+- [x] Chat agronômico com RAG
+- [x] Previsão de preços (Prophet)
+- [x] Calculadoras de ROI
+- [x] Análise climática
+- [x] Integração com CEASA/Agrolink
+- [x] Dashboard de tendências
+- [x] Sistema de favoritos
+- [x] Autenticação e autorização
+- [x] Health checks
+
+### 🔄 Em Desenvolvimento
+
+- [ ] Ingestão de PDFs de Soja e Milho no RAG
+- [ ] Notificações push
+- [ ] App mobile (React Native)
+- [ ] API pública limitada
+
+### 📈 Roadmap Futuro
+
+- [ ] Reranking no RAG (melhor precisão)
+- [ ] Busca híbrida (vetorial + BM25)
+- [ ] Prophet com regressores exógenos
+- [ ] Integração com ERPs agrícolas
+- [ ] Análise de sentimento de mercado
+
+---
+
+## 🤝 Contribuindo
+
+Contribuições são bem-vindas! Siga estes passos:
+
+1. **Fork** o repositório
+2. **Crie uma branch** (`git checkout -b feature/MinhaFeature`)
+3. **Commit** suas mudanças (`git commit -m 'Adiciona MinhaFeature'`)
+4. **Push** para a branch (`git push origin feature/MinhaFeature`)
+5. **Abra um Pull Request**
+
+### 📝 Padrões de Código
+
+- **Python**: Siga PEP 8
+- **JavaScript**: Use ESLint configurado
+- **Commits**: Mensagens descritivas em português
+- **Testes**: Adicione testes para novas features
+
+---
+
+## 📚 Documentação Adicional
+
+### 📖 Documentos Principais
+
+| Documento | Descrição |
+|-----------|-----------|
+| [📊 Análise Arquitetural Exaustiva](docs/ANALISE_EXAUSTIVA_ARQUITETURA.md) | Análise completa da arquitetura, fluxos e débitos técnicos |
+| [📋 API Reference](docs/API_REFERENCE.md) | Documentação completa de todos os endpoints |
+| [👤 Guia de Uso](docs/GUIA_USO_CLIENTE.md) | Guia para usuários finais |
+| [🏥 Health Checks](docs/GUIA_HEALTH_CHECKS.md) | Monitoramento e health checks |
+| [💾 Backup PostgreSQL](docs/GUIA_BACKUP_POSTGRES.md) | Como fazer backup e restaurar |
+| [🚀 CI/CD](docs/GUIA_CI_CD.md) | Integração contínua e deploy |
+
+### 🔬 Documentação Técnica
+
+- [📐 Análise Arquitetural Completa](docs/ANALISE_ARQUITETURAL_COMPLETA.md)
+- [🧪 Resumo de Testes](docs/RESUMO_TESTES_AUTOMATIZADOS.md)
+- [📈 Resultados dos Testes](docs/RESULTADOS_TESTES.md)
+- [📅 Planejamento Completo](PLANEJAMENTO_COMPLETO.md)
+
+---
+
+## 🐛 Troubleshooting
+
+### Problemas Comuns
+
+#### ❌ "Erro ao conectar ao banco de dados"
+- Verifique se o PostgreSQL está rodando
+- Confirme `DATABASE_URL` no `.env`
+- Teste conexão: `psql $DATABASE_URL`
+
+#### ❌ "OpenAI API key inválida"
+- Verifique `OPENAI_API_KEY` no `.env` do ai-service
+- Confirme que a chave está ativa em [platform.openai.com](https://platform.openai.com)
+
+#### ❌ "CORS bloqueado"
+- Configure `ALLOWED_ORIGINS` no backend
+- Em desenvolvimento, use `*` (não recomendado em produção)
+
+#### ❌ "Prophet não funciona"
+- Instale dependências: `pip install prophet cmdstanpy`
+- Execute: `python -c 'from cmdstanpy import install_cmdstan; install_cmdstan()'`
+
+---
+
+## 📞 Suporte e Contato
+
+- **Desenvolvedor**: Gabriel Rodrigues
+- **GitHub**: [@Gabriel-Rdrgs](https://github.com/Gabriel-Rdrgs)
+- **Issues**: [GitHub Issues](https://github.com/Gabriel-Rdrgs/agro-ai-prototype/issues)
 
 ---
 
 ## 📄 Licença
 
-Licença MIT – ver arquivo `LICENSE` na raiz do projeto.
+Este projeto está sob a licença **MIT**. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
 
 ---
 
-## 📞 Contato
+## 🙏 Agradecimentos
 
-- **Desenvolvedor**: Gabriel Rodrigues
-- **GitHub**: [@Gabriel-Rdrgs](https://github.com/Gabriel-Rdrgs)
-- **Email**: gabriel.rdrgs@example.com (opcional)
+- **Embrapa, UFG, ZARC** - Documentos técnicos que alimentam o RAG
+- **OpenAI** - Embeddings e LLM para o chat agronômico
+- **Comunidade Open Source** - Todas as bibliotecas incríveis usadas
 
 ---
 
-**Última atualização**: Dezembro de 2025
+<div align="center">
+
+**Feito com ❤️ para o agronegócio brasileiro**
+
+⭐ **Se este projeto foi útil, considere dar uma estrela!** ⭐
+
+</div>

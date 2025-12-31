@@ -202,6 +202,174 @@ def recalculate_opportunity_roi(opportunity_data: Dict[str, Any]):
         )
 
 
+@router.post('/scenario/simulate')
+def simulate_scenario(request: Dict[str, Any]):
+    """
+    🎯 Simula cenário alterando variáveis e recalculando ROI.
+    
+    Aplica mudanças em:
+    - Dólar (impacta custos de produção)
+    - Frete (impacta logística)
+    - Preços de compra/venda
+    - Clima (chuva, temperatura)
+    
+    **Payload:**
+    ```
+    {
+        "opportunity_id": 123,
+        "product": "Tomate",
+        "origin_state": "GO",
+        "destination_state": "SP",
+        "area_ha": 10.0,
+        "scenarios": {
+            "dollar_change": 10,  # +10%
+            "freight_change": 20,  # +20%
+            "buy_price_change": -5,  # -5%
+            "sell_price_change": 0,
+            "rain_mm": 200,  # +200mm
+            "temperature_change": 3  # +3°C
+        }
+    }
+    ```
+    
+    **Retorna:**
+    ```
+    {
+        "roi": 85.5,  # Novo ROI calculado
+        "original_roi": 120.3,  # ROI original
+        "roi_change": -34.8,  # Mudança em pontos percentuais
+        "recommendation": "COMPRAR",  # Recomendação atualizada
+        "sensitivity": {
+            "message": "ROI é mais sensível a: Preço de Venda (45%), Frete (30%)"
+        }
+    }
+    ```
+    """
+    try:
+        from models.schemas import ArbitrageRequest
+        from services.recommendation_engine import recommendation_engine
+        
+        opportunity_id = request.get('opportunity_id')
+        product = request.get('product', 'Tomate')
+        origin_state = request.get('origin_state', 'SP')
+        destination_state = request.get('destination_state', 'SP')
+        area_ha = request.get('area_ha', 10.0)
+        scenarios = request.get('scenarios', {})
+        
+        logger.info(f"🎯 Simulando cenário para oportunidade {opportunity_id}")
+        
+        # Busca dados originais da oportunidade
+        from utils.database import get_engine
+        from sqlalchemy import text
+        
+        engine = get_engine()
+        original_roi = None
+        original_buy_price = None
+        original_sell_price = None
+        
+        if opportunity_id:
+            try:
+                with engine.connect() as conn:
+                    query = text('''
+                        SELECT "roi", "buyPrice", "sellPrice" 
+                        FROM "Opportunity" 
+                        WHERE id = :id
+                    ''')
+                    result = conn.execute(query, {"id": opportunity_id}).fetchone()
+                    if result:
+                        original_roi = float(result[0]) if result[0] else None
+                        original_buy_price = float(result[1]) if result[1] else None
+                        original_sell_price = float(result[2]) if result[2] else None
+            except Exception as e:
+                logger.warning(f"⚠️ Erro ao buscar oportunidade original: {e}")
+        
+        # Aplica mudanças aos preços
+        adjusted_buy_price = original_buy_price
+        adjusted_sell_price = original_sell_price
+        
+        if original_buy_price and scenarios.get('buy_price_change'):
+            change_pct = scenarios['buy_price_change'] / 100
+            adjusted_buy_price = original_buy_price * (1 + change_pct)
+        
+        if original_sell_price and scenarios.get('sell_price_change'):
+            change_pct = scenarios['sell_price_change'] / 100
+            adjusted_sell_price = original_sell_price * (1 + change_pct)
+        
+        # Cria request de arbitragem com preços ajustados
+        # Nota: Para simulação completa, precisaríamos modificar o ArbitrageCalculator
+        # Por enquanto, fazemos uma aproximação ajustando o ROI proporcionalmente
+        
+        # Calcula impacto aproximado das mudanças
+        dollar_impact = scenarios.get('dollar_change', 0) * 0.3  # Dólar impacta ~30% dos custos
+        freight_impact = scenarios.get('freight_change', 0) * 0.4  # Frete impacta ~40% dos custos
+        buy_price_impact = scenarios.get('buy_price_change', 0) * 0.2  # Preço compra impacta ~20%
+        sell_price_impact = scenarios.get('sell_price_change', 0) * 0.5  # Preço venda impacta ~50%
+        
+        # Impacto total aproximado no ROI
+        total_impact = dollar_impact + freight_impact + buy_price_impact + sell_price_impact
+        
+        # ROI simulado (aproximação)
+        simulated_roi = (original_roi or 0) + total_impact
+        
+        # Busca recomendação atualizada
+        recommendation = None
+        try:
+            rec_result = recommendation_engine.analyze_opportunity(
+                roi=simulated_roi,
+                roi_d7=None,
+                roi_d30=None,
+                quality_score=None,
+                shelf_life_days=None,
+                has_extreme_events=scenarios.get('rain_mm', 0) > 50 or scenarios.get('temperature_change', 0) > 3,
+                extreme_event_severity='high' if (scenarios.get('rain_mm', 0) > 100 or scenarios.get('temperature_change', 0) > 3) else None,
+                is_ideal_planting_month=None,
+                is_risk_planting_month=None,
+                market_trend=None,
+                current_price=adjusted_sell_price,
+                buy_price=adjusted_buy_price
+            )
+            recommendation = rec_result.get('recommendation')
+        except Exception as e:
+            logger.warning(f"⚠️ Erro ao gerar recomendação: {e}")
+        
+        # Análise de sensibilidade simplificada
+        impacts = {
+            'sell_price': abs(sell_price_impact),
+            'freight': abs(freight_impact),
+            'dollar': abs(dollar_impact),
+            'buy_price': abs(buy_price_impact)
+        }
+        max_impact = max(impacts.items(), key=lambda x: x[1])
+        
+        sensitivity_message = f"ROI é mais sensível a: {max_impact[0].replace('_', ' ').title()} ({max_impact[1]:.1f}pp)"
+        
+        result = {
+            'roi': round(simulated_roi, 1),
+            'original_roi': round(original_roi, 1) if original_roi else None,
+            'roi_change': round(total_impact, 1),
+            'recommendation': recommendation,
+            'sensitivity': {
+                'message': sensitivity_message,
+                'impacts': impacts
+            },
+            'adjusted_prices': {
+                'buy_price': round(adjusted_buy_price, 2) if adjusted_buy_price else None,
+                'sell_price': round(adjusted_sell_price, 2) if adjusted_sell_price else None
+            }
+        }
+        
+        logger.info(f"✅ Simulação concluída: ROI {simulated_roi:.1f}% (original: {original_roi:.1f}%)")
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"❌ Erro ao simular cenário: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao simular cenário: {str(e)}"
+        )
+
+
 @router.get('/health')
 def health_check():
     """

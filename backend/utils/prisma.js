@@ -14,7 +14,17 @@ const prismaClientSingleton = () => {
 const globalForPrisma = global;
 
 // Garante que usamos a mesma instância se ela já existir (essencial para desenvolvimento)
-const prisma = globalForPrisma.prisma || prismaClientSingleton();
+// ✅ CORREÇÃO: Força recriação se o modelo Favorite não estiver disponível
+let prisma = globalForPrisma.prisma || prismaClientSingleton();
+
+// Verifica se o modelo Favorite está disponível (indica que Prisma Client foi regenerado)
+if (!prisma.favorite && globalForPrisma.prisma) {
+  console.log('⚠️ Prisma Client antigo detectado (sem Favorite). Recriando...');
+  // Desconecta instância antiga
+  globalForPrisma.prisma.$disconnect().catch(() => {});
+  // Recria
+  prisma = prismaClientSingleton();
+}
 
 // Em desenvolvimento, salvamos a instância no objeto global
 if (process.env.NODE_ENV !== 'production') {

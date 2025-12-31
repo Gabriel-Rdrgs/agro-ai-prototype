@@ -21,6 +21,9 @@ const authController = require('./authController_supabase');
 const { verifyToken, checkRole } = require('./authMiddleware');
 const ceasaRoutes = require('./routes/ceasa');
 const etlRoutes = require('./routes/etl'); // ✅ ETL ASSÍNCRONO
+const favoritesRoutes = require('./routes/favorites'); // ✅ NOVO: Favoritos
+const alertsRoutes = require('./routes/alerts'); // ✅ NOVO: Sistema de Alertas
+const portfolioRoutes = require('./routes/portfolio'); // ✅ NOVO: Portfolio Tracking
 const cache = require('./utils/cache'); // ✅ CACHE URGENTE
 const jobQueue = require('./utils/jobQueue'); // ✅ JOBS ASSÍNCRONOS
 const { logAction } = require('./services/auditService'); // ✅ AUDIT LOG
@@ -304,6 +307,284 @@ if (authController) {
 
 // 1. Listar Oportunidades (Com Dólar em Tempo Real)
 // ✅ PERFORMANCE: Cache agressivo (5 minutos)
+// ✅ NOVO: Endpoint para comparar múltiplas oportunidades
+app.post('/api/opportunities/compare', verifyToken, async (req, res) => {
+  try {
+    const { opportunityIds } = req.body;
+
+    if (!Array.isArray(opportunityIds) || opportunityIds.length === 0) {
+      return res.status(400).json({ error: 'opportunityIds deve ser um array não vazio' });
+    }
+
+    if (opportunityIds.length > 5) {
+      return res.status(400).json({ error: 'Máximo de 5 oportunidades por comparação' });
+    }
+
+    // Busca todas as oportunidades
+    const opportunities = await prisma.opportunity.findMany({
+      where: {
+        id: { in: opportunityIds.map(id => parseInt(id, 10)) }
+      },
+      select: {
+        id: true,
+        product: true,
+        category: true,
+        city: true,
+        state: true,
+        lat: true,
+        lng: true,
+        buyPrice: true,
+        sellPrice: true,
+        sellLocation: true,
+        destLat: true,
+        destLng: true,
+        roi: true,
+        freight: true,
+        riskLevel: true,
+        volume: true,
+        season: true,
+        createdAt: true
+      }
+    });
+
+    if (opportunities.length === 0) {
+      return res.status(404).json({ error: 'Nenhuma oportunidade encontrada' });
+    }
+
+    // Busca recomendações da IA para cada oportunidade (opcional, pode ser lento)
+    const opportunitiesWithRecommendation = await Promise.all(
+      opportunities.map(async (opp) => {
+        let recommendation = null;
+        
+        try {
+          // Tenta buscar recomendação (não bloqueia se falhar)
+          const recResponse = await pythonAxios.post(
+            '/api/v1/predict/recommendation',
+            {
+              product: opp.product,
+              state: opp.state,
+              roi: opp.roi ? parseFloat(opp.roi) : null,
+              current_price: opp.sellPrice ? parseFloat(opp.sellPrice) : null,
+              buy_price: opp.buyPrice ? parseFloat(opp.buyPrice) : null
+            },
+            { timeout: 10000 } // 10 segundos por recomendação
+          );
+          recommendation = recResponse.data.recommendation;
+        } catch (err) {
+          // Ignora erro de recomendação (não crítico)
+          console.warn(`⚠️ Erro ao buscar recomendação para oportunidade ${opp.id}:`, err.message);
+        }
+
+        return {
+          id: opp.id,
+          product: opp.product,
+          origin: {
+            city: opp.city,
+            state: opp.state,
+            lat: opp.lat,
+            lng: opp.lng
+          },
+          destination: {
+            name: opp.sellLocation,
+            lat: opp.destLat,
+            lng: opp.destLng
+          },
+          buyPrice: opp.buyPrice,
+          sellPrice: opp.sellPrice,
+          roi: opp.roi ? parseFloat(opp.roi) : null,
+          freight: opp.freight ? parseFloat(opp.freight) : null,
+          riskLevel: opp.riskLevel,
+          volume: opp.volume,
+          season: opp.season,
+          recommendation: recommendation
+        };
+      })
+    );
+
+    res.json(opportunitiesWithRecommendation);
+
+  } catch (error) {
+    logger.error('❌ Erro ao comparar oportunidades:', { error: error.message, stack: error.stack });
+    res.status(500).json({ 
+      error: 'Erro ao comparar oportunidades',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// ✅ NOVO: Endpoint para simular cenário
+app.post('/api/opportunities/:id/simulate', verifyToken, async (req, res) => {
+  try {
+    const opportunityId = parseInt(req.params.id, 10);
+    const scenarios = req.body;
+
+    if (isNaN(opportunityId)) {
+      return res.status(400).json({ error: 'ID de oportunidade inválido' });
+    }
+
+    // Busca a oportunidade
+    const opportunity = await prisma.opportunity.findUnique({
+      where: { id: opportunityId }
+    });
+
+    if (!opportunity) {
+      return res.status(404).json({ error: 'Oportunidade não encontrada' });
+    }
+
+    // Prepara payload para o Python
+    const payload = {
+      opportunity_id: opportunityId,
+      product: opportunity.product,
+      origin_state: opportunity.state,
+      destination_state: opportunity.sellLocation?.includes('-') 
+        ? opportunity.sellLocation.split('-').pop().trim() 
+        : 'SP',
+      area_ha: 10.0, // Área padrão
+      scenarios: {
+        dollar_change: scenarios.dollar_change || 0,
+        freight_change: scenarios.freight_change || 0,
+        buy_price_change: scenarios.buy_price_change || 0,
+        sell_price_change: scenarios.sell_price_change || 0,
+        rain_mm: scenarios.rain_mm || null,
+        temperature_change: scenarios.temperature_change || 0
+      }
+    };
+
+    logger.info(`🎯 Simulando cenário para oportunidade ${opportunityId}`);
+
+    // Chama o Python para simular
+    const response = await pythonAxios.post(
+      '/api/v1/calc/scenario/simulate',
+      payload,
+      { timeout: 30000 }
+    );
+
+    res.json(response.data);
+
+  } catch (error) {
+    logger.error('❌ Erro ao simular cenário:', { error: error.message, stack: error.stack });
+    res.status(500).json({ 
+      error: 'Erro ao simular cenário',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// ✅ NOVO: Endpoint para buscar histórico de preços de uma oportunidade
+app.get('/api/opportunities/:id/history', verifyToken, async (req, res) => {
+  try {
+    const opportunityId = parseInt(req.params.id, 10);
+    const { days = 90 } = req.query; // Padrão: últimos 90 dias
+
+    if (isNaN(opportunityId)) {
+      return res.status(400).json({ error: 'ID de oportunidade inválido' });
+    }
+
+    // Busca a oportunidade para verificar se existe
+    const opportunity = await prisma.opportunity.findUnique({
+      where: { id: opportunityId }
+    });
+
+    if (!opportunity) {
+      return res.status(404).json({ error: 'Oportunidade não encontrada' });
+    }
+
+    // Calcula data limite
+    const daysBack = parseInt(days, 10);
+    const dateLimit = new Date();
+    dateLimit.setDate(dateLimit.getDate() - daysBack);
+
+    // Busca histórico de preços
+    const history = await prisma.priceHistory.findMany({
+      where: {
+        opportunityId: opportunityId,
+        createdAt: {
+          gte: dateLimit
+        }
+      },
+      orderBy: {
+        createdAt: 'asc'
+      },
+      select: {
+        id: true,
+        price: true,
+        createdAt: true
+      }
+    });
+
+    // Calcula estatísticas
+    const prices = history.map(h => parseFloat(h.price));
+    const avgPrice = prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : 0;
+    const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
+    const maxPrice = prices.length > 0 ? Math.max(...prices) : 0;
+    const currentPrice = parseFloat(opportunity.sellPrice);
+    
+    // Calcula tendência (últimos 7 dias vs anteriores)
+    const recent7Days = history.filter(h => {
+      const daysDiff = (new Date() - new Date(h.createdAt)) / (1000 * 60 * 60 * 24);
+      return daysDiff <= 7;
+    });
+    const previous7Days = history.filter(h => {
+      const daysDiff = (new Date() - new Date(h.createdAt)) / (1000 * 60 * 60 * 24);
+      return daysDiff > 7 && daysDiff <= 14;
+    });
+
+    const recentAvg = recent7Days.length > 0 
+      ? recent7Days.reduce((sum, h) => sum + parseFloat(h.price), 0) / recent7Days.length 
+      : currentPrice;
+    const previousAvg = previous7Days.length > 0
+      ? previous7Days.reduce((sum, h) => sum + parseFloat(h.price), 0) / previous7Days.length
+      : currentPrice;
+
+    const trendDirection = recentAvg > previousAvg ? 'up' : recentAvg < previousAvg ? 'down' : 'sideways';
+    const trendPercent = previousAvg > 0 ? ((recentAvg - previousAvg) / previousAvg) * 100 : 0;
+
+    // Formata dados para o gráfico
+    const chartData = {
+      labels: history.map(h => new Date(h.createdAt).toLocaleDateString('pt-BR')),
+      prices: prices,
+      dates: history.map(h => h.createdAt.toISOString())
+    };
+
+    res.json({
+      opportunity: {
+        id: opportunity.id,
+        product: opportunity.product,
+        state: opportunity.state,
+        city: opportunity.city
+      },
+      history: history.map(h => ({
+        id: h.id,
+        price: parseFloat(h.price),
+        date: h.createdAt.toISOString(),
+        dateFormatted: new Date(h.createdAt).toLocaleDateString('pt-BR')
+      })),
+      statistics: {
+        current: currentPrice,
+        average: parseFloat(avgPrice.toFixed(2)),
+        min: parseFloat(minPrice.toFixed(2)),
+        max: parseFloat(maxPrice.toFixed(2)),
+        count: history.length,
+        period: `${daysBack} dias`
+      },
+      trend: {
+        direction: trendDirection,
+        changePercent: parseFloat(trendPercent.toFixed(2)),
+        recent7Avg: parseFloat(recentAvg.toFixed(2)),
+        previous7Avg: parseFloat(previousAvg.toFixed(2))
+      },
+      chart: chartData
+    });
+
+  } catch (error) {
+    logger.error('❌ Erro ao buscar histórico:', { error: error.message, stack: error.stack });
+    res.status(500).json({ 
+      error: 'Erro ao buscar histórico de preços',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
 app.get('/api/opportunities', verifyToken, async (req, res) => {
   try {
     // ✅ CACHE: Verifica cache primeiro
@@ -428,9 +709,10 @@ const formattedOpportunities = opportunities.map(opp => {
       };
     });
     
-    // ✅ CACHE: Salva resultado no cache (5 minutos)
-    cache.set(cacheKey, formattedOpportunities, 300);
-    logger.info(`💾 Cache SET: /api/opportunities (${formattedOpportunities.length} oportunidades)`);
+    // ✅ CACHE OTIMIZADO: Salva resultado no cache (15 minutos - dados mudam pouco)
+    // Oportunidades não mudam a cada segundo, então podemos cachear por mais tempo
+    cache.set(cacheKey, formattedOpportunities, 900); // 15 minutos
+    logger.info(`💾 Cache SET: /api/opportunities (${formattedOpportunities.length} oportunidades, TTL: 15min)`);
     
     res.json(formattedOpportunities);
   } catch (error) {
@@ -525,7 +807,49 @@ app.post('/api/opportunities/:id/recalculate', verifyToken, async (req, res) => 
 });
 
 // ✅ NOVO: Endpoint para calcular TODOS os ROIs (chama Python diretamente)
-// 🔒 RBAC: Apenas admin pode executar cálculo em massa
+// 🔒 RBAC: Apenas admin pode executar cálculo em massa (via API web)
+// ✅ INTERNO: Endpoint para scripts/cron jobs (usa X-Internal-API-Key)
+app.post('/api/internal/calculate-all-roi', async (req, res) => {
+  // Verifica X-Internal-API-Key
+  const internalKey = req.headers['x-internal-api-key'];
+  if (internalKey !== process.env.INTERNAL_API_KEY) {
+    return res.status(401).json({ error: 'Unauthorized: Invalid X-Internal-API-Key' });
+  }
+
+  try {
+    logger.info('🔄 Script/Cron iniciando cálculo massivo de ROI...');
+    
+    // Chama o endpoint Python que processa todas as oportunidades de uma vez
+    const response = await pythonAxios.post(
+      '/api/v1/admin/calculate-all-roi',
+      {},
+      { timeout: 300000 }  // 5 minutos
+    );
+    
+    const result = response.data;
+    
+    logger.info(`✅ Cálculo concluído: ${result.updated} atualizados, ${result.errors} erros`);
+    
+    // ✅ CACHE: Invalida cache após cálculo em massa
+    cache.invalidatePattern('opportunities:*');
+    
+    res.json({
+      success: true,
+      message: 'Cálculo de ROI concluído',
+      ...result
+    });
+    
+  } catch (error) {
+    logger.error("❌ Erro ao calcular ROI em massa:", { error: error.message });
+    res.status(500).json({ 
+      success: false,
+      error: 'Erro ao calcular ROI em massa',
+      details: error.message
+    });
+  }
+});
+
+// 🔒 RBAC: Apenas admin pode executar cálculo em massa (via API web)
 app.post('/api/opportunities/calculate-all-roi', verifyToken, checkRole(['admin']), async (req, res) => {
   try {
     const userId = req.user?.id || 'system';
@@ -1631,6 +1955,49 @@ app.post('/api/ai/recommendation', verifyToken, async (req, res) => {
   }
 });
 
+// 6.5. Melhores Oportunidades Automáticas - ✅ NOVO
+app.post('/api/ai/best-opportunities', verifyToken, async (req, res) => {
+  try {
+    const payload = {
+      products: req.body.products || null,  // Se null, busca todos
+      max_results: req.body.max_results || 10,
+      min_roi: req.body.min_roi || null,
+      month: req.body.month || null
+    };
+
+    logger.info(`🎯 Buscando melhores oportunidades: produtos=${payload.products}, max=${payload.max_results}`);
+    
+    const response = await pythonAxios.post(
+      '/api/v1/predict/best-opportunities',
+      payload,
+      { timeout: 100000 } // 100 segundos (otimizado: menos combinações agora)
+    );
+    
+    res.json(response.data);
+  } catch (error) {
+    logger.error(`❌ Erro ao buscar melhores oportunidades: ${error.message}`);
+    
+    if (error.code === 'ECONNREFUSED') {
+      return res.status(503).json({
+        error: 'Serviço de IA não disponível',
+        details: 'O serviço de IA não está respondendo. Verifique se está rodando.'
+      });
+    }
+    
+    if (error.code === 'ECONNABORTED') {
+      return res.status(504).json({
+        error: 'Timeout ao buscar melhores oportunidades',
+        details: 'A busca está demorando mais que o esperado. Tente reduzir o número de produtos ou aumentar o min_roi.'
+      });
+    }
+    
+    res.status(500).json({
+      error: 'Erro ao buscar melhores oportunidades',
+      details: error.response?.data?.detail || error.message
+    });
+  }
+});
+
 // 7. Chat RAG (Assistente Agronômico) - ✅ NOVO
 app.post('/api/ai/chat/query', verifyToken, async (req, res) => {
   try {
@@ -1748,6 +2115,9 @@ app.post('/api/admin/fix-data', verifyToken, checkRole(['admin']), async (req, r
 // ============================================
 app.use('/api/ceasa', ceasaRoutes);
 app.use('/api/admin/etl', etlRoutes); // ✅ ETL ASSÍNCRONO
+app.use('/api/favorites', favoritesRoutes); // ✅ NOVO: Favoritos
+app.use('/api/alerts', alertsRoutes); // ✅ NOVO: Sistema de Alertas
+app.use('/api/portfolio', portfolioRoutes); // ✅ NOVO: Portfolio Tracking
 
 // ✅ FASE 0 - Semana 2: Error Handler do Sentry (DEPOIS de todas as rotas, ANTES de error handlers)
 // Na v10 do @sentry/node, usamos expressErrorHandler como middleware

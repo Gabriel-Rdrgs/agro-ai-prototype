@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import '../../styles/sidebar.css';
 import { OpportunityService } from '../../services/opportunityService';
 import { getPlantingSeasonStatus } from '../../utils/plantingCalendar';
+import FavoriteButton from '../Common/FavoriteButton'; // ✅ NOVO: Botão de favoritar
 
 // RECEBE 'opportunities' DO PAI AGORA
 const Sidebar = ({ 
@@ -420,6 +421,102 @@ const getFilteredOpportunities = () => {
             </div>
           </div>
           
+          {/* ✅ NOVO: Filtro de Produto */}
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ 
+              display: 'block', 
+              fontSize: '12px', 
+              fontWeight: '700', 
+              color: '#00d9ff', 
+              marginBottom: '10px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px'
+            }}>
+              🌾 Produto
+            </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {[...new Set(opportunities.map(opp => opp.product).filter(Boolean))].sort().map(product => {
+                const isChecked = Array.isArray(filters.products) && filters.products.includes(product);
+                
+                // Emoji e cor por produto
+                const productStyles = {
+                  'Tomate': { emoji: '🍅', color: '#ef4444' },
+                  'Soja': { emoji: '🌾', color: '#fbbf24' },
+                  'Milho': { emoji: '🌽', color: '#f59e0b' }
+                };
+                const style = productStyles[product] || { emoji: '🌱', color: '#22c55e' };
+                
+                const handleToggle = (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!onFiltersChange) {
+                    console.error('❌ onFiltersChange não está disponível!');
+                    return;
+                  }
+                  const current = Array.isArray(filters.products) ? filters.products : [];
+                  const updated = isChecked
+                    ? current.filter(p => p !== product)
+                    : [...current, product];
+                  onFiltersChange({ ...filters, products: updated });
+                };
+                
+                return (
+                  <div
+                    key={product}
+                    onClick={handleToggle}
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '10px', 
+                      cursor: 'pointer', 
+                      fontSize: '13px', 
+                      color: '#e2e8f0',
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      background: isChecked ? 'rgba(0, 217, 255, 0.1)' : 'transparent',
+                      border: isChecked ? '1px solid rgba(0, 217, 255, 0.3)' : '1px solid transparent',
+                      transition: 'all 0.2s ease',
+                      userSelect: 'none'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isChecked) {
+                        e.currentTarget.style.background = 'rgba(0, 217, 255, 0.05)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isChecked) {
+                        e.currentTarget.style.background = 'transparent';
+                      }
+                    }}
+                  >
+                    <div 
+                      style={{
+                        position: 'relative',
+                        width: '20px',
+                        height: '20px',
+                        borderRadius: '4px',
+                        border: '2px solid rgba(0, 217, 255, 0.4)',
+                        background: isChecked ? '#00d9ff' : 'transparent',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'all 0.2s ease',
+                        flexShrink: 0,
+                        pointerEvents: 'none'
+                      }}
+                    >
+                      {isChecked && (
+                        <span style={{ color: '#0a0e27', fontSize: '14px', fontWeight: 'bold' }}>✓</span>
+                      )}
+                    </div>
+                    <span style={{ fontSize: '16px', pointerEvents: 'none' }}>{style.emoji}</span>
+                    <span style={{ fontWeight: isChecked ? '600' : '400', pointerEvents: 'none' }}>{product}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          
           {/* Nível de Risco */}
           <div style={{ marginBottom: '16px' }}>
             <label style={{ 
@@ -742,10 +839,12 @@ const getFilteredOpportunities = () => {
               >
                 <div className="opportunity-card-header">
                   <div className="opportunity-card-title">
-                    <h3>
+                    <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         {opp.product}
                         {/* Ícone de Robô se for IA */}
                         {details.isOptimized && <span title="Otimizado por IA" style={{fontSize:'0.8em', marginLeft:'5px'}}> 🤖</span>}
+                        {/* ✅ NOVO: Botão de favoritar */}
+                        <FavoriteButton opportunityId={opp.id} size="small" />
                     </h3>
                     {/* Agora lê de 'origin' */}
                     <p>📍 {origin.city}, {origin.state}</p>

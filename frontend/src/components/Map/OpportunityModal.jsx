@@ -4,6 +4,8 @@ import OpportunityTabs from './OpportunityTabs';
 import FinancialTab from './tabs/FinancialTab';
 import QualityTab from './tabs/QualityTab';
 import ClimateTab from './tabs/ClimateTab';
+import HistoryTab from './tabs/HistoryTab';
+import ScenarioTab from './tabs/ScenarioTab';
 import AITab from './tabs/AITab';
 
 const OpportunityModal = ({ opportunity, isOpen, onClose }) => {
@@ -15,6 +17,8 @@ const OpportunityModal = ({ opportunity, isOpen, onClose }) => {
     { id: 'financial', label: '💰 Financeiro', icon: '💰' },
     { id: 'quality', label: '📊 Qualidade', icon: '📊' },
     { id: 'climate', label: '🌦️ Clima', icon: '🌦️' },
+    { id: 'history', label: '📈 Histórico', icon: '📈' },
+    { id: 'scenario', label: '🎯 Simulador', icon: '🎯' },
     { id: 'ai', label: '🤖 IA', icon: '🤖' }
   ];
 
@@ -26,6 +30,10 @@ const OpportunityModal = ({ opportunity, isOpen, onClose }) => {
         return <QualityTab opportunity={opportunity} />;
       case 'climate':
         return <ClimateTab opportunity={opportunity} />;
+      case 'history':
+        return <HistoryTab opportunity={opportunity} />;
+      case 'scenario':
+        return <ScenarioTab opportunity={opportunity} />;
       case 'ai':
         return <AITab opportunity={opportunity} />;
       default:

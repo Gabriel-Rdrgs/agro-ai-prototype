@@ -14,9 +14,11 @@ from config.calendar import PLANTING_CALENDAR
 from services.fuel_pricing import fuel_api
 from utils.geography import calculate_distance_coords
 from services.logistics import logistics_service
+from services.price_forecast import price_forecast_service
 from utils.database import get_engine
 from sqlalchemy import text
 from config.constants import STATE_COORDS
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +80,59 @@ class ArbitrageCalculator:
             logger.warning(f"⚠️ Preço não encontrado para {product}-{state}: {e}")
         return 0.0
 
+    def _get_market_price_with_date(self, product: str, state: str, specs: dict = None, use_forecast: bool = False, days_ahead: int = 30) -> tuple:
+        """
+        Busca preço e data de referência.
+        Se use_forecast=True, usa previsão futura (Prophet) em vez de dados históricos.
+        Retorna: (preço_kg, data_referencia) ou (0.0, None)
+        """
+        # ✅ NOVO: Se solicitado, usa previsão futura
+        if use_forecast:
+            try:
+                forecast_result = price_forecast_service.forecast(product=product, region=state, days_ahead=days_ahead)
+                if forecast_result.get('status') == 'success' and forecast_result.get('forecast'):
+                    # Pega o preço médio dos próximos N dias (ou o preço do último dia previsto)
+                    forecast_data = forecast_result['forecast']
+                    if forecast_data:
+                        # Usa o preço médio dos próximos 7 dias (ou o último dia se houver menos)
+                        avg_price = sum(item['price'] for item in forecast_data[:7]) / min(len(forecast_data), 7)
+                        # Data de referência: data do último dia previsto
+                        forecast_date = datetime.now() + timedelta(days=days_ahead)
+                        logger.info(f"🔮 Usando previsão futura para {product}-{state}: R$ {avg_price:.2f}/kg (média dos próximos {min(len(forecast_data), 7)} dias)")
+                        return (avg_price, forecast_date)
+            except Exception as e:
+                logger.warning(f"⚠️ Erro ao buscar previsão futura para {product}-{state}: {e}, usando dados históricos")
+                # Fallback para dados históricos
+        
+        # Fallback: busca dados históricos do banco
+        try:
+            with self.engine.connect() as conn:
+                query = text('''
+                    SELECT "sellPrice", "createdAt" 
+                    FROM "Opportunity" 
+                    WHERE product = :p AND state = :s 
+                    ORDER BY "createdAt" DESC 
+                    LIMIT 1
+                ''')
+                res = conn.execute(query, {"p": product, "s": state}).fetchone()
+                if res:
+                    price = float(res[0])
+                    price_date = res[1] if res[1] else None
+                    
+                    # Define peso da conversão
+                    unit_weight = 20.0
+                    if specs:
+                        unit_weight = specs.get('unit_weight_kg', 20.0)
+                        
+                    # Normalização
+                    if price > 10.0: 
+                        price = price / unit_weight
+                    
+                    return (price, price_date)
+        except Exception as e:
+            logger.warning(f"⚠️ Preço não encontrado para {product}-{state}: {e}")
+        return (0.0, None)
+
 # ==========================================================================
     # 🧠 MÉTODO 1: FIND BEST ROUTE (Versão DEBUG X-RAY 🕵️‍♂️)
     # ==========================================================================
@@ -122,8 +177,12 @@ class ArbitrageCalculator:
             destinations_to_test = set([origin_state, 'SP'] + list(MAJOR_HUBS.keys()))
             
             for dest_uf in destinations_to_test:
-                # Busca Preço
-                sell_price_kg = self._get_market_price(product_name, dest_uf, specs)
+                # ✅ CORREÇÃO: Usa previsão futura (30 dias) em vez de dados históricos
+                # Isso garante que estamos calculando ROI baseado em preços FUTUROS, não passados
+                sell_price_kg, sell_price_date = self._get_market_price_with_date(
+                    product_name, dest_uf, specs, 
+                    use_forecast=True, days_ahead=30
+                )
                 
                 # SE NÃO TIVER PREÇO, LOGA E PULA
                 if sell_price_kg <= 0: 
@@ -184,32 +243,68 @@ class ArbitrageCalculator:
                         logger.warning(f"      ⚠️ ROI {roi:.2f}% IGNORADO (Suspeito)")
                         continue
 
+                    # ✅ CORREÇÃO: Atualiza best_scenario se ROI for melhor (mesmo que negativo, mas melhor que -inf)
+                    # Isso garante que sempre retornamos o melhor destino, mesmo que todos sejam negativos
                     if roi > max_roi:
                         max_roi = roi
                         best_scenario = {
                             'destination_state': dest_uf,
                             'destination_name': dest_info['name'],
                             'sell_price': round(sell_price_kg, 2),
+                            'sell_price_date': sell_price_date,  # ✅ NOVO: Data do preço de venda (futuro se usar previsão)
                             'freight_cost': round(total_freight_cost / total_volume_kg, 2),
                             'distance_km': int(route['distance_km']),
-                            'roi': round(roi, 1),
+                            'roi': round(roi, 2),  # ✅ MUDANÇA: round(roi, 2) em vez de round(roi, 1) para mais precisão
+                            'net_profit': round(net_profit, 2),  # ✅ NOVO: Adiciona net_profit
                             # ✅ NOVO: Informações adicionais do cálculo completo
                             'breakage_pct': round(breakage_pct * 100, 1),
                             'market_fees': round(market_cost, 2),
                             'packaging_cost': round(packaging_cost, 2)
                         }
+                        if roi > 0:
+                            logger.info(f"   ✅ NOVO MELHOR DESTINO (POSITIVO) para {origin_state}: {dest_uf} (ROI: {roi:.2f}%)")
+                        else:
+                            logger.debug(f"   ✅ Novo melhor destino para {origin_state}: {dest_uf} (ROI: {roi:.2f}%)")
                 except Exception as e:
                     logger.error(f"❌ Erro calculando {dest_uf}: {e}")
                     continue
 
             if not best_scenario:
-                best_scenario = {'destination_state': origin_state, 'roi': 0.0, 'freight_cost': 0.0}
+                best_scenario = {
+                    'destination_state': origin_state, 
+                    'destination_name': f'Local ({origin_state})',
+                    'roi': 0.0, 
+                    'freight_cost': 0.0, 
+                    'net_profit': 0.0,
+                    'distance_km': 0,
+                    'sell_price': 0.0,
+                    'sell_price_date': None  # ✅ NOVO: Data do preço de venda
+                }
+
+            # ✅ LOG: Mostra o melhor cenário encontrado
+            final_roi = best_scenario.get('roi', 0)
+            final_dest = best_scenario.get('destination_state', 'N/A')
+            if final_roi > 0:
+                logger.info(f"✅ Melhor destino encontrado para {origin_state}: {final_dest} (ROI: {final_roi}%)")
+            else:
+                logger.warning(f"⚠️ Nenhum destino lucrativo encontrado para {origin_state} (melhor ROI: {final_roi}%, destino: {final_dest})")
+            
+            # ✅ LOG FINAL: Mostra exatamente o que está sendo retornado
+            logger.info(f"📤 RETORNANDO best_scenario para {origin_state}: ROI={final_roi}%, destino={final_dest}, net_profit={best_scenario.get('net_profit', 0)}")
 
             return best_scenario
             
         except Exception as e:
             logger.error(f"❌ ERRO FATAL NO FIND_BEST_ROUTE: {e}")
-            return {'destination_state': 'ERRO', 'roi': 0.0}
+            return {
+                'destination_state': 'ERRO', 
+                'destination_name': 'Erro no cálculo',
+                'roi': 0.0,
+                'net_profit': 0.0,
+                'freight_cost': 0.0,
+                'distance_km': 0,
+                'sell_price': 0.0
+            }
     # ==========================================================================
     # 🧠 MÉTODO 2: SIMULADOR DETALHADO (Com Normalização de UF)
     # ==========================================================================
@@ -241,13 +336,20 @@ class ArbitrageCalculator:
         if total_volume_kg == 0: total_volume_kg = 15000.0
 
         # 3. Logística
-        # Usa coordenadas de HUB se disponível, ou estaduais
-        orig_info = MAJOR_HUBS.get(origin_uf)
-        if orig_info:
-            orig_lat, orig_lng = orig_info['lat'], orig_info['lng']
+        # ✅ NOVO: Usa coordenadas específicas se fornecidas, senão usa HUB ou estaduais
+        if data.origin_lat is not None and data.origin_lng is not None:
+            # Usa coordenadas específicas da cidade/origem
+            orig_lat, orig_lng = float(data.origin_lat), float(data.origin_lng)
+            logger.debug(f"📍 Usando coordenadas específicas da origem: ({orig_lat}, {orig_lng})")
         else:
-            raw_orig = STATE_COORDS.get(origin_uf, (-15.7, -47.9))
-            orig_lat, orig_lng = raw_orig if isinstance(raw_orig, tuple) else (-15.7, -47.9)
+            # Fallback: Usa coordenadas de HUB se disponível, ou estaduais
+            orig_info = MAJOR_HUBS.get(origin_uf)
+            if orig_info:
+                orig_lat, orig_lng = orig_info['lat'], orig_info['lng']
+            else:
+                raw_orig = STATE_COORDS.get(origin_uf, (-15.7, -47.9))
+                orig_lat, orig_lng = raw_orig if isinstance(raw_orig, tuple) else (-15.7, -47.9)
+            logger.debug(f"📍 Usando coordenadas do estado/hub {origin_uf}: ({orig_lat}, {orig_lng})")
 
         dest_info = MAJOR_HUBS.get(dest_uf)
         if dest_info:

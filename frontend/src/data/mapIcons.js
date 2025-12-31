@@ -1,6 +1,37 @@
 import L from 'leaflet';
 import theme from '../styles/theme';
 
+// ✅ NOVO: Função para obter cor e emoji baseado no produto
+function getProductStyle(product) {
+  const productLower = (product || '').toLowerCase();
+  
+  if (productLower.includes('tomate')) {
+    return { 
+      emoji: '🍅', 
+      baseColor: '#ef4444', // Vermelho para tomate
+      category: 'hortifruti'
+    };
+  } else if (productLower.includes('soja')) {
+    return { 
+      emoji: '🌾', 
+      baseColor: '#fbbf24', // Amarelo/dourado para soja
+      category: 'graos'
+    };
+  } else if (productLower.includes('milho')) {
+    return { 
+      emoji: '🌽', 
+      baseColor: '#f59e0b', // Laranja para milho
+      category: 'graos'
+    };
+  } else {
+    return { 
+      emoji: '🌱', 
+      baseColor: '#22c55e', // Verde genérico
+      category: 'outros'
+    };
+  }
+}
+
 // Função para criar ícone colorido baseado no ROI
 export const createColoredIcon = (roi) => {
   let color;
@@ -24,15 +55,17 @@ export const createColoredIcon = (roi) => {
 }
 
 // Ícone para oportunidades de risco alto (adiciona borda vermelha)
-export function createRiskIcon(roi, riskLevel, hasExtremeEvents = false, extremeEventSeverity = null) {
+export function createRiskIcon(roi, riskLevel, hasExtremeEvents = false, extremeEventSeverity = null, product = null) {
+  // ✅ NOVO: Ajusta cor baseada no produto
+  const productStyle = getProductStyle(product);
   let color;
   
   if (roi >= 100) {
-    color = '#22c55e';
+    color = '#22c55e'; // Verde para ROI alto (sobrescreve cor do produto)
   } else if (roi >= 50) {
-    color = theme.colors.secondary; // roxo
+    color = productStyle.baseColor; // Usa cor do produto para ROI médio
   } else {
-    color = theme.colors.warning; // vermelho
+    color = theme.colors.warning; // Vermelho para ROI baixo
   }
 
   // Se há eventos extremos, ajusta cor e borda
@@ -63,13 +96,16 @@ export function createRiskIcon(roi, riskLevel, hasExtremeEvents = false, extreme
     </circle>
   ` : '';
 
+  // ✅ NOVO: Emoji do produto no centro do marcador
+  const productEmoji = productStyle.emoji;
+
   const svgIcon = `
     <svg width="32" height="42" viewBox="0 0 32 42" xmlns="http://www.w3.org/2000/svg">
       <path d="M16 0C7.163 0 0 7.163 0 16c0 13 16 26 16 26s16-13 16-26c0-8.837-7.163-16-16-16z" 
             fill="${color}" 
             stroke="${strokeColor}" 
             stroke-width="${strokeWidth}"/>
-      <circle cx="16" cy="16" r="6" fill="#fff"/>
+      <text x="16" y="20" text-anchor="middle" font-size="14" font-family="Arial, sans-serif">${productEmoji}</text>
       ${extremeBadge}
     </svg>
   `;

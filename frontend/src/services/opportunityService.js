@@ -106,6 +106,29 @@ export const OpportunityService = {
     }
   },
 
+  // ✅ NOVO: Buscar melhores oportunidades automaticamente
+  getBestOpportunities: async (options = {}) => {
+    try {
+      const payload = {
+        products: options.products || null,  // Se null, busca todos
+        max_results: options.max_results || 10,
+        min_roi: options.min_roi || null,
+        month: options.month || null
+      };
+      
+      const response = await api.post('/api/ai/best-opportunities', payload, {
+        timeout: 120000 // 2 minutos
+      });
+      return response.data;
+    } catch (error) {
+      console.error("Erro ao buscar melhores oportunidades:", error);
+      if (error.code === 'ECONNABORTED') {
+        throw new Error('A busca está demorando mais que o esperado. Tente reduzir o número de produtos.');
+      }
+      throw error;
+    }
+  },
+
   // 2. IA DE ARMAZENAGEM (Corrigido para 'getStorageAnalysis')
   getStorageAnalysis: async (product, state, current_price, buy_price, risk_factor, daily_rain, daily_temp_max, daily_sun, daily_temp_min, lat, lng) => {
     try {
@@ -316,6 +339,57 @@ export const OpportunityService = {
       console.error("Erro ao obter recomendação:", error);
       if (error.code === 'ECONNABORTED') {
         throw new Error('Recomendação está demorando mais que o esperado. Tente novamente.');
+      }
+      throw error;
+    }
+  },
+
+  // ✅ NOVO: Obter histórico de preços de uma oportunidade
+  getPriceHistory: async (opportunityId, days = 90) => {
+    try {
+      const response = await api.get(`/api/opportunities/${opportunityId}/history`, {
+        params: { days },
+        timeout: 30000 // 30 segundos
+      });
+      return response.data;
+    } catch (error) {
+      console.error("Erro ao buscar histórico de preços:", error);
+      if (error.code === 'ECONNABORTED') {
+        throw new Error('Busca de histórico está demorando mais que o esperado. Tente novamente.');
+      }
+      throw error;
+    }
+  },
+
+  // ✅ NOVO: Comparar múltiplas oportunidades
+  compareOpportunities: async (opportunityIds) => {
+    try {
+      const response = await api.post('/api/opportunities/compare', {
+        opportunityIds
+      }, {
+        timeout: 30000 // 30 segundos
+      });
+      return response.data;
+    } catch (error) {
+      console.error("Erro ao comparar oportunidades:", error);
+      if (error.code === 'ECONNABORTED') {
+        throw new Error('Comparação está demorando mais que o esperado. Tente novamente.');
+      }
+      throw error;
+    }
+  },
+
+  // ✅ NOVO: Simular cenário
+  simulateScenario: async (opportunityId, scenarios) => {
+    try {
+      const response = await api.post(`/api/opportunities/${opportunityId}/simulate`, scenarios, {
+        timeout: 30000 // 30 segundos
+      });
+      return response.data;
+    } catch (error) {
+      console.error("Erro ao simular cenário:", error);
+      if (error.code === 'ECONNABORTED') {
+        throw new Error('Simulação está demorando mais que o esperado. Tente novamente.');
       }
       throw error;
     }

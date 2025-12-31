@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, Query
 import math
 from models.schemas import (
     BatchPredictionRequest, MarketScanRequest, SimulationRequest, ArbitrageRequest,
-    PriceForecastResponse, RecommendationRequest
+    PriceForecastResponse, RecommendationRequest, BestOpportunitiesRequest, BestOpportunitiesResponse, BestOpportunityItem
 )
 from services.fuel_pricing import fuel_api
 from services.arbitrage_calculator import arbitrage_calculator, REGIONAL_FACTORS
@@ -583,3 +583,299 @@ async def market_scan(request: MarketScanRequest):
     except Exception as e:
         logger.error(f"❌ Erro Crítico Scan: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+# --- 6. ROTA DE MELHORES OPORTUNIDADES AUTOMÁTICAS (OTIMIZADA) ---
+@router.post("/best-opportunities", response_model=BestOpportunitiesResponse)
+async def get_best_opportunities(request: BestOpportunitiesRequest):
+    """
+    🎯 Escaneia combinações de origem/destino e retorna as melhores oportunidades (OTIMIZADO).
+    
+    **Otimizações:**
+    - Limita origens para top 15 por ROI atual (em vez de todas)
+    - Usa apenas principais hubs como destinos (8 hubs)
+    - Processamento paralelo com asyncio
+    - Early stopping quando encontra resultados suficientes
+    
+    **Exemplo de uso:**
+    ```json
+    {
+        "products": ["Tomate", "Soja"],
+        "max_results": 10,
+        "min_roi": 20.0,
+        "month": 4
+    }
+    ```
+    """
+    import time
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    from utils.database import get_engine
+    from sqlalchemy import text
+    
+    start_time = time.time()
+    MAX_ORIGINS = 30  # ✅ AUMENTADO: Mais origens para ter mais resultados (agora é mais rápido com find_best_route)
+    MAX_SCAN_TIME = 90  # ✅ OTIMIZAÇÃO: Timeout de 90 segundos
+    
+    try:
+        logger.info(f"🎯 Escaneando melhores oportunidades (OTIMIZADO): produtos={request.products}, max={request.max_results}")
+        
+        # 1. Busca TOP origens por ROI atual (em vez de todas)
+        engine = get_engine()
+        
+        with engine.connect() as conn:
+            # ✅ OTIMIZAÇÃO: Busca apenas top 15 por ROI atual
+            # ✅ NOVO: Inclui createdAt para data de referência do buy_price
+            if request.products:
+                products_filter = "', '".join(request.products)
+                query = text(f"""
+                    SELECT DISTINCT ON (product, state) 
+                        product, state, city, lat, lng, "buyPrice", roi, "createdAt"
+                    FROM "Opportunity"
+                    WHERE product IN ('{products_filter}')
+                        AND lat IS NOT NULL 
+                        AND lng IS NOT NULL
+                        AND roi IS NOT NULL
+                    ORDER BY product, state, roi DESC NULLS LAST
+                    LIMIT {MAX_ORIGINS * 2}  -- Pega mais para depois filtrar únicos
+                """)
+            else:
+                query = text(f"""
+                    SELECT DISTINCT ON (product, state) 
+                        product, state, city, lat, lng, "buyPrice", roi, "createdAt"
+                    FROM "Opportunity"
+                    WHERE lat IS NOT NULL 
+                        AND lng IS NOT NULL
+                        AND roi IS NOT NULL
+                    ORDER BY product, state, roi DESC NULLS LAST
+                    LIMIT {MAX_ORIGINS * 2}
+                """)
+            
+            all_origins = conn.execute(query).fetchall()
+            
+            # Remove duplicatas (mesmo produto+estado) e pega top MAX_ORIGINS
+            seen = set()
+            origins = []
+            for origin in all_origins:
+                key = (origin[0], origin[1])  # (product, state)
+                if key not in seen and len(origins) < MAX_ORIGINS:
+                    seen.add(key)
+                    origins.append(origin)
+            
+            logger.info(f"📍 Encontradas {len(origins)} origens únicas (limitado a {MAX_ORIGINS})")
+        
+        # 2. Área padrão para cálculo
+        AREA_STANDARD_HA = 10.0
+        current_month = request.month if request.month else datetime.now().month
+        
+        # 3. ✅ CORREÇÃO: Usa find_best_route() em vez de testar todas as combinações
+        # Isso garante que o Dashboard mostre o mesmo ROI que está no banco (e na tabela)
+        def find_best_for_origin(origin):
+            try:
+                product = origin[0]
+                origin_state = origin[1]
+                origin_city = origin[2] or 'N/A'
+                origin_lat = float(origin[3]) if origin[3] else None
+                origin_lng = float(origin[4]) if origin[4] else None
+                buy_price = float(origin[5]) if origin[5] else 0.0
+                buy_price_date = origin[6] if len(origin) > 6 else None
+                
+                if not origin_lat or not origin_lng:
+                    return None
+                
+                # ✅ USA find_best_route() - mesma lógica do banco
+                opp_dict = {
+                    'product': product,
+                    'state': origin_state,
+                    'buyPrice': buy_price,
+                    'lat': origin_lat,
+                    'lng': origin_lng
+                }
+                
+                best_route = arbitrage_calculator.find_best_route(opp_dict)
+                
+                if not best_route:
+                    logger.warning(f"⚠️ {product} {origin_state}: best_route está vazio!")
+                    return None
+                
+                roi = best_route.get('roi', 0)
+                net_profit = best_route.get('net_profit', 0)
+                sell_price = best_route.get('sell_price', 0)
+                sell_price_date_from_route = best_route.get('sell_price_date')  # ✅ NOVO: Data do preço de venda do best_route
+                freight_cost = best_route.get('freight_cost', 0)
+                distance_km = best_route.get('distance_km', 0)  # Pode não estar presente se find_best_route não retornar
+                destination_name = best_route.get('destination_name', 'N/A')
+                destination_state = best_route.get('destination_state', 'N/A')
+                
+                # ✅ Validação: Se distance_km não estiver presente, tenta calcular ou usa 0
+                if not distance_km or distance_km == 0:
+                    logger.warning(f"⚠️ {product} {origin_state}: distance_km não encontrado em best_route, usando 0")
+                    distance_km = 0
+                
+                # Filtros
+                if roi <= -100 or roi > 200:
+                    logger.debug(f"⚠️ {product} {origin_state}: ROI fora do range válido: {roi}%")
+                    return None
+                
+                # ✅ CORREÇÃO CRÍTICA: Filtra ROIs negativos (não faz sentido mostrar como "melhor oportunidade")
+                if roi <= 0:
+                    logger.debug(f"⚠️ {product} {origin_state}: ROI negativo ou zero ({roi}%), ignorando")
+                    return None
+                
+                # ✅ Filtro min_roi: só filtra se o usuário especificou um valor
+                if request.min_roi is not None and request.min_roi > 0 and roi < request.min_roi:
+                    logger.debug(f"⚠️ {product} {origin_state}: ROI abaixo do mínimo solicitado ({request.min_roi}%): {roi}%")
+                    return None
+                
+                # ✅ NOVO: Busca preço FUTURO usando Prophet (em vez de dados históricos)
+                # NOTA: O find_best_route já usa previsões futuras, então sell_price_date_from_route já vem do futuro
+                sell_price_date = sell_price_date_from_route  # Usa a data do best_route (já é futura)
+                buy_price_date_future = None
+                try:
+                    from config.crops import get_crop_specs
+                    specs_for_date = get_crop_specs(product)
+                    
+                    # ✅ CORREÇÃO: Usa previsão futura (30 dias à frente) para preço de compra
+                    # O preço de venda já vem do find_best_route com previsão futura
+                    days_ahead = 30  # Previsão para 30 dias no futuro
+                    
+                    # Preço de compra (origem) - FUTURO
+                    buy_price_future, buy_price_date_future = arbitrage_calculator._get_market_price_with_date(
+                        product, origin_state, specs_for_date,
+                        use_forecast=True, days_ahead=days_ahead
+                    )
+                    
+                    # ✅ Se a previsão retornou um preço válido, atualiza o buy_price usado no cálculo
+                    if buy_price_future > 0:
+                        buy_price = buy_price_future
+                        logger.info(f"🔮 Usando previsão futura para {product} {origin_state}: R$ {buy_price:.2f}/kg")
+                    
+                    # Se não tiver sell_price_date do best_route, busca do histórico como fallback
+                    if not sell_price_date:
+                        sell_price_value, sell_price_date = arbitrage_calculator._get_market_price_with_date(
+                            product, destination_state, specs_for_date, 
+                            use_forecast=True, days_ahead=days_ahead
+                        )
+                        if sell_price_value > 0:
+                            logger.info(f"🔮 Usando previsão futura para {product} {destination_state}: R$ {sell_price_value:.2f}/kg")
+                except Exception as e:
+                    logger.warning(f"⚠️ Erro ao buscar previsão futura de preços: {e}, usando dados históricos")
+                    # Fallback: busca data do histórico
+                    if not sell_price_date:
+                        try:
+                            from config.crops import get_crop_specs
+                            specs_for_date = get_crop_specs(product)
+                            sell_price_value, sell_price_date = arbitrage_calculator._get_market_price_with_date(product, destination_state, specs_for_date, use_forecast=False)
+                        except Exception as e2:
+                            logger.debug(f"⚠️ Erro ao buscar data do preço de venda: {e2}")
+                            pass
+                
+                # Calcula volume (mesma lógica do find_best_route)
+                from config.crops import get_crop_specs
+                specs = get_crop_specs(product)
+                region_factor = REGIONAL_FACTORS.get(origin_state, REGIONAL_FACTORS['DEFAULT'])
+                base_prod_cx = specs.get('base_productivity', 300)
+                unit_weight = specs.get('unit_weight_kg', 20.0)
+                real_productivity_kg_ha = base_prod_cx * region_factor * unit_weight
+                total_volume_kg = AREA_STANDARD_HA * real_productivity_kg_ha
+                
+                return {
+                    "product": product,
+                    "origin_state": origin_state,
+                    "origin_city": origin_city,
+                    "destination_state": destination_state,
+                    "destination_name": destination_name,
+                    "roi": round(roi, 2),
+                    "net_profit": round(net_profit, 2),
+                    "buy_price": round(buy_price, 2),
+                    "sell_price": round(sell_price, 2),
+                    "freight": round(freight_cost, 2),
+                    "distance_km": int(distance_km),
+                    "volume_kg": round(total_volume_kg, 2),
+                    "confidence_score": 0.8 if roi > 0 else 0.5,
+                    # ✅ NOVO: Datas de referência
+                    "buy_price_date": (buy_price_date_future or buy_price_date).isoformat() if (buy_price_date_future or buy_price_date) else None,
+                    "sell_price_date": sell_price_date.isoformat() if sell_price_date else None,
+                    "price_source": "Previsão Futura (Prophet - 30 dias)" if (sell_price_date and sell_price_date > datetime.now()) or buy_price_date_future else "Banco de Dados (Último registro disponível)",
+                    # ✅ NOVO: Informações sobre o cálculo
+                    "area_ha": AREA_STANDARD_HA,
+                    "calculation_note": f"Cálculo baseado em {AREA_STANDARD_HA} hectares (área padrão). ROI e lucro são proporcionais à área. Usa mesma lógica do banco (melhor destino encontrado)."
+                }
+            except Exception as e:
+                logger.debug(f"⚠️ Erro ao encontrar melhor rota para {origin[0]} {origin[1]}: {e}")
+                return None
+        
+        # 4. ✅ CORREÇÃO: Processa cada origem usando find_best_route() (mesma lógica do banco)
+        opportunities_found = []
+        total_scanned = len(origins)
+        
+        logger.info(f"🔄 Processando {total_scanned} origens usando find_best_route() (mesma lógica do banco)...")
+        
+        # Processa em paralelo (máximo 10 threads simultâneas)
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = []
+            for origin in origins:
+                if time.time() - start_time > MAX_SCAN_TIME:
+                    logger.warning(f"⏱️ Timeout de {MAX_SCAN_TIME}s atingido. Parando scan...")
+                    break
+                
+                future = executor.submit(find_best_for_origin, origin)
+                futures.append(future)
+            
+            # Coleta resultados
+            for future in futures:
+                if time.time() - start_time > MAX_SCAN_TIME:
+                    break
+                try:
+                    result = future.result(timeout=10)  # Timeout de 10s por cálculo
+                    if result:
+                        opportunities_found.append(result)
+                        logger.info(f"✅ Oportunidade coletada: {result.get('product', 'N/A')} {result.get('origin_state', 'N/A')} -> {result.get('destination_state', 'N/A')} (ROI: {result.get('roi', 0)}%)")
+                        # ✅ EARLY STOPPING: Se já encontrou resultados suficientes, pode parar
+                        if len(opportunities_found) >= request.max_results * 2:
+                            logger.info(f"⏹️ Early stopping: já encontrou {len(opportunities_found)} oportunidades")
+                            break
+                except Exception as e:
+                    logger.warning(f"⚠️ Erro ao processar origem: {e}")
+                    continue
+        
+        # 6. ✅ CORREÇÃO: Filtra apenas ROIs positivos (não faz sentido mostrar negativos como "melhores oportunidades")
+        positive_opportunities = [opp for opp in opportunities_found if opp.get('roi', 0) > 0]
+        
+        # 7. Ordena por ROI (maior primeiro)
+        positive_opportunities.sort(key=lambda x: x['roi'], reverse=True)
+        
+        # ✅ LOG: Mostra quantas oportunidades foram encontradas
+        logger.info(f"📊 Total de oportunidades encontradas: {len(opportunities_found)} (positivas: {len(positive_opportunities)})")
+        if positive_opportunities:
+            top_rois = [f"{opp['roi']}%" for opp in positive_opportunities[:3]]
+            logger.info(f"📊 Top 3 ROIs encontrados: {top_rois}")
+        else:
+            logger.warning(f"⚠️ Nenhuma oportunidade com ROI positivo encontrada!")
+        
+        # 8. Limita resultados
+        top_opportunities = positive_opportunities[:request.max_results]
+        
+        # 8. Converte para modelos Pydantic
+        opportunity_items = []
+        for opp in top_opportunities:
+            try:
+                item = BestOpportunityItem(**opp)
+                opportunity_items.append(item)
+            except Exception as e:
+                logger.error(f"❌ Erro ao converter oportunidade para Pydantic: {e}, dados: {opp}")
+                continue
+        
+        duration = time.time() - start_time
+        
+        logger.info(f"✅ Encontradas {len(opportunity_items)} melhores oportunidades em {duration:.2f}s (processadas {total_scanned} origens)")
+        
+        return BestOpportunitiesResponse(
+            status="success",
+            total_scanned=total_scanned,
+            opportunities=opportunity_items,
+            scan_duration_seconds=round(duration, 2)
+        )
+        
+    except Exception as e:
+        logger.error(f"❌ Erro ao buscar melhores oportunidades: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erro ao buscar melhores oportunidades: {str(e)}")

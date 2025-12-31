@@ -34,11 +34,15 @@ model Opportunity {
   freight      Decimal?                 @db.Decimal(10, 2)
   roi          Float?                   @default(0)
   history      PriceHistory[]
+  favorites    Favorite[] // ✅ NOVO: Relação com favoritos
+  portfolioOperations PortfolioOperation[] // ✅ NOVO: Relação com operações do portfolio
 
   @@index([geom], map: "opportunity_geom_idx", type: Gist)
   @@index([product])
   @@index([product, state])
   @@index([state])
+  @@index([roi]) // ✅ OTIMIZAÇÃO: Índice para ordenação rápida por ROI
+  @@index([createdAt]) // ✅ OTIMIZAÇÃO: Índice para ordenação por data
 }
 
 model PriceHistory {
@@ -58,6 +62,8 @@ model User {
   createdAt     DateTime       @default(now())
   auditLogs     AuditLog[]
   refreshTokens RefreshToken[]
+  alerts        Alert[]        // ✅ NOVO: Relação com alertas
+  portfolioOperations PortfolioOperation[] // ✅ NOVO: Relação com operações do portfolio
 }
 
 model RefreshToken {
@@ -176,10 +182,10 @@ model WeatherData {
   date            DateTime @db.Date
   temperature_max Float?
   temperature_min Float?
-  precipitation   Float?   // mm
-  radiation_mj    Float?   // MJ/m²
-  humidity_avg    Float?   // %
-  et0             Float?   // Evapotranspiração de referência (mm)
+  precipitation   Float? // mm
+  radiation_mj    Float? // MJ/m²
+  humidity_avg    Float? // %
+  et0             Float? // Evapotranspiração de referência (mm)
   source          String   @default("open-meteo")
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
@@ -198,4 +204,83 @@ model spatial_ref_sys {
   auth_srid Int?
   srtext    String? @db.VarChar(2048)
   proj4text String? @db.VarChar(2048)
+}
+
+// ✅ NOVO: Favoritos - Permite usuários salvarem oportunidades para acompanhar
+// Nota: userId é String (UUID do Supabase Auth), não há relação com User pois User.id é Int
+model Favorite {
+  id            Int      @id @default(autoincrement())
+  userId        String // UUID do Supabase Auth (não Int, pois vem do Supabase)
+  opportunityId Int
+  notes         String? // Notas do usuário sobre esta oportunidade
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relações
+  opportunity Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  // Índices para performance
+  @@unique([userId, opportunityId]) // Um usuário não pode favoritar a mesma oportunidade duas vezes
+  @@index([userId])
+  @@index([opportunityId])
+  @@index([createdAt])
+}
+
+// ✅ NOVO: Sistema de Alertas - Permite usuários configurarem alertas personalizados
+model Alert {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  type          String   // "roi_threshold", "price_change", "extreme_weather", "new_opportunity"
+  config        String   @db.Text // JSON string com configuração específica do alerta
+  channels      String   // JSON array: ["email", "whatsapp", "push"]
+  
+  isActive      Boolean  @default(true)
+  lastTriggered DateTime?
+  triggerCount  Int      @default(0)
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+  @@index([type])
+  @@index([isActive])
+  @@index([createdAt])
+}
+
+// ✅ NOVO: Portfolio Tracking - Rastreamento de operações de compra/venda
+model PortfolioOperation {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  opportunityId Int?     // Referência à oportunidade original (opcional)
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  
+  type          String   // "buy", "sell"
+  product       String
+  origin        String   // Cidade, Estado
+  destination   String   // Cidade, Estado
+  
+  quantity      Float    // kg
+  price         Float    // R$/kg
+  totalValue    Float    // quantity * price
+  
+  projectedROI  Float?   // ROI projetado no momento da compra
+  actualROI     Float?   // ROI real (calculado após venda)
+  
+  status        String   // "planned", "in_progress", "completed", "cancelled"
+  
+  notes         String?  // Notas do usuário
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  completedAt   DateTime?
+
+  @@index([userId])
+  @@index([status])
+  @@index([type])
+  @@index([createdAt])
+  @@index([opportunityId])
 }

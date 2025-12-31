@@ -17,6 +17,8 @@ import {
 } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
 import MarketTrendsChart from './MarketTrendsChart'; // ✅ NOVO: Componente de Tendências
+import FavoritesSection from './FavoritesSection'; // ✅ NOVO: Seção de Favoritos
+import BestOpportunitiesSection from './BestOpportunitiesSection'; // ✅ NOVO: Melhores Oportunidades
 import '../../styles/dashboard.css';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend);
@@ -432,6 +434,16 @@ const Dashboard = () => {
           <MarketTrendsChart 
             onError={(error) => console.error('Erro no gráfico de tendências:', error)}
           />
+        </div>
+
+        {/* ✅ NOVO: Seção de Favoritos */}
+        <div style={{ marginBottom: '30px' }}>
+          <FavoritesSection />
+        </div>
+
+        {/* ✅ NOVO: Melhores Oportunidades Automáticas */}
+        <div style={{ marginBottom: '30px' }}>
+          <BestOpportunitiesSection />
         </div>
 
         {/* --- 🔙 TABELA DE MONITORAMENTO DE OPORTUNIDADES (A TUA LISTA DE VOLTA) --- */}

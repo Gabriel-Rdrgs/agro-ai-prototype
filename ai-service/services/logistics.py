@@ -4,7 +4,8 @@ import math
 from typing import Dict, List
 from services.fuel_pricing import fuel_api
 from config.constants import STATE_COORDS
-from utils.geography import calculate_distance_coords 
+from utils.geography import calculate_distance_coords
+from services.distance_matrix import distance_matrix_service
 
 logger = logging.getLogger(__name__)
 
@@ -28,15 +29,39 @@ class LogisticsService:
 
 # --- NOVO MÉTODO DE CÁLCULO (Baseado em Coordenadas) ---
     def calculate_distance(self, lat1, lon1, lat2, lon2):
-        """Calcula distância em km entre dois pontos (Haversine)"""
-        R = 6371  # Raio da terra
-        dlat = math.radians(lat2 - lat1)
-        dlon = math.radians(lon2 - lon1)
-        a = math.sin(dlat/2) * math.sin(dlat/2) + \
-            math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * \
-            math.sin(dlon/2) * math.sin(dlon/2)
-        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
-        return R * c * 1.2  # +20% margem de sinuosidade
+        """
+        Calcula distância em km entre dois pontos.
+        Usa Google Maps Distance Matrix API se disponível, senão usa Haversine como fallback.
+        """
+        try:
+            # Tenta usar Google Maps Distance Matrix API
+            result = distance_matrix_service.get_distance_matrix(
+                origin=(lat1, lon1),
+                destination=(lat2, lon2),
+                mode='driving'
+            )
+            distance_km = result['distance_km']
+            
+            # Log apenas se não estiver usando cache (para não poluir logs)
+            if not result.get('cached', False):
+                source = result.get('source', 'UNKNOWN')
+                if source == 'GOOGLE_MAPS':
+                    logger.debug(f"✅ Distância calculada via Google Maps: {distance_km:.2f} km")
+                else:
+                    logger.debug(f"⚠️ Distância calculada via Haversine (fallback): {distance_km:.2f} km")
+            
+            return distance_km
+        except Exception as e:
+            logger.warning(f"⚠️ Erro ao calcular distância, usando Haversine: {e}")
+            # Fallback para Haversine
+            R = 6371  # Raio da terra
+            dlat = math.radians(lat2 - lat1)
+            dlon = math.radians(lon2 - lon1)
+            a = math.sin(dlat/2) * math.sin(dlat/2) + \
+                math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * \
+                math.sin(dlon/2) * math.sin(dlon/2)
+            c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+            return R * c * 1.35  # Fator de sinuosidade (atualizado para 1.35)
 
     def calculate_freight(self, lat_origin, lng_origin, lat_dest, lng_dest):
         """
