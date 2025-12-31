@@ -341,7 +341,7 @@ const MapView = React.forwardRef((props, ref) => {
       setSupplyRiskProgress({ loaded: 0, total: 0 });
       supplyRiskLoadingRef.current = false;
     }
-  }, [showSupplyRisk, opportunities]); // ✅ CORRIGIDO: Removido supplyRiskData da dependência para evitar loop infinito
+  }, [showSupplyRisk, opportunities, supplyRiskData]); // ✅ CORRIGIDO: supplyRiskData memoizado via useMemo (linha 148)
   
   // ✅ NOVO: Limpa cache do frontend quando toggle é desativado
   useEffect(() => {

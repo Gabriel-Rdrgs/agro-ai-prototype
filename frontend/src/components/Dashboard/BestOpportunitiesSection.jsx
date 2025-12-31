@@ -1,5 +1,5 @@
 // frontend/src/components/Dashboard/BestOpportunitiesSection.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { OpportunityService } from '../../services/opportunityService';
 import theme from '../../styles/theme';
 

@@ -30,6 +30,13 @@ const mockPrisma = {
     create: jest.fn(),
     findMany: jest.fn()
   },
+  priceHistory: {
+    findMany: jest.fn(),
+    findUnique: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
+    delete: jest.fn()
+  },
   $disconnect: jest.fn(),
   $connect: jest.fn()
 };
