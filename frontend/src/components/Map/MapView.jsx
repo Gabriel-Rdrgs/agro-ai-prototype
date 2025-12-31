@@ -1476,13 +1476,13 @@ return (
 
       {/* Modal de Comparação */}
       <ComparisonModal
-        opportunities={filteredOpportunities}
+        opportunities={currentOpportunities}
         isOpen={isComparisonModalOpen}
         onClose={() => setIsComparisonModalOpen(false)}
       />
 
       {/* Botão de Comparação */}
-      {filteredOpportunities && filteredOpportunities.length > 1 && (
+      {currentOpportunities && currentOpportunities.length > 1 && (
         <button
           onClick={() => setIsComparisonModalOpen(true)}
           style={{
