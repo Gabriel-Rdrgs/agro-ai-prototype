@@ -6,12 +6,24 @@
 // 1. CARREGAMENTO DE DEPENDÊNCIAS
 require('dotenv').config();
 
+// ✅ CRIT-004: Validação de variáveis de ambiente (ANTES de tudo)
+const { validateCriticalEnv } = require('./config/envValidation');
+try {
+  validateCriticalEnv();
+} catch (error) {
+  console.error('❌ ERRO CRÍTICO: Falha na validação de variáveis de ambiente');
+  console.error(error.message);
+  process.exit(1); // Falha rápida se variáveis críticas faltarem
+}
+
 // ✅ FASE 0 - Semana 2: Sentry deve ser inicializado ANTES de tudo
 const Sentry = require('./utils/sentry');
 const logger = require('./utils/logger');
 
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const axios = require('axios');
 const { PrismaClient } = require('@prisma/client');
 
@@ -297,8 +309,8 @@ async function getWeatherFull(lat, lng) {
 // ============================================
 if (authController) {
   app.post('/api/auth/register', verifyToken, checkRole(['admin']), authController.register);
-  app.post('/api/auth/login', authController.login);
-  app.post('/api/auth/refresh', authController.refreshToken);
+  app.post('/api/auth/login', authLimiter, authController.login); // ✅ CRIT-003: Rate limiting para login
+  app.post('/api/auth/refresh', authLimiter, authController.refreshToken); // ✅ CRIT-003: Rate limiting para refresh
 }
 
 // ============================================
@@ -2195,10 +2207,60 @@ app.post('/api/admin/sync-weather', verifyToken, checkRole(['admin']), async (re
 // ============================================
 // Ouvimos em 0.0.0.0 para garantir que o Docker/Railway consiga acessar
 // Se ouvirmos apenas em localhost, o deploy falha com "Application failed to respond"
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   logger.info('==================================================');
   logger.info(`🔥 BACKEND ONLINE EM: http://0.0.0.0:${PORT}`);
   logger.info(`🌍 URL Externa esperada: ${process.env.RAILWAY_STATIC_URL || 'Não definida'}`);
   logger.info(`🔗 Conectado ao Python em: ${PYTHON_API_URL}`);
   logger.info('==================================================');
+});
+
+// ============================================
+// ✅ CRIT-008: Graceful Shutdown
+// ============================================
+// Fecha conexões adequadamente ao receber SIGTERM/SIGINT
+const gracefulShutdown = async (signal) => {
+  logger.info(`\n🛑 ${signal} recebido. Iniciando graceful shutdown...`);
+  
+  // Para de aceitar novas requisições
+  server.close(() => {
+    logger.info('✅ Servidor HTTP fechado');
+  });
+  
+  // Fecha conexões do Prisma
+  try {
+    await prisma.$disconnect();
+    logger.info('✅ Conexões do Prisma fechadas');
+  } catch (error) {
+    logger.error('❌ Erro ao fechar Prisma:', error);
+  }
+  
+  // Fecha job queue se existir
+  if (jobQueue && typeof jobQueue.close === 'function') {
+    try {
+      await jobQueue.close();
+      logger.info('✅ Job queue fechada');
+    } catch (error) {
+      logger.error('❌ Erro ao fechar job queue:', error);
+    }
+  }
+  
+  logger.info('✅ Graceful shutdown concluído');
+  process.exit(0);
+};
+
+// Registra handlers para sinais de término
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Handler para erros não tratados
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('❌ Unhandled Rejection:', { reason, promise });
+  // Não encerra o processo, apenas loga (Sentry captura)
+});
+
+process.on('uncaughtException', (error) => {
+  logger.error('❌ Uncaught Exception:', error);
+  // Encerra o processo após logar (erro crítico)
+  gracefulShutdown('UNCAUGHT_EXCEPTION');
 });

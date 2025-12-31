@@ -196,4 +196,9 @@ COMMIT_MESSAGE.txt
 backups/
 *.sql
 *.sql.gz
+*.backup
+*.backup.*
+*_backup.*
+Dockerfile.backup*
+railway.backup.json
 COMMIT_MESSAGE_DASHBOARD_PDF.md
