@@ -73,11 +73,19 @@ if (!JWT_SECRET) {
   logger.warn('⚠️ AVISO: JWT_SECRET não configurado. Usando default inseguro para dev.');
 }
 
+// ✅ PERF-003: Timeouts padronizados
+const TIMEOUTS = {
+  EXTERNAL_API: 10000,      // APIs externas: 10s
+  INTERNAL_SERVICE: 30000,  // Python AI: 30s (reduzido de 120s)
+  DATABASE: 5000,           // Queries: 5s
+  BATCH_OPERATIONS: 60000   // Operações em lote: 60s
+};
+
 // ✅ SEGURANÇA: Helper para criar instância axios configurada com autenticação interna
 function createPythonAxiosClient() {
   const client = axios.create({
     baseURL: PYTHON_API_URL,
-    timeout: 120000, // 120 segundos (padrão para operações de IA)
+    timeout: TIMEOUTS.INTERNAL_SERVICE, // ✅ PERF-003: Timeout padronizado
   });
   
   // Adiciona header de autenticação em todas as requisições
@@ -276,7 +284,9 @@ async function getWeatherFull(lat, lng) {
     // - Adicionamos 'soil_moisture_0_to_10cm_mean' (Umidade do Solo)
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,shortwave_radiation_sum,soil_moisture_0_to_10cm_mean&current_weather=true&timezone=America%2FSao_Paulo`;
     
-    const response = await axios.get(url);
+    const response = await axios.get(url, {
+      timeout: TIMEOUTS.EXTERNAL_API // ✅ PERF-003: Timeout padronizado
+    });
     const daily = response.data.daily;
     const current = response.data.current_weather;
 
@@ -363,55 +373,62 @@ app.post('/api/opportunities/compare', verifyToken, async (req, res) => {
       return res.status(404).json({ error: 'Nenhuma oportunidade encontrada' });
     }
 
-    // Busca recomendações da IA para cada oportunidade (opcional, pode ser lento)
-    const opportunitiesWithRecommendation = await Promise.all(
-      opportunities.map(async (opp) => {
-        let recommendation = null;
-        
-        try {
-          // Tenta buscar recomendação (não bloqueia se falhar)
-          const recResponse = await pythonAxios.post(
-            '/api/v1/predict/recommendation',
-            {
-              product: opp.product,
-              state: opp.state,
-              roi: opp.roi ? parseFloat(opp.roi) : null,
-              current_price: opp.sellPrice ? parseFloat(opp.sellPrice) : null,
-              buy_price: opp.buyPrice ? parseFloat(opp.buyPrice) : null
-            },
-            { timeout: 10000 } // 10 segundos por recomendação
-          );
-          recommendation = recResponse.data.recommendation;
-        } catch (err) {
-          // Ignora erro de recomendação (não crítico)
-          console.warn(`⚠️ Erro ao buscar recomendação para oportunidade ${opp.id}:`, err.message);
-        }
+    // ✅ PERF-001: Busca recomendações em lote (resolve N+1 queries)
+    let recommendationsMap = {};
+    try {
+      // Prepara payload para batch
+      const batchPayload = opportunities.map((opp, index) => ({
+        product: opp.product,
+        state: opp.state,
+        roi: opp.roi ? parseFloat(opp.roi) : null,
+        current_price: opp.sellPrice ? parseFloat(opp.sellPrice) : null,
+        buy_price: opp.buyPrice ? parseFloat(opp.buyPrice) : null
+      }));
+      
+      // Faz uma única chamada para o endpoint batch
+      const batchResponse = await pythonAxios.post(
+        '/api/v1/predict/recommendations/batch',
+        { opportunities: batchPayload },
+        { timeout: TIMEOUTS.BATCH_OPERATIONS }
+      );
+      
+      // Mapeia resultados pelo índice
+      if (batchResponse.data && batchResponse.data.recommendations) {
+        recommendationsMap = batchResponse.data.recommendations;
+      }
+    } catch (err) {
+      // Ignora erro de recomendação (não crítico)
+      logger.warn(`⚠️ Erro ao buscar recomendações em lote: ${err.message}`);
+    }
+    
+    // Combina oportunidades com recomendações
+    const opportunitiesWithRecommendation = opportunities.map((opp, index) => {
+      const recommendation = recommendationsMap[index] || null;
 
-        return {
-          id: opp.id,
-          product: opp.product,
-          origin: {
-            city: opp.city,
-            state: opp.state,
-            lat: opp.lat,
-            lng: opp.lng
-          },
-          destination: {
-            name: opp.sellLocation,
-            lat: opp.destLat,
-            lng: opp.destLng
-          },
-          buyPrice: opp.buyPrice,
-          sellPrice: opp.sellPrice,
-          roi: opp.roi ? parseFloat(opp.roi) : null,
-          freight: opp.freight ? parseFloat(opp.freight) : null,
-          riskLevel: opp.riskLevel,
-          volume: opp.volume,
-          season: opp.season,
-          recommendation: recommendation
-        };
-      })
-    );
+      return {
+        id: opp.id,
+        product: opp.product,
+        origin: {
+          city: opp.city,
+          state: opp.state,
+          lat: opp.lat,
+          lng: opp.lng
+        },
+        destination: {
+          name: opp.sellLocation,
+          lat: opp.destLat,
+          lng: opp.destLng
+        },
+        buyPrice: opp.buyPrice,
+        sellPrice: opp.sellPrice,
+        roi: opp.roi ? parseFloat(opp.roi) : null,
+        freight: opp.freight ? parseFloat(opp.freight) : null,
+        riskLevel: opp.riskLevel,
+        volume: opp.volume,
+        season: opp.season,
+        recommendation: recommendation ? recommendation.action : null
+      };
+    });
 
     res.json(opportunitiesWithRecommendation);
 
@@ -781,7 +798,8 @@ app.post('/api/opportunities/:id/recalculate', verifyToken, async (req, res) => 
     console.log(`🔄 Recalculando ROI pelo Python para oportunidade ${oppId}...`);
     const response = await pythonAxios.post(
       '/api/v1/calc/opportunity/recalculate',
-      payload
+      payload,
+      { timeout: TIMEOUTS.INTERNAL_SERVICE } // ✅ PERF-003: Timeout padronizado
     );
     
     const pythonData = response.data;
@@ -798,8 +816,9 @@ app.post('/api/opportunities/:id/recalculate', verifyToken, async (req, res) => 
             }
           });
           
-          // ✅ CACHE: Invalida cache após update
-          cache.invalidatePattern('opportunities:*');
+          // ✅ PERF-002: Cache granular - invalida apenas a oportunidade específica
+          cache.del(`opportunity:${oppId}`);
+          cache.del('opportunities:all'); // Invalida lista geral apenas se necessário
     
     console.log(`✅ ROI recalculado: ${pythonData.roi}%`);
     
@@ -842,8 +861,8 @@ app.post('/api/internal/calculate-all-roi', async (req, res) => {
     
     logger.info(`✅ Cálculo concluído: ${result.updated} atualizados, ${result.errors} erros`);
     
-    // ✅ CACHE: Invalida cache após cálculo em massa
-    cache.invalidatePattern('opportunities:*');
+    // ✅ PERF-002: Cache granular - após cálculo em massa, invalida apenas lista geral
+    cache.del('opportunities:all');
     
     res.json({
       success: true,
@@ -884,8 +903,8 @@ app.post('/api/opportunities/calculate-all-roi', verifyToken, checkRole(['admin'
     // ✅ AUDIT LOG: Registra resultado
     await logAction(userId, 'CALCULATE_ALL_ROI', `Concluído: ${result.updated} atualizados, ${result.errors} erros`);
     
-    // ✅ CACHE: Invalida cache após cálculo em massa
-    cache.invalidatePattern('opportunities:*');
+    // ✅ PERF-002: Cache granular - após cálculo em massa, invalida apenas lista geral
+    cache.del('opportunities:all');
     
     res.json({
       success: true,
@@ -929,8 +948,8 @@ app.post('/api/opportunities/enrich', verifyToken, checkRole(['admin']), async (
     });
     
     if (opportunities.length === 0) {
-      // ✅ CACHE: Invalida cache após cálculo em massa
-      cache.invalidatePattern('opportunities:*');
+      // ✅ PERF-002: Cache granular - após cálculo em massa, invalida apenas lista geral
+      cache.del('opportunities:all');
       
       return res.json({
         success: true,

@@ -8,6 +8,9 @@ const { PrismaClient } = require('@prisma/client');
 const prismaClientSingleton = () => {
   return new PrismaClient({
     log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+    // ✅ PERF-004: Connection pool configurado via DATABASE_URL
+    // O Prisma gerencia o pool automaticamente via connection_limit no DATABASE_URL
+    // Exemplo: postgresql://user:pass@host:5432/db?connection_limit=20&pool_timeout=10
   });
 };
 

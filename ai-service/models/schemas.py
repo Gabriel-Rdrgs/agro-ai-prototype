@@ -136,6 +136,16 @@ class RecommendationRequest(BaseModel):
     buy_price: Optional[float] = None
 
 
+# --- 5.1. BATCH RECOMMENDATIONS (PERF-001: Otimização N+1) ---
+class BatchRecommendationRequest(BaseModel):
+    """
+    Requisição em lote para múltiplas recomendações.
+    
+    ✅ PERF-001: Resolve problema de N+1 queries fazendo todas as recomendações em uma única chamada.
+    """
+    opportunities: List[RecommendationRequest]
+
+
 # ========================================
 # RESPONSE MODELS (Saídas)
 # ========================================

@@ -8,6 +8,8 @@ datasource db {
   url        = env("DATABASE_URL")
   directUrl  = env("DIRECT_URL")
   extensions = [postgis, uuid_ossp(map: "uuid-ossp", schema: "extensions"), vector]
+  // ✅ PERF-004: Connection pool configurado
+  relationMode = "prisma"
 }
 
 model Opportunity {

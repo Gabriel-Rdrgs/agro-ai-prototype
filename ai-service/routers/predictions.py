@@ -3,7 +3,8 @@ from fastapi import APIRouter, HTTPException, Query
 import math
 from models.schemas import (
     BatchPredictionRequest, MarketScanRequest, SimulationRequest, ArbitrageRequest,
-    PriceForecastResponse, RecommendationRequest, BestOpportunitiesRequest, BestOpportunitiesResponse, BestOpportunityItem
+    PriceForecastResponse, RecommendationRequest, BatchRecommendationRequest,
+    BestOpportunitiesRequest, BestOpportunitiesResponse, BestOpportunityItem
 )
 from services.fuel_pricing import fuel_api
 from services.arbitrage_calculator import arbitrage_calculator, REGIONAL_FACTORS
@@ -436,7 +437,7 @@ async def predict_batch(request: BatchPredictionRequest):
     
     return results
 
-# --- 4. ROTA DE RECOMENDAÇÃO AUTOMÁTICA ---
+# --- 4. ROTA DE RECOMENDAÇÃO AUTOMÁTICA (INDIVIDUAL) ---
 @router.post("/recommendation")
 async def get_recommendation(request: RecommendationRequest):
     """
@@ -483,6 +484,124 @@ async def get_recommendation(request: RecommendationRequest):
     except Exception as e:
         logger.error(f"❌ Erro ao gerar recomendação: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erro ao gerar recomendação: {str(e)}")
+
+# --- 4.1. ROTA DE RECOMENDAÇÃO EM LOTE (PERF-001: Otimização N+1) ---
+@router.post("/recommendations/batch")
+async def get_recommendations_batch(request: BatchRecommendationRequest):
+    """
+    ✅ PERF-001: Gera recomendações para múltiplas oportunidades em uma única chamada.
+    
+    Resolve problema de N+1 queries fazendo todas as recomendações em paralelo.
+    
+    **Exemplo:**
+    ```json
+    {
+      "opportunities": [
+        {
+          "product": "Tomate",
+          "state": "SP",
+          "roi": 120.5,
+          "current_price": 4.50,
+          "buy_price": 3.80
+        },
+        {
+          "product": "Soja",
+          "state": "MT",
+          "roi": 85.2,
+          "current_price": 2.20,
+          "buy_price": 2.15
+        }
+      ]
+    }
+    ```
+    
+    **Resposta:**
+    ```json
+    {
+      "recommendations": {
+        "0": {
+          "action": "BUY",
+          "best_day_date": "2025-01-05",
+          "projected_profit": 1500.00,
+          "confidence_score": 85.5,
+          "risk_event": null
+        },
+        "1": {
+          "action": "WAIT",
+          "best_day_date": "2025-01-10",
+          "projected_profit": 800.00,
+          "confidence_score": 72.3,
+          "risk_event": "extreme_heat"
+        }
+      }
+    }
+    ```
+    """
+    try:
+        import asyncio
+        from typing import Dict
+        
+        logger.info(f"🤖 Batch de recomendações solicitado: {len(request.opportunities)} oportunidades")
+        
+        # ✅ PERF-001: Processa todas as recomendações em paralelo
+        async def process_recommendation(index: int, opp: RecommendationRequest) -> tuple:
+            try:
+                # Se não tem informações de safra, busca do calendário
+                is_ideal = opp.is_ideal_planting_month
+                is_risk = opp.is_risk_planting_month
+                
+                if is_ideal is None and is_risk is None:
+                    from config.calendar import is_ideal_month, is_risk_month
+                    current_month = datetime.now().month
+                    is_ideal = is_ideal_month(opp.product, opp.state, current_month)
+                    is_risk = is_risk_month(opp.product, opp.state, current_month)
+                
+                # Gera recomendação usando o engine
+                recommendation = recommendation_engine.analyze_opportunity(
+                    roi=opp.roi,
+                    roi_d7=opp.roi_d7,
+                    roi_d30=opp.roi_d30,
+                    quality_score=opp.quality_score,
+                    shelf_life_days=opp.shelf_life_days,
+                    has_extreme_events=opp.has_extreme_events,
+                    extreme_event_severity=opp.extreme_event_severity,
+                    is_ideal_planting_month=is_ideal or False,
+                    is_risk_planting_month=is_risk or False,
+                    market_trend=opp.market_trend,
+                    current_price=opp.current_price,
+                    buy_price=opp.buy_price
+                )
+                
+                return (str(index), recommendation)
+            except Exception as e:
+                logger.warning(f"⚠️ Erro ao processar recomendação {index}: {e}")
+                # Retorna recomendação padrão em caso de erro
+                return (str(index), {
+                    "action": "WAIT",
+                    "best_day_date": datetime.now().strftime("%Y-%m-%d"),
+                    "projected_profit": 0.0,
+                    "confidence_score": 0.0,
+                    "risk_event": "processing_error"
+                })
+        
+        # Processa todas em paralelo
+        tasks = [
+            process_recommendation(i, opp) 
+            for i, opp in enumerate(request.opportunities)
+        ]
+        
+        results = await asyncio.gather(*tasks)
+        
+        # Converte para dict indexado por posição
+        recommendations_dict = {index: rec for index, rec in results}
+        
+        logger.info(f"✅ Batch de recomendações concluído: {len(recommendations_dict)} processadas")
+        
+        return {"recommendations": recommendations_dict}
+        
+    except Exception as e:
+        logger.error(f"❌ Erro ao processar batch de recomendações: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erro ao processar batch: {str(e)}")
 
 # --- 5. ROTA SCAN (Botão Sugerir Destino) ---
 @router.post("/market/scan")
