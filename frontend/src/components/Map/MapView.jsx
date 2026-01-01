@@ -244,8 +244,10 @@ const MapView = React.forwardRef((props, ref) => {
         
         // ✅ NOVO: Verifica se já temos dados para todas as oportunidades (evita requisições desnecessárias)
         const oppsWithCoords = opportunities.filter(opp => opp.coords?.lat && opp.coords?.lng);
+        // ✅ CORRIGIDO: Usa props.supplyRiskData diretamente (não o memoizado) para evitar loop
+        const currentSupplyRiskData = props.supplyRiskData || {};
         const oppsNeedingData = oppsWithCoords.filter(opp => {
-          const hasData = supplyRiskData[opp.id] && supplyRiskData[opp.id].risk_level;
+          const hasData = currentSupplyRiskData[opp.id] && currentSupplyRiskData[opp.id].risk_level;
           const wasProcessed = processedSupplyRiskRef.current.has(opp.id);
           return !hasData && !wasProcessed;
         });
@@ -257,7 +259,7 @@ const MapView = React.forwardRef((props, ref) => {
           return;
         }
         
-        const riskData = { ...supplyRiskData }; // ✅ NOVO: Preserva dados existentes
+        const riskData = { ...currentSupplyRiskData }; // ✅ NOVO: Preserva dados existentes
         
         // ✅ OTIMIZADO: Processa apenas oportunidades que precisam de dados
         const total = oppsNeedingData.length;
@@ -341,7 +343,7 @@ const MapView = React.forwardRef((props, ref) => {
       setSupplyRiskProgress({ loaded: 0, total: 0 });
       supplyRiskLoadingRef.current = false;
     }
-  }, [showSupplyRisk, opportunities, supplyRiskData]); // ✅ CORRIGIDO: supplyRiskData memoizado via useMemo (linha 148)
+  }, [showSupplyRisk, opportunities]); // ✅ CORRIGIDO: supplyRiskData removido das dependências (causava loop infinito)
   
   // ✅ NOVO: Limpa cache do frontend quando toggle é desativado
   useEffect(() => {
@@ -839,16 +841,15 @@ return (
       {/* ✅ NOVO: Toggle para mostrar/ocultar heatmap de regiões comprometidas */}
       <div style={{
         position: 'absolute',
-        top: legendVisible ? '350px' : '210px', // ✅ CORRIGIDO: Mais abaixo para não sobrepor a legenda (legenda expandida tem ~270px de altura)
-        right: '20px', // ✅ CORRIGIDO: Alinhado com a legenda (mesmo right)
-        zIndex: 1000,
+        top: '80px', // ✅ Posição onde estava a legenda (lado direito)
+        right: '20px',
+        zIndex: 1001, // ✅ z-index adequado para não ser coberto pelo botão do sidebar
         background: `${theme.colors.background}F2`,
         padding: '10px',
         borderRadius: '8px',
         boxShadow: theme.colors.cardGlow,
         border: `1px solid ${theme.colors.accent}40`,
-        transition: 'top 0.3s ease', // Animação suave quando a legenda expande/contrai
-        minWidth: '200px' // ✅ CORRIGIDO: Mesma largura mínima da legenda para alinhamento
+        minWidth: '200px'
       }}>
         <label style={{
           display: 'flex',
@@ -1489,7 +1490,7 @@ return (
             position: 'fixed',
             bottom: '20px',
             right: '20px',
-            zIndex: 1000,
+            zIndex: 10002, // ✅ AUMENTADO: z-index maior que o botão do sidebar mobile (10001)
             padding: '12px 20px',
             background: `linear-gradient(135deg, ${theme.colors.accent} 0%, rgba(0, 217, 255, 0.8) 100%)`,
             border: `2px solid ${theme.colors.accent}`,

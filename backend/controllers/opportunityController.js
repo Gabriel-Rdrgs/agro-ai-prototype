@@ -1,10 +1,13 @@
 // backend/controllers/opportunityController.js
 // ✅ REFACTOR-001: Controller para rotas de oportunidades
+// ✅ REFACTOR-006: Tratamento de erros padronizado
 
 const OpportunityService = require('../services/opportunityService');
+// ✅ REFACTOR-005: Validação agora feita pelo middleware Zod (mantido para compatibilidade)
 const { validateOpportunityIds, validateId } = require('../utils/validation');
 const logger = require('../utils/logger');
 const cache = require('../utils/cache');
+const { ErrorHelpers } = require('../utils/errorHandler');
 
 class OpportunityController {
   constructor(pythonAxios, getDollarRate) {
@@ -16,13 +19,13 @@ class OpportunityController {
    * GET /api/opportunities
    * Lista todas as oportunidades
    */
-  async list(req, res) {
+  async list(req, res, next) {
     try {
       const opportunities = await this.service.listOpportunities(req.query);
       res.json(opportunities);
     } catch (error) {
-      logger.error('❌ Erro ao buscar oportunidades:', { error: error.message, stack: error.stack });
-      res.status(500).json({ error: 'Erro ao buscar oportunidades' });
+      // ✅ REFACTOR-006: Delega tratamento de erro para o errorHandler
+      next(error);
     }
   }
 
@@ -30,44 +33,43 @@ class OpportunityController {
    * POST /api/opportunities/compare
    * Compara múltiplas oportunidades
    */
-  async compare(req, res) {
+  async compare(req, res, next) {
     try {
+      // ✅ REFACTOR-005: Validação já feita pelo middleware Zod
+      // Mantém validação manual apenas para compatibilidade
       const validation = validateOpportunityIds(req.body.opportunityIds);
       
       if (!validation.valid) {
-        return res.status(400).json({ error: validation.error });
+        return next(ErrorHelpers.validation(validation.error));
       }
 
       const result = await this.service.compareOpportunities(validation.ids);
       
       if (result.opportunities.length === 0) {
-        return res.status(404).json({ error: 'Nenhuma oportunidade encontrada' });
+        return next(ErrorHelpers.notFound('Nenhuma oportunidade encontrada'));
       }
 
       res.json(result.opportunities);
     } catch (error) {
-      logger.error('❌ Erro ao comparar oportunidades:', { error: error.message });
-      res.status(500).json({ error: 'Erro ao comparar oportunidades' });
+      // ✅ REFACTOR-006: Delega tratamento de erro para o errorHandler
+      next(error);
     }
   }
 
   /**
    * GET /api/opportunities/:id/history
    * Busca histórico de preços
+   * ✅ REFACTOR-005: Validação agora feita pelo middleware Zod
    */
-  async getHistory(req, res) {
+  async getHistory(req, res, next) {
     try {
-      const validation = validateId(req.params.id, 'ID de oportunidade');
-      
-      if (!validation.valid) {
-        return res.status(400).json({ error: validation.error });
-      }
-
-      const days = parseInt(req.query.days) || 30;
-      const result = await this.service.getPriceHistory(validation.id, days);
+      // ✅ REFACTOR-005: req.params.id e req.query.days já validados pelo middleware Zod
+      const opportunityId = req.params.id;
+      const days = req.query.days || 30;
+      const result = await this.service.getPriceHistory(opportunityId, days);
 
       if (!result) {
-        return res.status(404).json({ error: 'Oportunidade não encontrada' });
+        return next(ErrorHelpers.notFound('Oportunidade'));
       }
 
       // Calcula estatísticas
@@ -113,8 +115,8 @@ class OpportunityController {
 
       res.json(chartData);
     } catch (error) {
-      logger.error('❌ Erro ao buscar histórico:', { error: error.message });
-      res.status(500).json({ error: 'Erro ao buscar histórico de preços' });
+      // ✅ REFACTOR-006: Delega tratamento de erro para o errorHandler
+      next(error);
     }
   }
 }

@@ -162,17 +162,26 @@ class OpportunityService {
         buy_price: opp.buyPrice ? parseFloat(opp.buyPrice) : null
       }));
 
+      // ✅ MELHORADO: Timeout aumentado para 90s (pode incluir múltiplas análises)
       const batchResponse = await this.pythonAxios.post(
         '/api/v1/predict/recommendations/batch',
         { opportunities: batchPayload },
-        { timeout: 60000 } // TIMEOUTS.BATCH_OPERATIONS
+        { timeout: 90000 } // 90 segundos (TIMEOUTS.BATCH_OPERATIONS aumentado)
       );
 
       if (batchResponse.data && batchResponse.data.recommendations) {
         recommendationsMap = batchResponse.data.recommendations;
       }
     } catch (err) {
-      logger.warn(`⚠️ Erro ao buscar recomendações em lote: ${err.message}`);
+      // ✅ MELHORADO: Log mais detalhado e não falha completamente se recomendações falharem
+      if (err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT') {
+        logger.warn(`⏱️ Timeout ao buscar recomendações em lote (90s excedido). Continuando sem recomendações.`);
+      } else if (err.code === 'ECONNREFUSED') {
+        logger.warn(`🔌 Serviço Python indisponível ao buscar recomendações. Continuando sem recomendações.`);
+      } else {
+        logger.warn(`⚠️ Erro ao buscar recomendações em lote: ${err.message}. Continuando sem recomendações.`);
+      }
+      // Continua sem recomendações - não é crítico para a comparação
     }
 
     // Combina oportunidades com recomendações

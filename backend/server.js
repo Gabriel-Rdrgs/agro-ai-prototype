@@ -39,6 +39,7 @@ const portfolioRoutes = require('./routes/portfolio'); // ✅ NOVO: Portfolio Tr
 const cache = require('./utils/cache'); // ✅ CACHE URGENTE
 const jobQueue = require('./utils/jobQueue'); // ✅ JOBS ASSÍNCRONOS
 const { logAction } = require('./services/auditService'); // ✅ AUDIT LOG
+const { exportOpportunitiesToExcel } = require('./services/exportService'); // ✅ FASE B - B1: Exportação Excel
 
 // 3. INICIALIZAÇÃO
 const app = express();
@@ -62,8 +63,54 @@ const { dbCircuitBreaker } = require('./utils/circuitBreaker');
 // ✅ REFACTOR-001: Controllers e Services
 const OpportunityController = require('./controllers/opportunityController');
 
-// ✅ REFACTOR-001: Controllers e Services
-const OpportunityController = require('./controllers/opportunityController');
+// ✅ REFACTOR-006: Tratamento de erros padronizado
+const { errorHandler, asyncHandler, ErrorHelpers } = require('./utils/errorHandler');
+
+// ✅ FEAT-001: Swagger/OpenAPI
+const { swaggerSpec, swaggerUi } = require('./config/swagger');
+
+// ✅ REFACTOR-005: Validação Zod
+const validateRequest = require('./middleware/validateRequest');
+const {
+  listOpportunitiesQuerySchema,
+  compareOpportunitiesBodySchema,
+  getHistoryParamsSchema,
+  getHistoryQuerySchema
+} = require('./validators/opportunityValidators');
+const {
+  extremeEventsQuerySchema,
+  historicalExtremeEventsQuerySchema,
+  supplyRiskQuerySchema,
+  forecastQuerySchema,
+  rainComparisonQuerySchema
+} = require('./validators/weatherValidators');
+const {
+  trendsQuerySchema,
+  productsQuerySchema,
+  regionsQuerySchema,
+  municipalitiesQuerySchema,
+  trendQuerySchema
+} = require('./validators/analyticsValidators');
+const {
+  storageAnalysisBodySchema,
+  batchAIBodySchema,
+  recommendationBodySchema,
+  bestOpportunitiesBodySchema,
+  chatQueryBodySchema
+} = require('./validators/aiValidators');
+const {
+  productionCalculationBodySchema,
+  arbitrageCalculationBodySchema
+} = require('./validators/calcValidators');
+const {
+  plantingWindowsQuerySchema
+} = require('./validators/zarcValidators');
+const {
+  fuelPriceParamsSchema
+} = require('./validators/fuelValidators');
+const {
+  marketScanBodySchema
+} = require('./validators/marketValidators');
 
 // 4. VARIÁVEIS DE AMBIENTE
 const PORT = process.env.PORT || 3001;
@@ -107,7 +154,7 @@ function createPythonAxiosClient() {
 // Instância global do cliente axios para Python
 const pythonAxios = createPythonAxiosClient();
 
-// ✅ REFACTOR-001: Inicializa controllers (getDollarRate será definido antes)
+// ✅ REFACTOR-001: Inicializa controllers (será inicializado após getDollarRate ser definido)
 let opportunityController;
 
 // 5. MIDDLEWARES
@@ -149,10 +196,67 @@ app.options(/^.*$/, cors(corsOptions));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
+// ✅ CRIT-003: Rate limiting para rotas de autenticação
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 5, // máximo 5 tentativas por IP
+  message: 'Muitas tentativas de login. Tente novamente em 15 minutos.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// ✅ A5: Rate limiting geral para todas as rotas da API (proteção contra brute force)
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 100, // 100 requests por IP a cada 15 minutos
+  message: {
+    error: 'Muitas requisições, tente novamente mais tarde',
+    retryAfter: '15 minutos'
+  },
+  standardHeaders: true, // Retorna `RateLimit-*` headers
+  legacyHeaders: false, // Não retorna `X-RateLimit-*` headers
+  skip: (req) => {
+    // Pula rate limiting para health checks e rotas internas
+    return req.path === '/health' || req.path === '/' || req.path.startsWith('/api-docs');
+  }
+});
+
+// Aplica rate limiting em todas as rotas da API
+app.use('/api/', apiLimiter);
+
 // Rota para o Railway saber que o app está vivo
 app.get('/', (req, res) => res.send('Backend Agro-AI Online 🚀'));
 
 // Health check básico (rápido, para load balancers)
+/**
+ * @swagger
+ * /health:
+ *   get:
+ *     summary: Health check básico (para load balancers)
+ *     tags: [Sistema]
+ *     security: []
+ *     responses:
+ *       200:
+ *         description: Serviço saudável
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: ok
+ *                 database:
+ *                   type: string
+ *                   example: connected
+ *                 circuit_breaker:
+ *                   type: string
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *       503:
+ *         description: Serviço degradado
+ */
 app.get('/health', async (req, res) => {
   try {
     // Testa conexão com banco (com circuit breaker)
@@ -324,12 +428,127 @@ async function getWeatherFull(lat, lng) {
 }
 
 // ============================================
+// 📚 FEAT-001: Swagger/OpenAPI Documentation
+// ============================================
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'Agro-AI API Documentation'
+}));
+
+// ============================================
 // 🔐 ROTAS DE AUTENTICAÇÃO
 // ============================================
 if (authController) {
+  /**
+   * @swagger
+   * /api/auth/register:
+   *   post:
+   *     summary: Registrar novo usuário (apenas admin)
+   *     tags: [Autenticação]
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - email
+   *               - password
+   *             properties:
+   *               email:
+   *                 type: string
+   *                 format: email
+   *               password:
+   *                 type: string
+   *                 minLength: 8
+   *     responses:
+   *       201:
+   *         description: Usuário criado com sucesso
+   *       400:
+   *         $ref: '#/components/responses/Error'
+   *       401:
+   *         $ref: '#/components/responses/Error'
+   *       403:
+   *         $ref: '#/components/responses/Error'
+   */
   app.post('/api/auth/register', verifyToken, checkRole(['admin']), authController.register);
+  
+  /**
+   * @swagger
+   * /api/auth/login:
+   *   post:
+   *     summary: Fazer login e obter token JWT
+   *     tags: [Autenticação]
+   *     security: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - email
+   *               - password
+   *             properties:
+   *               email:
+   *                 type: string
+   *                 format: email
+   *                 example: user@example.com
+   *               password:
+   *                 type: string
+   *                 example: senha123
+   *     responses:
+   *       200:
+   *         description: Login bem-sucedido
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 token:
+   *                   type: string
+   *                   description: Token JWT para autenticação
+   *                 user:
+   *                   type: object
+   *                   properties:
+   *                     id:
+   *                       type: string
+   *                     email:
+   *                       type: string
+   *                     role:
+   *                       type: string
+   *       401:
+   *         $ref: '#/components/responses/Error'
+   *       429:
+   *         description: Muitas tentativas de login
+   */
   app.post('/api/auth/login', authLimiter, authController.login); // ✅ CRIT-003: Rate limiting para login
+  
+  /**
+   * @swagger
+   * /api/auth/refresh:
+   *   post:
+   *     summary: Renovar token JWT
+   *     tags: [Autenticação]
+   *     security: []
+   *     responses:
+   *       200:
+   *         description: Token renovado
+   *       401:
+   *         $ref: '#/components/responses/Error'
+   */
   app.post('/api/auth/refresh', authLimiter, authController.refreshToken); // ✅ CRIT-003: Rate limiting para refresh
+}
+
+// ✅ REFACTOR-001: Inicializa controller após getDollarRate estar definido
+opportunityController = new OpportunityController(pythonAxios, getDollarRate);
+
+// Verificação de segurança
+if (!opportunityController) {
+  logger.error('❌ ERRO CRÍTICO: opportunityController não foi inicializado!');
+  process.exit(1);
 }
 
 // ============================================
@@ -338,41 +557,321 @@ if (authController) {
 
 // 1. Listar Oportunidades (Com Dólar em Tempo Real)
 // ✅ REFACTOR-001: Usa controller
-app.get('/api/opportunities', verifyToken, (req, res) => opportunityController.list(req, res));
+// ✅ REFACTOR-005: Validação Zod adicionada
+/**
+ * @swagger
+ * /api/opportunities:
+ *   get:
+ *     summary: Lista todas as oportunidades de mercado
+ *     tags: [Oportunidades]
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 100
+ *         description: Número máximo de resultados
+ *       - in: query
+ *         name: skip
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *         description: Número de resultados para pular
+ *       - in: query
+ *         name: product
+ *         schema:
+ *           type: string
+ *         description: Filtrar por produto (ex: Tomate, Soja)
+ *       - in: query
+ *         name: state
+ *         schema:
+ *           type: string
+ *         description: Filtrar por estado (ex: MT, GO)
+ *       - in: query
+ *         name: minRoi
+ *         schema:
+ *           type: number
+ *           format: float
+ *         description: ROI mínimo
+ *       - in: query
+ *         name: maxRoi
+ *         schema:
+ *           type: number
+ *           format: float
+ *         description: ROI máximo
+ *     responses:
+ *       200:
+ *         description: Lista de oportunidades
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Opportunity'
+ *       400:
+ *         $ref: '#/components/responses/Error'
+ */
+app.get('/api/opportunities',
+  verifyToken,
+  validateRequest({ query: listOpportunitiesQuerySchema }),
+  (req, res) => {
+    if (!opportunityController) {
+      return res.status(500).json({ error: 'Controller não inicializado' });
+    }
+    return opportunityController.list(req, res);
+  }
+);
+
+// ✅ FASE B - B1: Exportação Excel Premium
+/**
+ * @swagger
+ * /api/export/opportunities:
+ *   get:
+ *     summary: Exporta oportunidades para Excel com formatação premium
+ *     tags: [Exportação]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: product
+ *         schema:
+ *           type: string
+ *         description: Filtrar por produto
+ *       - in: query
+ *         name: state
+ *         schema:
+ *           type: string
+ *         description: Filtrar por estado
+ *       - in: query
+ *         name: minRoi
+ *         schema:
+ *           type: number
+ *         description: ROI mínimo
+ *       - in: query
+ *         name: maxResults
+ *         schema:
+ *           type: integer
+ *           default: 1000
+ *         description: Número máximo de resultados
+ *     responses:
+ *       200:
+ *         description: Arquivo Excel
+ *         content:
+ *           application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       400:
+ *         $ref: '#/components/responses/Error'
+ */
+app.get('/api/export/opportunities',
+  verifyToken,
+  async (req, res) => {
+    try {
+      const { product, state, minRoi, maxResults = 1000 } = req.query;
+
+      // Construir filtros
+      const where = {};
+      if (product) {
+        where.product = { contains: product, mode: 'insensitive' };
+      }
+      if (state) {
+        where.state = state.toUpperCase();
+      }
+      if (minRoi) {
+        where.roi = { gte: parseFloat(minRoi) };
+      }
+
+      // Buscar oportunidades
+      logger.info(`📊 Exportação Excel: Buscando oportunidades com filtros:`, JSON.stringify(where));
+      
+      // Primeiro, verifica se há oportunidades no banco (sem filtros)
+      const totalCount = await prisma.opportunity.count();
+      logger.info(`📊 Exportação Excel: Total de oportunidades no banco: ${totalCount}`);
+      
+      const opportunities = await prisma.opportunity.findMany({
+        where,
+        take: parseInt(maxResults),
+        orderBy: { createdAt: 'desc' } // Ordena por data de criação (mais recentes primeiro)
+      });
+      
+      // Ordena manualmente por ROI (nulls por último)
+      opportunities.sort((a, b) => {
+        const roiA = a.roi ?? -Infinity;
+        const roiB = b.roi ?? -Infinity;
+        return roiB - roiA;
+      });
+
+      logger.info(`📊 Exportação Excel: Encontradas ${opportunities.length} oportunidades após filtros`);
+
+      if (opportunities.length === 0) {
+        // Se não há filtros, retorna erro mais específico
+        const hasFilters = Object.keys(where).length > 0;
+        const errorMsg = hasFilters 
+          ? 'Nenhuma oportunidade encontrada com os filtros especificados'
+          : 'Nenhuma oportunidade encontrada no banco de dados';
+        
+        logger.warn(`⚠️ Exportação Excel: ${errorMsg} (Total no banco: ${totalCount})`);
+        return res.status(404).json({ 
+          error: errorMsg,
+          totalInDatabase: totalCount 
+        });
+      }
+
+      // Gerar Excel
+      const excelBuffer = await exportOpportunitiesToExcel(opportunities, {
+        product,
+        state,
+        minRoi
+      });
+
+      // Configurar headers para download
+      const filename = `oportunidades_${new Date().toISOString().split('T')[0]}.xlsx`;
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', excelBuffer.length);
+
+      // Enviar arquivo
+      res.send(excelBuffer);
+
+      logger.info(`📊 Excel exportado: ${opportunities.length} oportunidades por ${req.user?.email || 'unknown'}`);
+
+    } catch (error) {
+      logger.error(`❌ Erro ao exportar Excel: ${error.message}`);
+      res.status(500).json({ 
+        error: 'Erro ao exportar oportunidades',
+        details: error.message 
+      });
+    }
+  }
+);
 
 // ✅ NOVO: Endpoint para comparar múltiplas oportunidades
 // ✅ REFACTOR-001: Usa controller
-app.post('/api/opportunities/compare', verifyToken, (req, res) => opportunityController.compare(req, res));
+// ✅ REFACTOR-005: Validação Zod adicionada
+/**
+ * @swagger
+ * /api/opportunities/compare:
+ *   post:
+ *     summary: Compara múltiplas oportunidades lado a lado
+ *     tags: [Oportunidades]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - opportunityIds
+ *             properties:
+ *               opportunityIds:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 minItems: 1
+ *                 maxItems: 5
+ *                 example: [1, 2, 3]
+ *     responses:
+ *       200:
+ *         description: Comparação de oportunidades
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 allOf:
+ *                   - $ref: '#/components/schemas/Opportunity'
+ *                   - type: object
+ *                     properties:
+ *                       recommendation:
+ *                         $ref: '#/components/schemas/Recommendation'
+ *       400:
+ *         $ref: '#/components/responses/Error'
+ *       404:
+ *         description: Nenhuma oportunidade encontrada
+ */
+app.post('/api/opportunities/compare',
+  verifyToken,
+  validateRequest({ body: compareOpportunitiesBodySchema }),
+  (req, res) => {
+    if (!opportunityController) {
+      return res.status(500).json({ error: 'Controller não inicializado' });
+    }
+    return opportunityController.compare(req, res);
+  }
+);
 
 // ✅ REFACTOR-001: Rota de histórico movida para usar controller
-
-// ✅ NOVO: Endpoint para simular cenário
-      {},
-      { timeout: 300000 }  // 5 minutos
-    );
-    
-    const result = response.data;
-    
-    logger.info(`✅ Cálculo concluído: ${result.updated} atualizados, ${result.errors} erros`);
-    
-    // ✅ PERF-002: Cache granular - após cálculo em massa, invalida apenas lista geral
-    cache.del('opportunities:all');
-    
-    res.json({
-      success: true,
-      message: 'Cálculo de ROI concluído',
-      ...result
-    });
-    
-  } catch (error) {
-    logger.error("❌ Erro ao calcular ROI em massa:", { error: error.message });
-    res.status(500).json({ 
-      success: false,
-      error: 'Erro ao calcular ROI em massa',
-      details: error.message
-    });
+// ✅ REFACTOR-005: Validação Zod adicionada
+/**
+ * @swagger
+ * /api/opportunities/{id}/history:
+ *   get:
+ *     summary: Busca histórico de preços de uma oportunidade
+ *     tags: [Oportunidades]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID da oportunidade
+ *       - in: query
+ *         name: days
+ *         schema:
+ *           type: integer
+ *           default: 30
+ *           minimum: 1
+ *           maximum: 365
+ *         description: Número de dias de histórico (padrão: 30)
+ *     responses:
+ *       200:
+ *         description: Histórico de preços com estatísticas
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 labels:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                 prices:
+ *                   type: array
+ *                   items:
+ *                     type: number
+ *                 avgPrice:
+ *                   type: number
+ *                 minPrice:
+ *                   type: number
+ *                 maxPrice:
+ *                   type: number
+ *                 currentPrice:
+ *                   type: number
+ *                 trend:
+ *                   type: object
+ *                   properties:
+ *                     direction:
+ *                       type: string
+ *                       enum: [up, down, sideways]
+ *                     percent:
+ *                       type: number
+ *       404:
+ *         $ref: '#/components/responses/Error'
+ */
+app.get('/api/opportunities/:id/history',
+  verifyToken,
+  validateRequest({ 
+    params: getHistoryParamsSchema,
+    query: getHistoryQuerySchema 
+  }),
+  (req, res) => {
+    if (!opportunityController) {
+      return res.status(500).json({ error: 'Controller não inicializado' });
+    }
+    return opportunityController.getHistory(req, res);
   }
-});
+);
 
 // 🔒 RBAC: Apenas admin pode executar cálculo em massa (via API web)
 app.post('/api/opportunities/calculate-all-roi', verifyToken, checkRole(['admin']), async (req, res) => {
@@ -529,9 +1028,39 @@ app.post('/api/opportunities/enrich', verifyToken, checkRole(['admin']), async (
 });
 
 // --- ROTA ATUALIZADA ---
-app.get('/api/weather', verifyToken, async (req, res) => {
+// ✅ REFACTOR-005: Validação Zod adicionada
+/**
+ * @swagger
+ * /api/weather:
+ *   get:
+ *     summary: Obtém dados climáticos atuais
+ *     tags: [Clima]
+ *     parameters:
+ *       - in: query
+ *         name: lat
+ *         required: true
+ *         schema:
+ *           type: number
+ *           format: float
+ *         description: Latitude
+ *       - in: query
+ *         name: lng
+ *         required: true
+ *         schema:
+ *           type: number
+ *           format: float
+ *         description: Longitude
+ *     responses:
+ *       200:
+ *         description: Dados climáticos atuais
+ *       400:
+ *         $ref: '#/components/responses/Error'
+ */
+app.get('/api/weather',
+  verifyToken,
+  validateRequest({ query: forecastQuerySchema }),
+  async (req, res) => {
   const { lat, lng } = req.query;
-  if (!lat || !lng) return res.status(400).json({ error: 'Lat/Lng obrigatórios' });
   
   const data = await getWeatherFull(lat, lng);
   
@@ -543,39 +1072,55 @@ app.get('/api/weather', verifyToken, async (req, res) => {
 });
 
 // Eventos Extremos (Melhorado)
-app.get('/api/weather/extreme-events', verifyToken, async (req, res) => {
+// ✅ REFACTOR-005: Validação Zod adicionada
+app.get('/api/weather/extreme-events',
+  verifyToken,
+  validateRequest({ query: extremeEventsQuerySchema }),
+  async (req, res) => {
   try {
     const { lat, lng, days } = req.query;
-    if (!lat || !lng) {
-      return res.status(400).json({ error: 'Lat e Lng são obrigatórios' });
-    }
+    const daysParam = days || 16;
     
-    const daysParam = days ? parseInt(days) : 16;
-    
-      const response = await pythonAxios.get(
-        '/api/v1/weather/extreme-events',
-        {
-          params: { lat: parseFloat(lat), lng: parseFloat(lng), days: daysParam },
-          timeout: 20000 // 20 segundos (Python tem 15s, dá margem)
-        }
-      );
+    // ✅ MELHORADO: Timeout aumentado para 40s (API Open-Meteo pode demorar até 20s + processamento)
+    const response = await pythonAxios.get(
+      '/api/v1/weather/extreme-events',
+      {
+        params: { lat: parseFloat(lat), lng: parseFloat(lng), days: daysParam },
+        timeout: 40000 // 40 segundos (API externa pode demorar)
+      }
+    );
     
     res.json(response.data);
   } catch (error) {
-    logger.error("Erro ao buscar eventos extremos:", { error: error.message, code: error.code });
+    // ✅ MELHORADO: Log mais detalhado para debugging
+    logger.warn("⚠️ Erro ao buscar eventos extremos:", { 
+      error: error.message, 
+      code: error.code,
+      lat: req.query.lat,
+      lng: req.query.lng,
+      response: error.response?.data
+    });
     
-    // ✅ MELHORADO: Tratamento específico para timeout
-    if (error.code === 'ECONNABORTED') {
+    // ✅ MELHORADO: Tratamento específico para diferentes tipos de erro
+    if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
       return res.status(504).json({
         error: 'Timeout ao buscar eventos extremos',
-        details: 'O serviço demorou muito para responder (20s)'
+        details: 'A API externa demorou muito para responder. Tente novamente em alguns instantes.'
       });
     }
     
-    if (error.code === 'ECONNREFUSED') {
+    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
       return res.status(503).json({
         error: 'Serviço Python indisponível',
-        details: 'O serviço de IA não está respondendo'
+        details: 'O serviço de IA não está respondendo. Verifique se o serviço está rodando.'
+      });
+    }
+    
+    // Se o Python retornou um erro HTTP, repassa
+    if (error.response) {
+      return res.status(error.response.status).json({
+        error: 'Erro no serviço de IA',
+        details: error.response.data?.detail || error.response.data?.message || error.message
       });
     }
     
@@ -587,12 +1132,13 @@ app.get('/api/weather/extreme-events', verifyToken, async (req, res) => {
 });
 
 // Eventos Históricos (ex: granizo há 2 dias)
-app.get('/api/weather/extreme-events/historical', verifyToken, async (req, res) => {
+// ✅ REFACTOR-005: Validação Zod adicionada
+app.get('/api/weather/extreme-events/historical',
+  verifyToken,
+  validateRequest({ query: historicalExtremeEventsQuerySchema }),
+  async (req, res) => {
   try {
     const { lat, lng, days_back } = req.query;
-    if (!lat || !lng) {
-      return res.status(400).json({ error: 'Lat e Lng são obrigatórios' });
-    }
     
     const daysBackParam = days_back ? parseInt(days_back) : 7;
     
@@ -615,12 +1161,13 @@ app.get('/api/weather/extreme-events/historical', verifyToken, async (req, res) 
 });
 
 // 2.4. Risco de Abastecimento (Proxy para Python)
-app.get('/api/weather/supply-risk', verifyToken, async (req, res) => {
+// ✅ REFACTOR-005: Validação Zod adicionada
+app.get('/api/weather/supply-risk',
+  verifyToken,
+  validateRequest({ query: supplyRiskQuerySchema }),
+  async (req, res) => {
   try {
     const { lat, lng, product, days } = req.query;
-    if (!lat || !lng) {
-      return res.status(400).json({ error: 'lat e lng são obrigatórios' });
-    }
     
     console.log(`📊 Buscando supply risk para lat=${lat}, lng=${lng}, product=${product || 'Tomate'}`);
     
@@ -659,12 +1206,13 @@ app.get('/api/weather/supply-risk', verifyToken, async (req, res) => {
 });
 
 // 2.5. Previsão Climática (Proxy para Python)
-app.get('/api/weather/forecast', verifyToken, async (req, res) => {
+// ✅ REFACTOR-005: Validação Zod adicionada
+app.get('/api/weather/forecast',
+  verifyToken,
+  validateRequest({ query: forecastQuerySchema }),
+  async (req, res) => {
   try {
     const { lat, lng } = req.query;
-    if (!lat || !lng) {
-      return res.status(400).json({ error: 'lat e lng são obrigatórios' });
-    }
     
     console.log(`📊 Buscando forecast para lat=${lat}, lng=${lng}`);
     
@@ -708,12 +1256,13 @@ app.get('/api/weather/forecast', verifyToken, async (req, res) => {
 });
 
 // 2.6. Comparação de Chuva (últimos N dias vs mesmo período ano anterior)
-app.get('/api/weather/rain-comparison', verifyToken, async (req, res) => {
+// ✅ REFACTOR-005: Validação Zod adicionada
+app.get('/api/weather/rain-comparison',
+  verifyToken,
+  validateRequest({ query: rainComparisonQuerySchema }),
+  async (req, res) => {
   try {
     const { lat, lng, days } = req.query;
-    if (!lat || !lng) {
-      return res.status(400).json({ error: 'lat e lng são obrigatórios' });
-    }
 
     console.log(`📊 Comparando chuva (últimos ${days || 30} dias vs ano anterior) para lat=${lat}, lng=${lng}`);
 
@@ -752,12 +1301,13 @@ app.get('/api/weather/rain-comparison', verifyToken, async (req, res) => {
 });
 
 // ✅ NOVO: Rota pública para buscar janelas de plantio (ZARC) - Proxy para Python
-app.get('/api/zarc/planting-windows', verifyToken, async (req, res) => {
+// ✅ REFACTOR-005: Validação Zod adicionada
+app.get('/api/zarc/planting-windows',
+  verifyToken,
+  validateRequest({ query: plantingWindowsQuerySchema }),
+  async (req, res) => {
   try {
     const { product, state } = req.query;
-    if (!product || !state) {
-      return res.status(400).json({ error: 'product e state são obrigatórios' });
-    }
 
     console.log(`📅 Buscando janelas de plantio ZARC para product=${product}, state=${state}`);
 
@@ -822,13 +1372,13 @@ app.get('/api/calendar/planting-window', verifyToken, checkRole(['admin']), asyn
 });
 
 // 4. Histórico e Tendências de Mercado (Analytics) - ✅ MELHORADO COM FILTROS AVANÇADOS
-app.get('/api/analytics/trends', verifyToken, async (req, res) => {
+// ✅ REFACTOR-005: Validação Zod adicionada
+app.get('/api/analytics/trends',
+  verifyToken,
+  validateRequest({ query: trendsQuerySchema }),
+  async (req, res) => {
   try {
     const { product, region, municipality, days = 90 } = req.query;
-    
-    if (!product) {
-      return res.status(400).json({ error: 'Parâmetro "product" é obrigatório' });
-    }
     
     const daysInt = Math.min(parseInt(days) || 90, 365); // Máximo 1 ano
     const startDate = new Date();
@@ -1117,7 +1667,11 @@ app.get('/api/analytics/municipalities', verifyToken, async (req, res) => {
 });
 
 // Mantém endpoint antigo para compatibilidade (deprecated)
-app.get('/api/analytics/trend', verifyToken, async (req, res) => {
+// ✅ REFACTOR-005: Validação Zod adicionada
+app.get('/api/analytics/trend',
+  verifyToken,
+  validateRequest({ query: trendQuerySchema }),
+  async (req, res) => {
   try {
     const { product, city } = req.query;
     const whereCondition = {};
@@ -1151,7 +1705,11 @@ app.get('/api/analytics/trend', verifyToken, async (req, res) => {
 });
 
 // 1. Armazenagem (Storage Advisor) - VERSÃO BLINDADA DEFINITIVA
-app.post('/api/ai/storage', verifyToken, async (req, res) => {
+// ✅ REFACTOR-005: Validação Zod adicionada
+app.post('/api/ai/storage',
+  verifyToken,
+  validateRequest({ body: storageAnalysisBodySchema }),
+  async (req, res) => {
   try {
     // Debug: Verifica se req.body está disponível
     if (!req.body) {
@@ -1269,7 +1827,11 @@ app.post('/api/ai/storage', verifyToken, async (req, res) => {
 });
 
 // 2. Processamento em Lote (Batch) - VERSÃO DEBUG X9 🕵️‍♂️
-app.post('/api/ai/batch', verifyToken, async (req, res) => {
+// ✅ REFACTOR-005: Validação Zod adicionada
+app.post('/api/ai/batch',
+  verifyToken,
+  validateRequest({ body: batchAIBodySchema }),
+  async (req, res) => {
   try {
     // Debug: Verifica se req.body está disponível
     if (!req.body) {
@@ -1334,9 +1896,13 @@ app.get('/api/fuel/current-prices', verifyToken, async (req, res) => {
 });
 
 // 4. Preço de Combustível POR ESTADO (A Rota que faltava para FuelPriceDisplay.jsx)
-app.get('/api/fuel/price/:state', verifyToken, async (req, res) => {
+// ✅ REFACTOR-005: Validação Zod adicionada
+app.get('/api/fuel/price/:state',
+  verifyToken,
+  validateRequest({ params: fuelPriceParamsSchema }),
+  async (req, res) => {
   try {
-    const state = req.params.state.toLowerCase();
+    const state = req.params.state;
     
     // 1. Buscamos TODOS os dados do Python (é mais seguro que tentar adivinhar endpoint específico)
     const response = await pythonAxios.get('/predict/fuel', {
@@ -1385,7 +1951,11 @@ app.get('/api/fuel/price/:state', verifyToken, async (req, res) => {
 // ============================================
 
 // 4. Calculadora de Produção
-app.post('/calc/production', verifyToken, async (req, res) => {
+// ✅ REFACTOR-005: Validação Zod adicionada
+app.post('/calc/production',
+  verifyToken,
+  validateRequest({ body: productionCalculationBodySchema }),
+  async (req, res) => {
   try {
     const safePayload = {
         state: req.body.state || 'SP',
@@ -1411,7 +1981,58 @@ app.post('/calc/production', verifyToken, async (req, res) => {
 });
 
 // 5. Calculadora de Arbitragem (A que estava dando erro 500)
-app.post('/calc/arbitrage', verifyToken, async (req, res) => {
+// ✅ REFACTOR-005: Validação Zod adicionada
+/**
+ * @swagger
+ * /calc/arbitrage:
+ *   post:
+ *     summary: Calcula ROI de arbitragem interestadual
+ *     tags: [Calculadoras]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - product
+ *               - origin_state
+ *               - destination_state
+ *               - buy_price
+ *               - sell_price
+ *               - volume
+ *             properties:
+ *               product:
+ *                 type: string
+ *                 example: Tomate
+ *               origin_state:
+ *                 type: string
+ *                 example: MT
+ *               destination_state:
+ *                 type: string
+ *                 example: SP
+ *               buy_price:
+ *                 type: number
+ *                 format: float
+ *                 example: 2.50
+ *               sell_price:
+ *                 type: number
+ *                 format: float
+ *                 example: 4.00
+ *               volume:
+ *                 type: number
+ *                 format: float
+ *                 example: 1000
+ *     responses:
+ *       200:
+ *         description: Resultado do cálculo de arbitragem
+ *       400:
+ *         $ref: '#/components/responses/Error'
+ */
+app.post('/calc/arbitrage',
+  verifyToken,
+  validateRequest({ body: arbitrageCalculationBodySchema }),
+  async (req, res) => {
   try {
     // O erro acontecia porque enviávamos req.body direto, e vinha string ou null
     const safePayload = {
@@ -1438,7 +2059,11 @@ app.post('/calc/arbitrage', verifyToken, async (req, res) => {
   }
 });
 // 6. Recomendação Automática (IA)
-app.post('/api/ai/recommendation', verifyToken, async (req, res) => {
+// ✅ REFACTOR-005: Validação Zod adicionada
+app.post('/api/ai/recommendation',
+  verifyToken,
+  validateRequest({ body: recommendationBodySchema }),
+  async (req, res) => {
   try {
     // Debug: Verifica se req.body está disponível
     if (!req.body) {
@@ -1481,7 +2106,11 @@ app.post('/api/ai/recommendation', verifyToken, async (req, res) => {
 });
 
 // 6.5. Melhores Oportunidades Automáticas - ✅ NOVO
-app.post('/api/ai/best-opportunities', verifyToken, async (req, res) => {
+// ✅ REFACTOR-005: Validação Zod adicionada
+app.post('/api/ai/best-opportunities',
+  verifyToken,
+  validateRequest({ body: bestOpportunitiesBodySchema }),
+  async (req, res) => {
   try {
     const payload = {
       products: req.body.products || null,  // Se null, busca todos
@@ -1524,7 +2153,11 @@ app.post('/api/ai/best-opportunities', verifyToken, async (req, res) => {
 });
 
 // 7. Chat RAG (Assistente Agronômico) - ✅ NOVO
-app.post('/api/ai/chat/query', verifyToken, async (req, res) => {
+// ✅ REFACTOR-005: Validação Zod adicionada
+app.post('/api/ai/chat/query',
+  verifyToken,
+  validateRequest({ body: chatQueryBodySchema }),
+  async (req, res) => {
   try {
     // Debug: Verifica se req.body está disponível
     if (!req.body) {
@@ -1532,13 +2165,15 @@ app.post('/api/ai/chat/query', verifyToken, async (req, res) => {
       return res.status(400).json({ error: 'req.body não disponível. Verifique middleware express.json()' });
     }
     
-    // Validação: question é obrigatório
-    if (!req.body.question || typeof req.body.question !== 'string' || req.body.question.trim().length === 0) {
-      return res.status(400).json({ error: 'Campo \"question\" é obrigatório e deve ser uma string não vazia' });
+    // Normaliza: aceita tanto 'question' quanto 'query'
+    const questionText = (req.body.question || req.body.query || '').trim();
+    
+    if (!questionText || questionText.length === 0) {
+      return res.status(400).json({ error: 'Campo \"question\" ou \"query\" é obrigatório e deve ser uma string não vazia' });
     }
     
     const safePayload = {
-      question: req.body.question.trim()
+      question: questionText
     };
 
     console.log(`📤 [Node -> Python] Chat RAG: \"${safePayload.question.substring(0, 50)}...\"`);
@@ -1591,7 +2226,11 @@ app.post('/api/ai/chat/query', verifyToken, async (req, res) => {
 });
 
 // 8. Radar de Mercado
-app.post('/market/scan', verifyToken, async (req, res) => {
+// ✅ REFACTOR-005: Validação Zod adicionada
+app.post('/market/scan',
+  verifyToken,
+  validateRequest({ body: marketScanBodySchema }),
+  async (req, res) => {
   try {
     const response = await pythonAxios.post(
       '/api/v1/predict/market/scan', 
@@ -1653,26 +2292,9 @@ if (process.env.SENTRY_DSN && typeof Sentry.expressErrorHandler === 'function') 
   app.use(Sentry.Handlers.errorHandler());
 }
 
-// ✅ FASE 0 - Semana 2: Error Handler global (usa logger estruturado)
-app.use((err, req, res, next) => {
-  logger.error('Erro não tratado:', {
-    error: err.message,
-    stack: err.stack,
-    path: req.path,
-    method: req.method,
-  });
-  
-  // Envia para Sentry se configurado
-  if (process.env.SENTRY_DSN) {
-    Sentry.captureException(err);
-  }
-  
-  res.status(err.status || 500).json({
-    error: process.env.NODE_ENV === 'production' 
-      ? 'Erro interno do servidor' 
-      : err.message,
-  });
-});
+// ✅ REFACTOR-006: Error Handler padronizado (substitui o handler antigo)
+// O errorHandler já integra com Sentry e logger
+app.use(errorHandler);
 
 // ============================================
 // ✅ FASE 0 - Semana 3: Job Agendado de Sincronização Climática
@@ -1686,6 +2308,19 @@ if (process.env.ENABLE_WEATHER_SYNC !== 'false') {
   logger.info(`✅ Job de sincronização climática configurado: ${weatherSyncSchedule}`);
 } else {
   logger.info('⚠️ Sincronização climática desabilitada (ENABLE_WEATHER_SYNC=false)');
+}
+
+// ✅ FASE B - B2: Job Agendado de Verificação de Alertas
+// ============================================
+const { setupAlertJob } = require('./utils/alertJob');
+
+// Configura job agendado (a cada 30 minutos)
+if (process.env.ENABLE_ALERTS !== 'false') {
+  const alertSchedule = process.env.ALERT_CHECK_SCHEDULE || '*/30 * * * *'; // A cada 30 minutos
+  setupAlertJob(alertSchedule);
+  logger.info(`✅ Job de verificação de alertas configurado: ${alertSchedule}`);
+} else {
+  logger.info('⚠️ Verificação de alertas desabilitada (ENABLE_ALERTS=false)');
 }
 
 // Rota para sincronização manual (apenas para admin)

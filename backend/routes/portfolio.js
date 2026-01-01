@@ -107,7 +107,7 @@ router.get('/stats', verifyToken, async (req, res) => {
         id: bestOperation.id,
         product: bestOperation.product,
         actualROI: bestOperation.actualROI,
-        netProfit: bestOperation.totalValue - (bestOperation.quantity * (bestOperation.price / (1 + (bestOperation.actualROI || 0) / 100))))
+        netProfit: bestOperation.totalValue - (bestOperation.quantity * (bestOperation.price / (1 + (bestOperation.actualROI || 0) / 100)))
       } : null,
       worstOperation: worstOperation ? {
         id: worstOperation.id,

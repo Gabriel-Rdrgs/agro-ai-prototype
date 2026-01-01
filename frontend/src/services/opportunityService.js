@@ -209,11 +209,21 @@ export const OpportunityService = {
     try {
       const response = await api.get('/api/weather/extreme-events', {
         params: { lat, lng, days },
-        timeout: 30000 // 30 segundos
+        timeout: 40000 // 40 segundos (API Open-Meteo pode demorar)
       });
       return response.data;
     } catch (error) {
-      console.error("Erro ao buscar eventos extremos:", error);
+      // ✅ MELHORADO: Log apenas em debug para não poluir o console
+      // Timeouts são esperados quando a API externa está lenta
+      if (error.code === 'ECONNABORTED') {
+        console.debug(`⏱️ Timeout ao buscar eventos extremos para ${lat},${lng} (API externa lenta)`);
+      } else if (error.response?.status === 504) {
+        console.debug(`⏱️ Gateway timeout ao buscar eventos extremos para ${lat},${lng}`);
+      } else if (error.response?.status === 503) {
+        console.debug(`🔌 Serviço Python indisponível ao buscar eventos extremos`);
+      } else {
+        console.debug(`⚠️ Erro ao buscar eventos extremos para ${lat},${lng}:`, error.message);
+      }
       return null;
     }
   },
@@ -367,15 +377,23 @@ export const OpportunityService = {
       const response = await api.post('/api/opportunities/compare', {
         opportunityIds
       }, {
-        timeout: 30000 // 30 segundos
+        timeout: 60000 // 60 segundos (pode incluir múltiplas chamadas à IA)
       });
       return response.data;
     } catch (error) {
-      console.error("Erro ao comparar oportunidades:", error);
-      if (error.code === 'ECONNABORTED') {
+      // ✅ MELHORADO: Log mais informativo e tratamento de erros específicos
+      if (error.code === 'ECONNABORTED' || error.response?.status === 504) {
+        console.warn('⏱️ Timeout ao comparar oportunidades. A IA pode estar processando muitas requisições.');
         throw new Error('Comparação está demorando mais que o esperado. Tente novamente.');
+      } else if (error.response?.status === 503) {
+        console.warn('🔌 Serviço Python indisponível ao comparar oportunidades.');
+        throw new Error('Serviço de IA temporariamente indisponível. Tente novamente em alguns instantes.');
+      } else if (error.response?.status === 404) {
+        throw new Error('Uma ou mais oportunidades não foram encontradas.');
+      } else {
+        console.error("Erro ao comparar oportunidades:", error);
+        throw error;
       }
-      throw error;
     }
   },
 
@@ -392,6 +410,43 @@ export const OpportunityService = {
         throw new Error('Simulação está demorando mais que o esperado. Tente novamente.');
       }
       throw error;
+    }
+  },
+
+  // ✅ FASE B - B1: Exportação Excel Premium
+  exportToExcel: async (filters = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (filters.product) params.append('product', filters.product);
+      if (filters.state) params.append('state', filters.state);
+      if (filters.minRoi) params.append('minRoi', filters.minRoi);
+      if (filters.maxResults) params.append('maxResults', filters.maxResults);
+
+      const token = localStorage.getItem('token');
+      const response = await api.get(`/api/export/opportunities?${params.toString()}`, {
+        responseType: 'blob',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      // Criar link de download
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `oportunidades_${new Date().toISOString().split('T')[0]}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      return { success: true };
+    } catch (error) {
+      console.error('Erro ao exportar Excel:', error);
+      if (error.response?.status === 404) {
+        throw new Error('Nenhuma oportunidade encontrada com os filtros especificados.');
+      }
+      throw new Error('Erro ao exportar oportunidades para Excel.');
     }
   }
 };

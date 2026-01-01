@@ -30,8 +30,9 @@ router.get('/', verifyToken, async (req, res) => {
     // Parse JSON strings
     const parsedAlerts = alerts.map(alert => ({
       ...alert,
-      config: JSON.parse(alert.config || '{}'),
-      channels: JSON.parse(alert.channels || '[]')
+      regions: alert.regions ? JSON.parse(alert.regions) : null,
+      config: alert.config ? JSON.parse(alert.config) : null,
+      channels: JSON.parse(alert.channels || '["email"]')
     }));
 
     res.json(parsedAlerts);
@@ -49,14 +50,19 @@ router.post('/', verifyToken, async (req, res) => {
       return res.status(401).json({ error: 'Usuário não autenticado' });
     }
 
-    const { type, config, channels } = req.body;
-
-    if (!type || !config) {
-      return res.status(400).json({ error: 'type e config são obrigatórios' });
-    }
+    // ✅ FASE B - B2: Suporta novos campos (product, minRoi, minProfit, regions)
+    const { 
+      type = 'opportunity', 
+      product, 
+      minRoi, 
+      minProfit, 
+      regions, 
+      config, 
+      channels = ['email'] 
+    } = req.body;
 
     // Valida tipos de alerta
-    const validTypes = ['roi_threshold', 'price_change', 'extreme_weather', 'new_opportunity'];
+    const validTypes = ['opportunity', 'roi_threshold', 'price_change', 'extreme_weather', 'new_opportunity'];
     if (!validTypes.includes(type)) {
       return res.status(400).json({ error: `Tipo de alerta inválido. Tipos válidos: ${validTypes.join(', ')}` });
     }
@@ -65,8 +71,12 @@ router.post('/', verifyToken, async (req, res) => {
       data: {
         userId,
         type,
-        config: JSON.stringify(config),
-        channels: JSON.stringify(channels || ['email'])
+        product: product || null,
+        minRoi: minRoi ? parseFloat(minRoi) : null,
+        minProfit: minProfit ? parseFloat(minProfit) : null,
+        regions: regions ? JSON.stringify(regions) : null,
+        config: config ? JSON.stringify(config) : null,
+        channels: JSON.stringify(channels)
       }
     });
 
@@ -74,7 +84,8 @@ router.post('/', verifyToken, async (req, res) => {
 
     res.status(201).json({
       ...alert,
-      config: JSON.parse(alert.config),
+      regions: alert.regions ? JSON.parse(alert.regions) : null,
+      config: alert.config ? JSON.parse(alert.config) : null,
       channels: JSON.parse(alert.channels)
     });
   } catch (error) {
@@ -313,10 +324,22 @@ router.get('/check', async (req, res) => {
           }
         });
 
+        // Buscar email do usuário no Supabase Auth
+        let userEmail = 'N/A';
+        try {
+          const supabaseAdmin = require('../utils/supabase').supabaseAdmin;
+          const { data: { user } } = await supabaseAdmin.auth.admin.getUserById(alert.userId);
+          if (user) {
+            userEmail = user.email;
+          }
+        } catch (error) {
+          logger.warn(`⚠️ Erro ao buscar email do usuário ${alert.userId}: ${error.message}`);
+        }
+
         triggeredAlerts.push({
           alertId: alert.id,
           userId: alert.userId,
-          userEmail: alert.user.email,
+          userEmail: userEmail,
           type: alert.type,
           message,
           channels
@@ -334,6 +357,100 @@ router.get('/check', async (req, res) => {
   } catch (error) {
     logger.error('❌ Erro ao verificar alertas:', error);
     res.status(500).json({ error: 'Erro ao verificar alertas' });
+  }
+});
+
+// ✅ FASE B - B2: Endpoints para configuração de canais de alerta do usuário
+
+// GET /api/alerts/user-config - Busca configuração de alertas do usuário
+router.get('/user-config', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Usuário não autenticado' });
+    }
+
+    // Buscar informações do usuário no Supabase Auth
+    const { supabaseAdmin } = require('../utils/supabase');
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: 'Serviço de autenticação não configurado' });
+    }
+
+    const { data: { user }, error } = await supabaseAdmin.auth.admin.getUserById(userId);
+    if (error || !user) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    // Retornar configurações do user_metadata
+    res.json({
+      alertsEnabled: user.user_metadata?.alertsEnabled ?? false,
+      telegramChatId: user.user_metadata?.telegramChatId || null,
+      phone: user.user_metadata?.phone || null,
+      preferredAlertChannel: user.user_metadata?.preferredAlertChannel || 'email'
+    });
+  } catch (error) {
+    logger.error('❌ Erro ao buscar configuração de alertas:', error);
+    res.status(500).json({ error: 'Erro ao buscar configuração de alertas' });
+  }
+});
+
+// PUT /api/alerts/user-config - Atualiza configuração de alertas do usuário
+router.put('/user-config', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Usuário não autenticado' });
+    }
+
+    const { alertsEnabled, telegramChatId, phone, preferredAlertChannel } = req.body;
+
+    // Buscar usuário atual no Supabase Auth
+    const { supabaseAdmin } = require('../utils/supabase');
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: 'Serviço de autenticação não configurado' });
+    }
+
+    const { data: { user: currentUser }, error: getUserError } = await supabaseAdmin.auth.admin.getUserById(userId);
+    if (getUserError || !currentUser) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    // Atualizar user_metadata
+    const currentMetadata = currentUser.user_metadata || {};
+    const updatedMetadata = { ...currentMetadata };
+
+    if (alertsEnabled !== undefined) updatedMetadata.alertsEnabled = alertsEnabled;
+    if (telegramChatId !== undefined) updatedMetadata.telegramChatId = telegramChatId;
+    if (phone !== undefined) updatedMetadata.phone = phone;
+    if (preferredAlertChannel !== undefined) {
+      const validChannels = ['email', 'telegram', 'whatsapp'];
+      if (validChannels.includes(preferredAlertChannel)) {
+        updatedMetadata.preferredAlertChannel = preferredAlertChannel;
+      }
+    }
+
+    // Atualizar usuário no Supabase Auth
+    const { data: { user: updatedUser }, error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+      userId,
+      { user_metadata: updatedMetadata }
+    );
+
+    if (updateError || !updatedUser) {
+      logger.error(`❌ Erro ao atualizar usuário no Supabase: ${updateError?.message}`);
+      return res.status(500).json({ error: 'Erro ao atualizar configuração de alertas' });
+    }
+
+    logger.info(`✅ Configuração de alertas atualizada para usuário ${userId}`);
+
+    res.json({
+      alertsEnabled: updatedUser.user_metadata?.alertsEnabled ?? false,
+      telegramChatId: updatedUser.user_metadata?.telegramChatId || null,
+      phone: updatedUser.user_metadata?.phone || null,
+      preferredAlertChannel: updatedUser.user_metadata?.preferredAlertChannel || 'email'
+    });
+  } catch (error) {
+    logger.error('❌ Erro ao atualizar configuração de alertas:', error);
+    res.status(500).json({ error: 'Erro ao atualizar configuração de alertas' });
   }
 });
 

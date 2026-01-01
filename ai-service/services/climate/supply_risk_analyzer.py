@@ -84,15 +84,15 @@ class SupplyRiskAnalyzer:
             forecast_task = climate_api.get_extended_forecast(lat, lng)
             events_task = extreme_events_detector.detect_extreme_events(lat, lng, forecast_days)
             
-            # ✅ OTIMIZADO: Timeout aumentado para 20s (APIs externas podem demorar até 15s)
+            # ✅ MELHORADO: Timeout aumentado para 35s (APIs externas podem demorar até 25s)
             # Com cache, geralmente retorna em <1s, mas na primeira vez precisa de mais tempo
             try:
                 forecast_data, extreme_events = await asyncio.wait_for(
                     asyncio.gather(forecast_task, events_task, return_exceptions=True),
-                    timeout=20.0  # ✅ AUMENTADO: 20s para dar tempo às APIs externas (15s + margem)
+                    timeout=35.0  # ✅ AUMENTADO: 35s para dar tempo às APIs externas (25s + margem)
                 )
             except asyncio.TimeoutError:
-                logger.warning(f"⚠️ Timeout ao buscar dados climáticos para {lat},{lng} (20s excedido)")
+                logger.warning(f"⚠️ Timeout ao buscar dados climáticos para {lat},{lng} (35s excedido)")
                 forecast_data = None
                 extreme_events = None
             

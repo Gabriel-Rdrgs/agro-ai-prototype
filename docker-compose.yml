@@ -34,9 +34,25 @@ services:
     - PYTHON_API_URL=http://ai-service:8000
     - JWT_SECRET=${JWT_SECRET}
     - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+    - REDIS_URL=redis://redis:6379
     volumes:
       - ./backend:/app
       - /app/node_modules
     depends_on:
       - ai-service
+      - redis
     command: npm run dev
+
+  # ✅ FASE B - B2: Redis para fila de alertas e cache
+  redis:
+    image: redis:7-alpine
+    container_name: agro_redis
+    ports:
+      - "6379:6379"
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    restart: always
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data:

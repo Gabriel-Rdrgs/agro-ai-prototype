@@ -7,8 +7,11 @@ const AlertsManager = () => {
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newAlert, setNewAlert] = useState({
-    type: 'roi_threshold',
-    config: {},
+    type: 'opportunity',
+    product: '',
+    minRoi: null,
+    minProfit: null,
+    regions: [],
     channels: ['email']
   });
 
@@ -30,9 +33,22 @@ const AlertsManager = () => {
 
   const handleCreateAlert = async () => {
     try {
+      // Validação básica
+      if (!newAlert.minRoi && !newAlert.minProfit) {
+        alert('Por favor, defina pelo menos um ROI mínimo ou lucro mínimo.');
+        return;
+      }
+
       await AlertService.create(newAlert);
       setShowCreateModal(false);
-      setNewAlert({ type: 'roi_threshold', config: {}, channels: ['email'] });
+      setNewAlert({ 
+        type: 'opportunity', 
+        product: '', 
+        minRoi: null, 
+        minProfit: null, 
+        regions: [], 
+        channels: ['email'] 
+      });
       fetchAlerts();
     } catch (error) {
       console.error('Erro ao criar alerta:', error);
@@ -50,7 +66,7 @@ const AlertsManager = () => {
   };
 
   const handleDelete = async (alertId) => {
-    if (!confirm('Tem certeza que deseja remover este alerta?')) return;
+    if (!window.confirm('Tem certeza que deseja remover este alerta?')) return;
 
     try {
       await AlertService.delete(alertId);
@@ -81,43 +97,34 @@ const AlertsManager = () => {
   };
 
   const renderAlertConfig = (alert) => {
-    const { type, config } = alert;
-
-    switch (type) {
-      case 'roi_threshold':
-        return (
-          <div style={{ fontSize: '12px', color: theme.colors.textMuted }}>
-            ROI {config.direction === 'above' ? 'acima' : 'abaixo'} de {config.threshold}%
-            {config.product && ` • Produto: ${config.product}`}
-            {config.state && ` • Estado: ${config.state}`}
-          </div>
-        );
-      case 'price_change':
-        return (
-          <div style={{ fontSize: '12px', color: theme.colors.textMuted }}>
-            Mudança de {config.threshold_percent}% em {config.time_window_hours}h
-            {config.product && ` • Produto: ${config.product}`}
-            {config.state && ` • Estado: ${config.state}`}
-          </div>
-        );
-      case 'extreme_weather':
-        return (
-          <div style={{ fontSize: '12px', color: theme.colors.textMuted }}>
-            Severidade: {config.severity?.join(', ') || 'Todas'}
-            {config.regions?.length > 0 && ` • Regiões: ${config.regions.join(', ')}`}
-          </div>
-        );
-      case 'new_opportunity':
-        return (
-          <div style={{ fontSize: '12px', color: theme.colors.textMuted }}>
-            ROI mínimo: {config.min_roi || 0}%
-            {config.product && ` • Produto: ${config.product}`}
-            {config.state && ` • Estado: ${config.state}`}
-          </div>
-        );
-      default:
-        return null;
+    // ✅ FASE B - B2: Usa novos campos diretos
+    const parts = [];
+    
+    if (alert.product) {
+      parts.push(`Produto: ${alert.product}`);
+    } else {
+      parts.push('Produto: Todos');
     }
+    
+    if (alert.minRoi !== null && alert.minRoi !== undefined) {
+      parts.push(`ROI mínimo: ${alert.minRoi}%`);
+    }
+    
+    if (alert.minProfit !== null && alert.minProfit !== undefined) {
+      parts.push(`Lucro mínimo: R$ ${alert.minProfit.toFixed(2)}`);
+    }
+    
+    if (alert.regions && alert.regions.length > 0) {
+      parts.push(`Estados: ${alert.regions.join(', ')}`);
+    } else {
+      parts.push('Estados: Todos');
+    }
+
+    return (
+      <div style={{ fontSize: '12px', color: theme.colors.textMuted }}>
+        {parts.join(' • ')}
+      </div>
+    );
   };
 
   if (loading) {
@@ -246,13 +253,6 @@ const AlertsManager = () => {
 };
 
 const CreateAlertModal = ({ newAlert, setNewAlert, onClose, onCreate }) => {
-  const updateConfig = (key, value) => {
-    setNewAlert(prev => ({
-      ...prev,
-      config: { ...prev.config, [key]: value }
-    }));
-  };
-
   const toggleChannel = (channel) => {
     setNewAlert(prev => ({
       ...prev,
@@ -261,6 +261,21 @@ const CreateAlertModal = ({ newAlert, setNewAlert, onClose, onCreate }) => {
         : [...prev.channels, channel]
     }));
   };
+
+  const toggleRegion = (region) => {
+    setNewAlert(prev => ({
+      ...prev,
+      regions: prev.regions.includes(region)
+        ? prev.regions.filter(r => r !== region)
+        : [...prev.regions, region]
+    }));
+  };
+
+  const brazilianStates = [
+    'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA',
+    'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN',
+    'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
+  ];
 
   return (
     <div
@@ -293,14 +308,16 @@ const CreateAlertModal = ({ newAlert, setNewAlert, onClose, onCreate }) => {
       >
         <h3 style={{ color: theme.colors.accent, marginBottom: '20px' }}>Criar Novo Alerta</h3>
 
-        {/* Tipo de Alerta */}
-        <div style={{ marginBottom: '20px' }}>
+        {/* ✅ FASE B - B2: Formulário simplificado com novos campos */}
+        
+        {/* Produto */}
+        <div style={{ marginBottom: '16px' }}>
           <label style={{ display: 'block', fontSize: '14px', color: theme.colors.textMuted, marginBottom: '8px' }}>
-            Tipo de Alerta
+            Produto (opcional - deixe vazio para todos)
           </label>
           <select
-            value={newAlert.type}
-            onChange={(e) => setNewAlert(prev => ({ ...prev, type: e.target.value, config: {} }))}
+            value={newAlert.product || ''}
+            onChange={(e) => setNewAlert(prev => ({ ...prev, product: e.target.value || null }))}
             style={{
               width: '100%',
               padding: '10px',
@@ -311,132 +328,100 @@ const CreateAlertModal = ({ newAlert, setNewAlert, onClose, onCreate }) => {
               fontSize: '14px'
             }}
           >
-            <option value="roi_threshold">ROI Mínimo/Máximo</option>
-            <option value="price_change">Mudança de Preço</option>
-            <option value="extreme_weather">Eventos Climáticos</option>
-            <option value="new_opportunity">Nova Oportunidade</option>
+            <option value="">Todos os produtos</option>
+            <option value="Tomate">Tomate</option>
+            <option value="Soja">Soja</option>
+            <option value="Milho">Milho</option>
           </select>
         </div>
 
-        {/* Configurações específicas por tipo */}
-        {newAlert.type === 'roi_threshold' && (
-          <>
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '14px', color: theme.colors.textMuted, marginBottom: '8px' }}>
-                ROI Mínimo (%)
-              </label>
-              <input
-                type="number"
-                value={newAlert.config.threshold || ''}
-                onChange={(e) => updateConfig('threshold', parseFloat(e.target.value))}
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: `1px solid rgba(255, 255, 255, 0.2)`,
-                  borderRadius: theme.borderRadius,
-                  color: theme.colors.textPrimary,
-                  fontSize: '14px'
-                }}
-              />
-            </div>
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '14px', color: theme.colors.textMuted, marginBottom: '8px' }}>
-                Direção
-              </label>
-              <select
-                value={newAlert.config.direction || 'above'}
-                onChange={(e) => updateConfig('direction', e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: `1px solid rgba(255, 255, 255, 0.2)`,
-                  borderRadius: theme.borderRadius,
-                  color: theme.colors.textPrimary,
-                  fontSize: '14px'
-                }}
-              >
-                <option value="above">Acima de</option>
-                <option value="below">Abaixo de</option>
-              </select>
-            </div>
-          </>
-        )}
+        {/* ROI Mínimo */}
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', fontSize: '14px', color: theme.colors.textMuted, marginBottom: '8px' }}>
+            ROI Mínimo (%) (opcional)
+          </label>
+          <input
+            type="number"
+            step="0.1"
+            value={newAlert.minRoi || ''}
+            onChange={(e) => setNewAlert(prev => ({ 
+              ...prev, 
+              minRoi: e.target.value ? parseFloat(e.target.value) : null 
+            }))}
+            placeholder="Ex: 15.5"
+            style={{
+              width: '100%',
+              padding: '10px',
+              background: 'rgba(255, 255, 255, 0.1)',
+              border: `1px solid rgba(255, 255, 255, 0.2)`,
+              borderRadius: theme.borderRadius,
+              color: theme.colors.textPrimary,
+              fontSize: '14px'
+            }}
+          />
+        </div>
 
-        {newAlert.type === 'price_change' && (
-          <>
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '14px', color: theme.colors.textMuted, marginBottom: '8px' }}>
-                Produto
-              </label>
-              <input
-                type="text"
-                value={newAlert.config.product || ''}
-                onChange={(e) => updateConfig('product', e.target.value)}
-                placeholder="Ex: Tomate"
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: `1px solid rgba(255, 255, 255, 0.2)`,
-                  borderRadius: theme.borderRadius,
-                  color: theme.colors.textPrimary,
-                  fontSize: '14px'
-                }}
-              />
-            </div>
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '14px', color: theme.colors.textMuted, marginBottom: '8px' }}>
-                Mudança Mínima (%)
-              </label>
-              <input
-                type="number"
-                value={newAlert.config.threshold_percent || ''}
-                onChange={(e) => updateConfig('threshold_percent', parseFloat(e.target.value))}
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: `1px solid rgba(255, 255, 255, 0.2)`,
-                  borderRadius: theme.borderRadius,
-                  color: theme.colors.textPrimary,
-                  fontSize: '14px'
-                }}
-              />
-            </div>
-          </>
-        )}
+        {/* Lucro Mínimo */}
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', fontSize: '14px', color: theme.colors.textMuted, marginBottom: '8px' }}>
+            Lucro Mínimo (R$) (opcional)
+          </label>
+          <input
+            type="number"
+            step="0.01"
+            value={newAlert.minProfit || ''}
+            onChange={(e) => setNewAlert(prev => ({ 
+              ...prev, 
+              minProfit: e.target.value ? parseFloat(e.target.value) : null 
+            }))}
+            placeholder="Ex: 10000.00"
+            style={{
+              width: '100%',
+              padding: '10px',
+              background: 'rgba(255, 255, 255, 0.1)',
+              border: `1px solid rgba(255, 255, 255, 0.2)`,
+              borderRadius: theme.borderRadius,
+              color: theme.colors.textPrimary,
+              fontSize: '14px'
+            }}
+          />
+        </div>
 
-        {newAlert.type === 'new_opportunity' && (
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', fontSize: '14px', color: theme.colors.textMuted, marginBottom: '8px' }}>
-              ROI Mínimo (%)
-            </label>
-            <input
-              type="number"
-              value={newAlert.config.min_roi || ''}
-              onChange={(e) => updateConfig('min_roi', parseFloat(e.target.value))}
-              style={{
-                width: '100%',
-                padding: '10px',
-                background: 'rgba(255, 255, 255, 0.1)',
-                border: `1px solid rgba(255, 255, 255, 0.2)`,
-                borderRadius: theme.borderRadius,
-                color: theme.colors.textPrimary,
-                fontSize: '14px'
-              }}
-            />
+        {/* Estados */}
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', fontSize: '14px', color: theme.colors.textMuted, marginBottom: '8px' }}>
+            Estados (opcional - deixe vazio para todos)
+          </label>
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', 
+            gap: '8px',
+            maxHeight: '150px',
+            overflowY: 'auto',
+            padding: '8px',
+            background: 'rgba(255, 255, 255, 0.05)',
+            borderRadius: theme.borderRadius
+          }}>
+            {brazilianStates.map(state => (
+              <label key={state} style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '12px' }}>
+                <input
+                  type="checkbox"
+                  checked={newAlert.regions.includes(state)}
+                  onChange={() => toggleRegion(state)}
+                />
+                <span style={{ color: theme.colors.textPrimary }}>{state}</span>
+              </label>
+            ))}
           </div>
-        )}
+        </div>
 
         {/* Canais de Notificação */}
         <div style={{ marginBottom: '20px' }}>
           <label style={{ display: 'block', fontSize: '14px', color: theme.colors.textMuted, marginBottom: '8px' }}>
             Canais de Notificação
           </label>
-          <div style={{ display: 'flex', gap: '12px' }}>
-            {['email', 'whatsapp', 'push'].map(channel => (
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            {['email', 'telegram', 'whatsapp'].map(channel => (
               <label key={channel} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                 <input
                   type="checkbox"
@@ -444,10 +429,13 @@ const CreateAlertModal = ({ newAlert, setNewAlert, onClose, onCreate }) => {
                   onChange={() => toggleChannel(channel)}
                 />
                 <span style={{ fontSize: '14px', color: theme.colors.textPrimary }}>
-                  {channel === 'email' ? '📧 Email' : channel === 'whatsapp' ? '💬 WhatsApp' : '🔔 Push'}
+                  {channel === 'email' ? '📧 Email' : channel === 'telegram' ? '📱 Telegram' : '💬 WhatsApp'}
                 </span>
               </label>
             ))}
+          </div>
+          <div style={{ fontSize: '12px', color: theme.colors.textMuted, marginTop: '8px' }}>
+            💡 Configure Telegram/WhatsApp nas configurações do perfil para receber alertas por esses canais
           </div>
         </div>
 

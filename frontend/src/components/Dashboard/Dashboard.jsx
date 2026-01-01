@@ -19,6 +19,7 @@ import { Bar, Line } from 'react-chartjs-2';
 import MarketTrendsChart from './MarketTrendsChart'; // ✅ NOVO: Componente de Tendências
 import FavoritesSection from './FavoritesSection'; // ✅ NOVO: Seção de Favoritos
 import BestOpportunitiesSection from './BestOpportunitiesSection'; // ✅ NOVO: Melhores Oportunidades
+import PredictiveInsightsSection from './PredictiveInsightsSection'; // ✅ NOVO: Insights Preditivos
 import '../../styles/dashboard.css';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend);
@@ -53,6 +54,7 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [showExportModal, setShowExportModal] = useState(false);
   const [includeFullList, setIncludeFullList] = useState(false);
+  const [predictiveData, setPredictiveData] = useState(null); // ✅ NOVO: Dados preditivos para PDF
 
  useEffect(() => {
     const fetchData = async () => {
@@ -148,6 +150,18 @@ const Dashboard = () => {
     setShowExportModal(true);
   };
 
+  // ✅ FASE B - B1: Exportação Excel Premium
+  const handleExportExcel = async () => {
+    try {
+      await OpportunityService.exportToExcel({
+        maxResults: 1000
+      });
+      alert('✅ Excel exportado com sucesso!');
+    } catch (error) {
+      alert(`❌ Erro ao exportar: ${error.message}`);
+    }
+  };
+
   // 🔙 Função para Gerar o PDF Geral do Dashboard
   const handleExportDashboard = async () => {
     setShowExportModal(false);
@@ -155,6 +169,7 @@ const Dashboard = () => {
     // Busca dados de tendências de mercado
     let marketTrendsData = null;
     let chartImage = null;
+    let predictiveChartImage = null; // ✅ NOVO: Imagem do gráfico preditivo
     
     try {
       const response = await api.get('/analytics/trends?product=Tomate&days=90');
@@ -178,6 +193,20 @@ const Dashboard = () => {
             });
             // ✅ Usa JPEG com qualidade 0.7 para compressão (ao invés de PNG)
             chartImage = canvas.toDataURL('image/jpeg', 0.7);
+          }
+          
+          // ✅ NOVO: Captura gráfico preditivo
+          const predictiveChartElement = document.querySelector('[data-chart="predictive-insights"]');
+          if (predictiveChartElement) {
+            const canvas = await html2canvas(predictiveChartElement, {
+              backgroundColor: '#0f172a',
+              scale: 1.5,
+              logging: false,
+              useCORS: true,
+              width: predictiveChartElement.offsetWidth,
+              height: predictiveChartElement.offsetHeight
+            });
+            predictiveChartImage = canvas.toDataURL('image/jpeg', 0.7);
           }
         } catch (canvasError) {
           console.warn('Erro ao capturar gráfico:', canvasError);
@@ -213,6 +242,9 @@ const Dashboard = () => {
         // ✅ NOVO: Dados de Tendências de Mercado
         marketTrends: marketTrendsData,
         marketTrendsChartImage: chartImage, // Imagem do gráfico capturada
+        // ✅ NOVO: Dados Preditivos
+        predictiveInsights: predictiveData,
+        predictiveChartImage: predictiveChartImage, // Imagem do gráfico preditivo
         top5: opportunities.slice(0, 5),
         saved: includeFullList ? opportunities : null // Só inclui se o usuário escolher
     };
@@ -252,6 +284,26 @@ const Dashboard = () => {
         </div>
         <div style={{display: 'flex', gap: '15px', alignItems: 'center'}}>
             <div className="last-update">Atualizado às {stats.lastUpdate}</div>
+            
+            {/* ✅ FASE B - B1: Botão de Exportação Excel Premium */}
+            <button 
+                onClick={handleExportExcel}
+                style={{
+                    background: 'linear-gradient(45deg, #10b981, #059669)',
+                    color: '#ffffff',
+                    border: 'none',
+                    padding: '8px 16px',
+                    borderRadius: '6px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                }}
+                title="Exportar oportunidades para Excel com formatação premium"
+            >
+                📊 Exportar Excel
+            </button>
             
             {/* 🔙 BOTÃO DE EXPORTAR VOLTOU */}
             <button 
@@ -444,6 +496,13 @@ const Dashboard = () => {
         {/* ✅ NOVO: Melhores Oportunidades Automáticas */}
         <div style={{ marginBottom: '30px' }}>
           <BestOpportunitiesSection />
+        </div>
+
+        {/* ✅ NOVO: Insights Preditivos (Projeções Prophet) */}
+        <div style={{ marginBottom: '30px' }}>
+          <PredictiveInsightsSection 
+            onDataReady={(data) => setPredictiveData(data)}
+          />
         </div>
 
         {/* --- 🔙 TABELA DE MONITORAMENTO DE OPORTUNIDADES (A TUA LISTA DE VOLTA) --- */}

@@ -340,9 +340,9 @@ class ClimateIntelligence:
                 ]
             }
 
-            # ✅ OTIMIZADO: Timeout balanceado (15s total, 5s conexão)
-            # Open-Meteo geralmente responde em 1-3s, mas pode demorar até 10s em picos
-            async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=5.0)) as client:
+            # ✅ MELHORADO: Timeout aumentado (25s total, 10s conexão)
+            # Open-Meteo geralmente responde em 1-3s, mas pode demorar até 20s em picos ou quando sobrecarregada
+            async with httpx.AsyncClient(timeout=httpx.Timeout(25.0, connect=10.0)) as client:
                 response = await client.get(FORECAST_API_URL, params=params)
                 
                 if response.status_code != 200:

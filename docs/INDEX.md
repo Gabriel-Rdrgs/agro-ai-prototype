@@ -50,8 +50,7 @@
 
 ### Documentação Histórica
 
-- **[FASE1_FINALIZACAO.md](./FASE1_FINALIZACAO.md)** - Relatório de finalização da Fase 1
-- **[Relatório_Fase_0_e_1.md](./Relatório_Fase_0_e_1.md)** - Relatório histórico das Fases 0 e 1
+> **Nota:** Documentação histórica foi consolidada nos documentos principais. Para histórico de implementação, consulte `PLANEJAMENTO_COMPLETO.md` na raiz do projeto.
 
 ---
 

@@ -8,6 +8,7 @@ import Login from './components/Auth/Login';
 import WeatherDashboard from './components/Weather/WeatherDashboard';
 // import MarketRadar from './components/Market/MarketRadar'; // TODO: Implementar quando necessário
 import AgronomicChat from './components/Chat/AgronomicChat';
+import AlertsManager from './components/Alerts/AlertsManager'; // ✅ FASE B - B2: Sistema de Alertas
 
 function App() {
   // --- 1. ESTADOS GLOBAIS ---
@@ -263,6 +264,7 @@ function App() {
             <button onClick={() => setActiveTab('calculator')} className={`tab-btn ${activeTab === 'calculator' ? 'active' : ''}`}>🧮 SIMULADOR</button>
             <button onClick={() => setActiveTab('Weather')} className={`tab-btn ${activeTab === 'Weather' ? 'active' : ''}`}>⛈️ CLIMA</button>
             <button onClick={() => setActiveTab('chat')} className={`tab-btn ${activeTab === 'chat' ? 'active' : ''}`}>🤖 IA</button>
+            <button onClick={() => setActiveTab('alerts')} className={`tab-btn ${activeTab === 'alerts' ? 'active' : ''}`}>🔔 ALERTAS</button>
           </div>
 
           <div className="tab-content">
@@ -317,6 +319,10 @@ function App() {
             {activeTab === 'chat' && (
               <AgronomicChat />
             )}
+
+            {activeTab === 'alerts' && (
+              <AlertsManager />
+            )}
           </div>
         </div>
       </div>
@@ -343,6 +349,10 @@ function App() {
         <button onClick={() => setActiveTab('chat')} className={`nav-item ${activeTab === 'chat' ? 'active' : ''}`}>
           <span className="icon">🤖</span>
           <span className="label">IA</span>
+        </button>
+        <button onClick={() => setActiveTab('alerts')} className={`nav-item ${activeTab === 'alerts' ? 'active' : ''}`}>
+          <span className="icon">🔔</span>
+          <span className="label">Alertas</span>
         </button>
       </div>
 

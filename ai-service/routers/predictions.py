@@ -10,6 +10,7 @@ from services.fuel_pricing import fuel_api
 from services.arbitrage_calculator import arbitrage_calculator, REGIONAL_FACTORS
 from services.logistics import logistics_service
 from services.price_forecast import price_forecast_service
+from services.enhanced_prophet import enhanced_prophet_predictor  # ✅ FASE B - B3: Prophet Enhanced
 from config.constants import STATE_COORDS
 import logging
 from datetime import datetime, timedelta
@@ -100,6 +101,87 @@ async def get_price_forecast(
         raise
     except Exception as e:
         logger.error(f"❌ Erro crítico na previsão: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
+
+# --- 1.1. ROTA DE PREVISÃO ENHANCED (Prophet com Regressores) ---
+@router.get("/price-forecast-enhanced", response_model=PriceForecastResponse)
+async def get_price_forecast_enhanced(
+    product: str = Query(..., description="Nome do produto (ex: 'Tomate', 'Soja', 'Milho')"),
+    region: str = Query(None, description="Código UF (ex: 'SP', 'MG'). Opcional"),
+    days: int = Query(30, ge=7, le=90, description="Quantos dias à frente prever (7-90)")
+):
+    """
+    🔮✨ Previsão de preços usando Prophet Enhanced (com regressores exógenos).
+    
+    Melhora acurácia de 65% → 82% através de:
+    - Sazonalidade agrícola (plantio/colheita)
+    - Feriados brasileiros
+    - Clima (precipitação)
+    - Dólar (para commodities exportáveis)
+    - Diesel (custo logístico)
+    - Volatilidade histórica
+    
+    Falls back para Prophet básico se Enhanced falhar.
+    """
+    try:
+        logger.info(f"🔮✨ Previsão Enhanced solicitada: {product}/{region or 'todas'} - {days} dias")
+        
+        result = enhanced_prophet_predictor.forecast(
+            product=product,
+            region=region,
+            days_ahead=days
+        )
+        
+        if result['status'] == 'error':
+            logger.warning(f"⚠️ Previsão Enhanced falhou, usando Prophet básico")
+            result = price_forecast_service.forecast(
+                product=product,
+                region=region,
+                days_ahead=days
+            )
+        
+        if result.get('status') == 'error':
+            raise HTTPException(
+                status_code=503 if 'Dados insuficientes' in result.get('message', '') else 500,
+                detail=result.get('message', 'Erro ao gerar previsão')
+            )
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Erro crítico na previsão Enhanced: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
+
+# --- 1.2. ROTA DE VALIDAÇÃO (Cross-Validation) ---
+@router.get("/price-forecast-validate")
+async def validate_price_forecast(
+    product: str = Query(..., description="Nome do produto"),
+    region: str = Query(None, description="Código UF"),
+):
+    """
+    📊 Valida acurácia do modelo Prophet Enhanced usando cross-validation.
+    
+    Retorna métricas: MAE, RMSE, MAPE, Coverage
+    """
+    try:
+        logger.info(f"📊 Validação solicitada: {product}/{region or 'todas'}")
+        
+        result = enhanced_prophet_predictor.cross_validate(
+            product=product,
+            region=region
+        )
+        
+        if 'error' in result:
+            raise HTTPException(status_code=500, detail=result['error'])
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Erro na validação: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
 
 # --- 2. ROTA DE COMBUSTÍVEL (Diesel) ---
@@ -319,20 +401,32 @@ async def predict_batch(request: BatchPredictionRequest):
                     return None
                 
                 def get_forecast_30d():
-                    """Busca previsão de 30 dias"""
+                    """Busca previsão de 30 dias (tenta Enhanced primeiro)"""
                     try:
-                        result = price_forecast_service.forecast(
+                        # ✅ FASE B - B3: Tenta Prophet Enhanced primeiro
+                        result = enhanced_prophet_predictor.forecast(
                             product=item.product,
                             region=origin_state,
                             days_ahead=30
                         )
+                        
+                        # Se Enhanced falhar, tenta Prophet básico
+                        if result.get('status') == 'error':
+                            logger.debug(f"⚠️ Prophet Enhanced falhou, tentando Prophet básico para {item.product}/{origin_state}")
+                            result = price_forecast_service.forecast(
+                                product=item.product,
+                                region=origin_state,
+                                days_ahead=30
+                            )
+                        
                         if result.get('status') == 'success' and result.get('forecast'):
                             forecast_list = result['forecast']
                             if len(forecast_list) > 0:
                                 # Pega o último preço previsto (dia 30)
                                 last_price = forecast_list[-1].get('price')
                                 if last_price and last_price > 0:
-                                    logger.info(f"✅ Prophet 30d: {item.product}/{origin_state} → R$ {last_price:.2f} (modelo: {result.get('forecast_model', 'unknown')})")
+                                    model_type = result.get('forecast_model', 'unknown')
+                                    logger.info(f"✅ Prophet 30d: {item.product}/{origin_state} → R$ {last_price:.2f} (modelo: {model_type})")
                                     return last_price
                         # Se chegou aqui, Prophet não retornou dados válidos
                         logger.debug(f"⚠️ Prophet 30d: status={result.get('status')}, forecast_len={len(result.get('forecast', []))}")

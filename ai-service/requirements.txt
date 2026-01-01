@@ -14,6 +14,7 @@ pandas==2.2.3
 numpy==1.26.4
 scikit-learn==1.5.2
 prophet==1.1.5
+holidays==0.40  # ✅ FASE B - B3: Feriados brasileiros para Prophet Enhanced
 openpyxl==3.1.2  # Para ler arquivos Excel (.xlsx) da CONAB
 # sidrapy==0.1.4  # Opcional: biblioteca para IBGE SIDRA (não necessário, API direta funciona)
 # RAG e LLM

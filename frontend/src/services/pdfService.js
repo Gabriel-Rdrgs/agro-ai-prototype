@@ -476,7 +476,136 @@ if (scenarioData.result.details?.fuel_breakdown) {
         }
     }
     
-    // --- 5. Resumo Completo de Oportunidades (Opcional) ---
+    // --- 5. Insights Preditivos (IA Prophet) ---
+    if (data.predictiveInsights && (data.predictiveInsights.topProjected7d?.length > 0 || data.predictiveInsights.topProjected30d?.length > 0)) {
+        // Verifica se há espaço na página, se não, cria nova página
+        if (yPos > 250) {
+            doc.addPage();
+            yPos = 20;
+        }
+        
+        doc.setFontSize(14);
+        doc.setTextColor(0, 0, 0);
+        doc.setFont('helvetica', 'bold');
+        doc.text('5. Insights Preditivos (IA Prophet)', 14, yPos);
+        yPos += 10;
+        
+        // Gráfico preditivo (se disponível)
+        if (data.predictiveChartImage) {
+            try {
+                const imgWidth = 180;
+                const imgHeight = 80;
+                doc.addImage(
+                    data.predictiveChartImage,
+                    'JPEG',
+                    14,
+                    yPos,
+                    imgWidth,
+                    imgHeight,
+                    undefined,
+                    'FAST'
+                );
+                yPos += imgHeight + 10;
+            } catch (imgError) {
+                console.warn('Erro ao adicionar gráfico preditivo:', imgError);
+                yPos += 5;
+            }
+        }
+        
+        // Top Oportunidades Projetadas (7 dias)
+        if (data.predictiveInsights.topProjected7d && data.predictiveInsights.topProjected7d.length > 0) {
+            if (yPos > 240) {
+                doc.addPage();
+                yPos = 20;
+            }
+            
+            doc.setFontSize(12);
+            doc.setTextColor(0, 0, 0);
+            doc.setFont('helvetica', 'bold');
+            doc.text('Top 5 Oportunidades - Projeção +7 dias', 14, yPos);
+            yPos += 8;
+            
+            const projected7dRows = data.predictiveInsights.topProjected7d.map(opp => {
+                const origin = opp.origin || {};
+                const trend = opp.change > 0 ? '📈' : opp.change < 0 ? '📉' : '➡️';
+                return [
+                    opp.product || '-',
+                    `${origin.city || 'N/A'}, ${origin.state || ''}`,
+                    `${opp.currentROI.toFixed(1)}%`,
+                    `${opp.projectedROI.toFixed(1)}%`,
+                    `${opp.change >= 0 ? '+' : ''}${opp.change.toFixed(1)}%`,
+                    trend
+                ];
+            });
+            
+            autoTable(doc, {
+                startY: yPos + 3,
+                head: [['Produto', 'Origem', 'ROI Atual', 'ROI Proj. (+7d)', 'Variação', 'Tendência']],
+                body: projected7dRows,
+                theme: 'grid',
+                headStyles: { fillColor: darkBg, textColor: primaryColor },
+                styles: { fontSize: 8, halign: 'center' },
+                columnStyles: { 
+                    0: { halign: 'left' },
+                    1: { halign: 'left' },
+                    2: { halign: 'right' },
+                    3: { halign: 'right' },
+                    4: { halign: 'right' },
+                    5: { halign: 'center' }
+                }
+            });
+            
+            yPos = doc.lastAutoTable.finalY + 10;
+        }
+        
+        // Top Oportunidades Projetadas (30 dias)
+        if (data.predictiveInsights.topProjected30d && data.predictiveInsights.topProjected30d.length > 0) {
+            if (yPos > 240) {
+                doc.addPage();
+                yPos = 20;
+            }
+            
+            doc.setFontSize(12);
+            doc.setTextColor(0, 0, 0);
+            doc.setFont('helvetica', 'bold');
+            doc.text('Top 5 Oportunidades - Projeção +30 dias', 14, yPos);
+            yPos += 8;
+            
+            const projected30dRows = data.predictiveInsights.topProjected30d.map(opp => {
+                const origin = opp.origin || {};
+                const trend = opp.change > 0 ? '📈' : opp.change < 0 ? '📉' : '➡️';
+                return [
+                    opp.product || '-',
+                    `${origin.city || 'N/A'}, ${origin.state || ''}`,
+                    `${opp.currentROI.toFixed(1)}%`,
+                    `${opp.projectedROI.toFixed(1)}%`,
+                    `${opp.change >= 0 ? '+' : ''}${opp.change.toFixed(1)}%`,
+                    trend
+                ];
+            });
+            
+            autoTable(doc, {
+                startY: yPos + 3,
+                head: [['Produto', 'Origem', 'ROI Atual', 'ROI Proj. (+30d)', 'Variação', 'Tendência']],
+                body: projected30dRows,
+                theme: 'grid',
+                headStyles: { fillColor: darkBg, textColor: primaryColor },
+                styles: { fontSize: 8, halign: 'center' },
+                columnStyles: { 
+                    0: { halign: 'left' },
+                    1: { halign: 'left' },
+                    2: { halign: 'right' },
+                    3: { halign: 'right' },
+                    4: { halign: 'right' },
+                    5: { halign: 'center' }
+                }
+            });
+            
+            yPos = doc.lastAutoTable.finalY + 10;
+        }
+    }
+    
+    // --- 6. Resumo Completo de Oportunidades (Opcional) ---
     if (data.saved && data.saved.length > 0) {
         // Verifica se há espaço na página, se não, cria nova página
         if (yPos > 250) {

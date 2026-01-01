@@ -98,12 +98,12 @@ python scripts/backup_postgres.py --dir /path/to/backups
 
 #### Passo 2: Configurar Root Directory e Dockerfile
 
-⚠️ **IMPORTANTE:** O Dockerfile do backup está na raiz como `Dockerfile.backup`
+⚠️ **IMPORTANTE:** O Dockerfile do backup está na raiz como `Dockerfile`
 
 1. Vá em **"Settings"** do novo service
 2. Na seção **"Build & Deploy"**, configure:
    - **Root Directory:** Deixe vazio (ou `./`) - código está na raiz
-   - **Dockerfile Path:** `Dockerfile.backup` ⚠️ **CRÍTICO**
+   - **Dockerfile Path:** `Dockerfile` (na raiz do projeto)
 3. Clique em **"Save"**
 
 #### Passo 3: Configurar Variáveis de Ambiente

@@ -64,8 +64,14 @@ model User {
   createdAt     DateTime       @default(now())
   auditLogs     AuditLog[]
   refreshTokens RefreshToken[]
-  alerts        Alert[]        // ✅ NOVO: Relação com alertas
+  // alerts removido - Alert.userId é String (UUID), não pode ter relação com User.id (Int)
   portfolioOperations PortfolioOperation[] // ✅ NOVO: Relação com operações do portfolio
+  
+  // ✅ FASE B - B2: Campos para sistema de alertas
+  alertsEnabled        Boolean  @default(false)
+  telegramChatId      String?  // ID do chat do Telegram
+  phone                String?  // Telefone para WhatsApp (formato: +5511999999999)
+  preferredAlertChannel String  @default("email") // "email", "telegram", "whatsapp"
 }
 
 model RefreshToken {
@@ -228,15 +234,22 @@ model Favorite {
   @@index([createdAt])
 }
 
-// ✅ NOVO: Sistema de Alertas - Permite usuários configurarem alertas personalizados
+// ✅ FASE B - B2: Sistema de Alertas - Permite usuários configurarem alertas personalizados
+// Nota: userId é String (UUID do Supabase Auth), não há relação com User pois User.id é Int
 model Alert {
   id            Int      @id @default(autoincrement())
-  userId        Int
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String   // UUID do Supabase Auth (não Int, pois vem do Supabase)
   
-  type          String   // "roi_threshold", "price_change", "extreme_weather", "new_opportunity"
-  config        String   @db.Text // JSON string com configuração específica do alerta
-  channels      String   // JSON array: ["email", "whatsapp", "push"]
+  // Campos específicos para regras de alerta
+  product       String?  // Produto específico (ex: "Tomate", "Soja", "Milho") - null = todos
+  minRoi        Float?   // ROI mínimo para disparar alerta
+  minProfit     Float?   // Lucro mínimo em R$ para disparar alerta
+  regions       String?  @db.Text // JSON array de estados (ex: ["SP", "MG", "GO"]) - null = todos
+  
+  // Campos genéricos
+  type          String   @default("opportunity") // "opportunity", "price_change", "extreme_weather"
+  config        String?  @db.Text // JSON string com configuração adicional específica do alerta
+  channels      String   @default("[\"email\"]") // JSON array: ["email", "whatsapp", "telegram"]
   
   isActive      Boolean  @default(true)
   lastTriggered DateTime?
@@ -248,7 +261,9 @@ model Alert {
   @@index([userId])
   @@index([type])
   @@index([isActive])
+  @@index([product])
   @@index([createdAt])
+  @@index([userId, isActive]) // Índice composto para queries frequentes
 }
 
 // ✅ NOVO: Portfolio Tracking - Rastreamento de operações de compra/venda
