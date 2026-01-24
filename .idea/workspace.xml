@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChangeListManager">
+    <list default="true" id="dff1df9d-e19f-4164-bdd5-32d170ad03b6" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/backend/routes/alerts.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/routes/alerts.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/server.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/server.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/services/alertService.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/services/alertService.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/services/opportunityService.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/services/opportunityService.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/ANALISE_COMPLETA_VS_PDFS.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/ANALISE_COMPLETA_VS_PDFS.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/fix_docker_permissions.sh" beforeDir="false" afterPath="$PROJECT_DIR$/fix_docker_permissions.sh" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/gerar_chaves_env.sh" beforeDir="false" afterPath="$PROJECT_DIR$/gerar_chaves_env.sh" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="McpProjectServerCommands">
+    <commands />
+    <urls />
+  </component>
+  <component name="ProjectColorInfo"><![CDATA[{
+  "associatedIndex": 5
+}]]></component>
+  <component name="ProjectId" id="37px968MGlfRP14b039wlEi4V7y" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.MCP Project settings loaded": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "ai.playground.ignore.import.keys.banner.in.settings": "true",
+    "git-widget-placeholder": "refactor/implementation-wave-1",
+    "nodejs_package_manager_path": "npm",
+    "vue.rearranger.settings.migration": "true"
+  }
+}]]></component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-js-predefined-d6986cc7102b-9b0f141eb926-JavaScript-PY-253.29346.142" />
+        <option value="bundled-python-sdk-f2b7a9f6281b-6e1f45a539f7-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-253.29346.142" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="dff1df9d-e19f-4164-bdd5-32d170ad03b6" name="Changes" comment="" />
+      <created>1767613665775</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1767613665775</updated>
+      <workItem from="1767613667392" duration="320000" />
+    </task>
+    <servers />
+  </component>
+</project>

@@ -2,7 +2,9 @@
 // ✅ REFACTOR-001: Service layer para lógica de negócio de oportunidades
 
 const prisma = require('../utils/prisma');
-const cache = require('../utils/cache');
+const cache = require('../utils/cache'); // Fallback em memória
+const cacheService = require('./cacheService'); // ✅ FASE B - B4: Cache Redis Multinível
+const { CACHE_TTLS } = require('./cacheService');
 const logger = require('../utils/logger');
 const { CACHE_TTL, LIMITS } = require('../config/constants');
 const { validatePrice } = require('../utils/validation');
@@ -19,100 +21,97 @@ class OpportunityService {
    * ✅ REFACTOR-001: Extraído de server.js
    */
   async listOpportunities(filters = {}) {
-    const cacheKey = 'opportunities:all';
-    
-    // Verifica cache
-    const cached = cache.get(cacheKey);
-    if (cached) {
-      logger.debug('⚡ Cache HIT: /api/opportunities');
-      return cached;
-    }
-
-    // Busca no banco
     const limit = Math.min(parseInt(filters.limit) || LIMITS.OPPORTUNITIES_LIST_DEFAULT, LIMITS.OPPORTUNITIES_LIST_MAX);
+    const cacheKey = `all:limit:${limit}`;
     
-    const [opportunities, dollarRate] = await Promise.all([
-      dbCircuitBreaker.execute(async () => {
-        return await prisma.opportunity.findMany({
-          select: {
-            id: true,
-            product: true,
-            category: true,
-            city: true,
-            state: true,
-            lat: true,
-            lng: true,
-            buyPrice: true,
-            sellPrice: true,
-            sellLocation: true,
-            destLat: true,
-            destLng: true,
-            roi: true,
-            freight: true,
-            riskLevel: true,
-            volume: true,
-            season: true,
-            climate: true,
-            description: true,
-            createdAt: true
-          },
-          take: limit,
-          orderBy: { createdAt: 'desc' }
+    // ✅ FASE B - B4: Usa cache Redis multinível com getOrFetch
+    return await cacheService.getOrFetch(
+      'opportunities',
+      cacheKey,
+      async () => {
+        // Busca no banco
+        const [opportunities, dollarRate] = await Promise.all([
+          dbCircuitBreaker.execute(async () => {
+            return await prisma.opportunity.findMany({
+              select: {
+                id: true,
+                product: true,
+                category: true,
+                city: true,
+                state: true,
+                lat: true,
+                lng: true,
+                buyPrice: true,
+                sellPrice: true,
+                sellLocation: true,
+                destLat: true,
+                destLng: true,
+                roi: true,
+                freight: true,
+                riskLevel: true,
+                volume: true,
+                season: true,
+                climate: true,
+                description: true,
+                createdAt: true
+              },
+              take: limit,
+              orderBy: { createdAt: 'desc' }
+            });
+          }),
+          this.getDollarRate()
+        ]);
+
+        logger.info(`💵 Dólar Atual: R$ ${dollarRate} | Oportunidades: ${opportunities.length}`);
+
+        // Formata oportunidades
+        const formattedOpportunities = opportunities.map(opp => {
+          const buyPrice = validatePrice(opp.buyPrice, 'buyPrice', opp.id);
+          const sellPrice = validatePrice(opp.sellPrice, 'sellPrice', opp.id);
+          
+          const roi = opp.roi ? parseFloat(opp.roi) : null;
+          const freight = opp.freight ? parseFloat(opp.freight) : null;
+
+          return {
+            id: opp.id,
+            product: opp.product,
+            dollarRate: dollarRate,
+            origin: {
+              city: opp.city,
+              state: opp.state
+            },
+            destination: {
+              name: opp.sellLocation,
+              state: opp.sellLocation && opp.sellLocation.includes('-')
+                ? opp.sellLocation.split('-').pop().trim()
+                : null
+            },
+            coords: {
+              lat: opp.lat,
+              lng: opp.lng
+            },
+            financials: {
+              buyPrice: buyPrice,
+              sellPrice: sellPrice || null,
+              roi: roi,
+              freight: freight
+            },
+            details: {
+              category: opp.category,
+              volume: opp.volume,
+              riskLevel: opp.riskLevel,
+              climate: opp.climate,
+              description: opp.description,
+              season: opp.season
+            },
+            createdAt: opp.createdAt
+          };
         });
-      }),
-      this.getDollarRate()
-    ]);
 
-    logger.info(`💵 Dólar Atual: R$ ${dollarRate} | Oportunidades: ${opportunities.length}`);
-
-    // Formata oportunidades
-    const formattedOpportunities = opportunities.map(opp => {
-      const buyPrice = validatePrice(opp.buyPrice, 'buyPrice', opp.id);
-      const sellPrice = validatePrice(opp.sellPrice, 'sellPrice', opp.id);
-      
-      const roi = opp.roi ? parseFloat(opp.roi) : null;
-      const freight = opp.freight ? parseFloat(opp.freight) : null;
-
-      return {
-        id: opp.id,
-        product: opp.product,
-        dollarRate: dollarRate,
-        origin: {
-          city: opp.city,
-          state: opp.state
-        },
-        destination: {
-          name: opp.sellLocation,
-          state: opp.sellLocation && opp.sellLocation.includes('-')
-            ? opp.sellLocation.split('-').pop().trim()
-            : null
-        },
-        coords: {
-          lat: opp.lat,
-          lng: opp.lng
-        },
-        financials: {
-          buyPrice: buyPrice,
-          sellPrice: sellPrice || null,
-          roi: roi,
-          freight: freight
-        },
-        details: {
-          category: opp.category,
-          volume: opp.volume,
-          riskLevel: opp.riskLevel,
-          climate: opp.climate,
-          description: opp.description,
-          season: opp.season
-        },
-        createdAt: opp.createdAt
-      };
-    });
-
-    // Salva no cache
-    cache.set(cacheKey, formattedOpportunities, CACHE_TTL.OPPORTUNITIES);
-
-    return formattedOpportunities;
+        return formattedOpportunities;
+      },
+      CACHE_TTLS.OPPORTUNITIES
+    );
   }
 
   /**

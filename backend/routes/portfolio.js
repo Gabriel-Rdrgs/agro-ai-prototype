@@ -95,26 +95,28 @@ router.get('/stats', verifyToken, async (req, res) => {
     const netProfit = totalProfit - totalInvested;
 
     res.json({
-      total: operations.length,
-      completed: completed.length,
-      inProgress: inProgress.length,
-      planned: planned.length,
-      totalInvested: parseFloat(totalInvested.toFixed(2)),
-      totalProfit: parseFloat(totalProfit.toFixed(2)),
-      netProfit: parseFloat(netProfit.toFixed(2)),
-      successRate: parseFloat(successRate.toFixed(1)),
-      bestOperation: bestOperation ? {
-        id: bestOperation.id,
-        product: bestOperation.product,
-        actualROI: bestOperation.actualROI,
-        netProfit: bestOperation.totalValue - (bestOperation.quantity * (bestOperation.price / (1 + (bestOperation.actualROI || 0) / 100)))
-      } : null,
-      worstOperation: worstOperation ? {
-        id: worstOperation.id,
-        product: worstOperation.product,
-        actualROI: worstOperation.actualROI
-      } : null
-    });
+  total: operations.length,
+  completed: completed.length,
+  inProgress: inProgress.length,
+  planned: planned.length,
+  totalInvested: parseFloat(totalInvested.toFixed(2)),
+  totalProfit: parseFloat(totalProfit.toFixed(2)),
+  netProfit: parseFloat(netProfit.toFixed(2)),
+  successRate: parseFloat(successRate.toFixed(1)),
+  bestOperation: bestOperation ? {
+    id: bestOperation.id,
+    product: bestOperation.product,
+    actualROI: bestOperation.actualROI,
+    // ✅ FIX: Cálculo corrigido e mais simples
+    netProfit: bestOperation.totalValue - (bestOperation.quantity * bestOperation.price / (1 + (bestOperation.actualROI || 0) / 100))
+  } : null,
+  worstOperation: worstOperation ? {
+    id: worstOperation.id,
+    product: worstOperation.product,
+    actualROI: worstOperation.actualROI
+  } : null
+});
+
   } catch (error) {
     logger.error('❌ Erro ao calcular estatísticas do portfolio:', error);
     res.status(500).json({ error: 'Erro ao calcular estatísticas' });

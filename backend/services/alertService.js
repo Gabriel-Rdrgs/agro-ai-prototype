@@ -17,13 +17,27 @@ const alertQueue = new Queue('alerts', REDIS_URL);
 // Inicializar Telegram Bot (se token configurado)
 let telegramBot = null;
 if (process.env.TELEGRAM_BOT_TOKEN) {
-  telegramBot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: false });
+  try {
+    telegramBot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: false });
+    logger.info('✅ Telegram Bot inicializado');
+  } catch (error) {
+    logger.error(`❌ Erro ao inicializar Telegram Bot: ${error.message}`);
+  }
+} else {
+  logger.warn('⚠️ TELEGRAM_BOT_TOKEN não configurado. Alertas Telegram desabilitados.');
 }
 
 // Inicializar Twilio (se configurado)
 let twilioClient = null;
 if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
-  twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+  try {
+    twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+    logger.info('✅ Twilio Client inicializado');
+  } catch (error) {
+    logger.error(`❌ Erro ao inicializar Twilio: ${error.message}`);
+  }
+} else {
+  logger.warn('⚠️ Twilio não configurado. Alertas WhatsApp desabilitados.');
 }
 
 /**

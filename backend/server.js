@@ -36,7 +36,9 @@ const etlRoutes = require('./routes/etl'); // ✅ ETL ASSÍNCRONO
 const favoritesRoutes = require('./routes/favorites'); // ✅ NOVO: Favoritos
 const alertsRoutes = require('./routes/alerts'); // ✅ NOVO: Sistema de Alertas
 const portfolioRoutes = require('./routes/portfolio'); // ✅ NOVO: Portfolio Tracking
-const cache = require('./utils/cache'); // ✅ CACHE URGENTE
+const adminRoutes = require('./routes/admin'); // ✅ FASE B - B4: Rotas administrativas (cache stats)
+const cache = require('./utils/cache'); // ✅ CACHE EM MEMÓRIA (fallback)
+const cacheService = require('./services/cacheService'); // ✅ FASE B - B4: Cache Redis Multinível
 const jobQueue = require('./utils/jobQueue'); // ✅ JOBS ASSÍNCRONOS
 const { logAction } = require('./services/auditService'); // ✅ AUDIT LOG
 const { exportOpportunitiesToExcel } = require('./services/exportService'); // ✅ FASE B - B1: Exportação Excel
@@ -206,9 +208,10 @@ const authLimiter = rateLimit({
 });
 
 // ✅ A5: Rate limiting geral para todas as rotas da API (proteção contra brute force)
+// ✅ CORREÇÃO: Aumentado limite para suportar múltiplas requisições simultâneas do frontend
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 100, // 100 requests por IP a cada 15 minutos
+  max: 1000, // 1000 requests por IP a cada 15 minutos (aumentado de 100 para suportar múltiplas requisições simultâneas)
   message: {
     error: 'Muitas requisições, tente novamente mais tarde',
     retryAfter: '15 minutos'
@@ -216,12 +219,33 @@ const apiLimiter = rateLimit({
   standardHeaders: true, // Retorna `RateLimit-*` headers
   legacyHeaders: false, // Não retorna `X-RateLimit-*` headers
   skip: (req) => {
-    // Pula rate limiting para health checks e rotas internas
-    return req.path === '/health' || req.path === '/' || req.path.startsWith('/api-docs');
+    // Pula rate limiting para health checks, rotas internas e rotas que recebem múltiplas requisições simultâneas
+    const path = req.path;
+    return path === '/health' || 
+           path === '/' || 
+           path.startsWith('/api-docs') ||
+           path.startsWith('/favorites') ||  // ✅ Favorites recebe muitas requisições simultâneas
+           path.startsWith('/weather');      // ✅ Weather recebe muitas requisições simultâneas
   }
 });
 
-// Aplica rate limiting em todas as rotas da API
+// ✅ Rate limiter mais permissivo para rotas que recebem múltiplas requisições simultâneas
+const permissiveLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minuto
+  max: 300, // 300 requests por minuto (para favorites, weather, etc.)
+  message: {
+    error: 'Muitas requisições, tente novamente em alguns segundos',
+    retryAfter: '1 minuto'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// ✅ Aplica rate limiter permissivo ANTES do geral (para rotas específicas)
+app.use('/api/favorites', permissiveLimiter);
+app.use('/api/weather', permissiveLimiter);
+
+// Aplica rate limiting em todas as rotas da API (exceto as que já têm permissiveLimiter)
 app.use('/api/', apiLimiter);
 
 // Rota para o Railway saber que o app está vivo
@@ -2280,8 +2304,9 @@ app.post('/api/admin/fix-data', verifyToken, checkRole(['admin']), async (req, r
 app.use('/api/ceasa', ceasaRoutes);
 app.use('/api/admin/etl', etlRoutes); // ✅ ETL ASSÍNCRONO
 app.use('/api/favorites', favoritesRoutes); // ✅ NOVO: Favoritos
-app.use('/api/alerts', alertsRoutes); // ✅ NOVO: Sistema de Alertas
+app.use('/api/alerts', alertsRoutes); // ✅ NOVO: Sistema de Alertas (webhook Telegram não requer auth)
 app.use('/api/portfolio', portfolioRoutes); // ✅ NOVO: Portfolio Tracking
+app.use('/api/admin', adminRoutes); // ✅ FASE B - B4: Rotas administrativas (cache stats)
 
 // ✅ FASE 0 - Semana 2: Error Handler do Sentry (DEPOIS de todas as rotas, ANTES de error handlers)
 // Na v10 do @sentry/node, usamos expressErrorHandler como middleware

@@ -454,5 +454,268 @@ router.put('/user-config', verifyToken, async (req, res) => {
   }
 });
 
+// ✅ FASE B - B2: Rotas para integração Telegram/WhatsApp
+
+/**
+ * GET /api/alerts/telegram/info
+ * Retorna informações do bot Telegram (se configurado)
+ */
+router.get('/telegram/info', verifyToken, async (req, res) => {
+  try {
+    const TelegramBot = require('node-telegram-bot-api');
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+
+    if (!token) {
+      return res.json({
+        configured: false,
+        message: 'Telegram Bot não configurado. Configure TELEGRAM_BOT_TOKEN no .env'
+      });
+    }
+
+    const bot = new TelegramBot(token, { polling: false });
+    const botInfo = await bot.getMe();
+
+    res.json({
+      configured: true,
+      botUsername: botInfo.username,
+      botName: botInfo.first_name,
+      instructions: `Para conectar seu Telegram:
+1. Abra o Telegram e procure por @${botInfo.username}
+2. Inicie uma conversa com o bot
+3. Envie o comando /start
+4. O bot retornará seu Chat ID
+5. Copie o Chat ID e cole no campo abaixo`
+    });
+  } catch (error) {
+    logger.error('❌ Erro ao buscar info do Telegram:', error);
+    res.status(500).json({ 
+      configured: false,
+      error: 'Erro ao buscar informações do bot Telegram' 
+    });
+  }
+});
+
+/**
+ * POST /api/alerts/telegram/test
+ * Testa envio de mensagem via Telegram
+ */
+router.post('/telegram/test', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const { chatId } = req.body;
+
+    if (!chatId) {
+      return res.status(400).json({ error: 'chatId é obrigatório' });
+    }
+
+    const { sendTelegramAlert } = require('../services/alertService');
+    
+    const testMessage = `✅ <b>Teste de Alerta Telegram</b>
+
+Este é uma mensagem de teste do sistema de alertas Agro-AI.
+
+Se você recebeu esta mensagem, seu Telegram está configurado corretamente! 🎉
+
+Você receberá alertas quando novas oportunidades forem encontradas.`;
+
+    const sent = await sendTelegramAlert(chatId, testMessage);
+
+    if (sent) {
+      // Atualiza chatId no perfil do usuário
+      const { supabaseAdmin } = require('../utils/supabase');
+      if (supabaseAdmin) {
+        const { data: { user } } = await supabaseAdmin.auth.admin.getUserById(userId);
+        if (user) {
+          const metadata = user.user_metadata || {};
+          await supabaseAdmin.auth.admin.updateUserById(userId, {
+            user_metadata: {
+              ...metadata,
+              telegramChatId: chatId
+            }
+          });
+        }
+      }
+
+      res.json({ 
+        success: true, 
+        message: 'Mensagem de teste enviada com sucesso! Verifique seu Telegram.' 
+      });
+    } else {
+      res.status(500).json({ 
+        success: false,
+        error: 'Falha ao enviar mensagem. Verifique se o bot está configurado e o chatId está correto.' 
+      });
+    }
+  } catch (error) {
+    logger.error('❌ Erro ao testar Telegram:', error);
+    res.status(500).json({ error: 'Erro ao testar envio de mensagem Telegram' });
+  }
+});
+
+/**
+ * POST /api/alerts/whatsapp/test
+ * Testa envio de mensagem via WhatsApp
+ */
+router.post('/whatsapp/test', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const { phone } = req.body;
+
+    if (!phone) {
+      return res.status(400).json({ error: 'phone é obrigatório (formato: +5511999999999)' });
+    }
+
+    // Valida formato do telefone
+    const phoneRegex = /^\+[1-9]\d{10,14}$/;
+    if (!phoneRegex.test(phone)) {
+      return res.status(400).json({ 
+        error: 'Formato de telefone inválido. Use o formato: +5511999999999 (com código do país)' 
+      });
+    }
+
+    const { sendWhatsAppAlert } = require('../services/alertService');
+    
+    const testMessage = `✅ *Teste de Alerta WhatsApp*
+
+Este é uma mensagem de teste do sistema de alertas Agro-AI.
+
+Se você recebeu esta mensagem, seu WhatsApp está configurado corretamente! 🎉
+
+Você receberá alertas quando novas oportunidades forem encontradas.`;
+
+    const sent = await sendWhatsAppAlert(phone, testMessage);
+
+    if (sent) {
+      // Atualiza phone no perfil do usuário
+      const { supabaseAdmin } = require('../utils/supabase');
+      if (supabaseAdmin) {
+        const { data: { user } } = await supabaseAdmin.auth.admin.getUserById(userId);
+        if (user) {
+          const metadata = user.user_metadata || {};
+          await supabaseAdmin.auth.admin.updateUserById(userId, {
+            user_metadata: {
+              ...metadata,
+              phone: phone
+            }
+          });
+        }
+      }
+
+      res.json({ 
+        success: true, 
+        message: 'Mensagem de teste enviada com sucesso! Verifique seu WhatsApp.' 
+      });
+    } else {
+      res.status(500).json({ 
+        success: false,
+        error: 'Falha ao enviar mensagem. Verifique se o Twilio está configurado corretamente.' 
+      });
+    }
+  } catch (error) {
+    logger.error('❌ Erro ao testar WhatsApp:', error);
+    res.status(500).json({ error: 'Erro ao testar envio de mensagem WhatsApp' });
+  }
+});
+
+/**
+ * POST /api/alerts/telegram/webhook
+ * Webhook do Telegram para receber mensagens e obter Chat ID automaticamente
+ * ⚠️ Esta rota NÃO requer autenticação (é chamada pelo Telegram)
+ */
+router.post('/telegram/webhook', async (req, res) => {
+  try {
+    const { message } = req.body;
+
+    if (!message) {
+      return res.status(400).json({ error: 'Mensagem não encontrada' });
+    }
+
+    const chatId = message.chat.id;
+    const text = message.text || '';
+    const firstName = message.from.first_name || 'Usuário';
+
+    const TelegramBot = require('node-telegram-bot-api');
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+
+    if (!token) {
+      logger.warn('⚠️ Telegram Bot não configurado');
+      return res.status(503).json({ error: 'Bot não configurado' });
+    }
+
+    const bot = new TelegramBot(token, { polling: false });
+
+    // Comando /start - retorna Chat ID
+    if (text === '/start' || text.toLowerCase().includes('start')) {
+      const response = `👋 Olá, ${firstName}!
+
+✅ Seu Chat ID é: <code>${chatId}</code>
+
+📋 <b>Como usar:</b>
+1. Copie o Chat ID acima
+2. Acesse o dashboard Agro-AI
+3. Vá em "Alertas" > "Configurar Telegram"
+4. Cole o Chat ID e clique em "Salvar"
+
+🔔 Você receberá alertas quando novas oportunidades forem encontradas!
+
+💡 <b>Dica:</b> Mantenha esta conversa aberta para receber os alertas.`;
+
+      await bot.sendMessage(chatId, response, {
+        parse_mode: 'HTML',
+        disable_web_page_preview: true
+      });
+
+      logger.info(`✅ Chat ID ${chatId} fornecido para ${firstName}`);
+    } else {
+      // Resposta padrão para outros comandos
+      await bot.sendMessage(chatId, `Olá! Envie /start para obter seu Chat ID.`, {
+        parse_mode: 'HTML'
+      });
+    }
+
+    res.json({ ok: true });
+  } catch (error) {
+    logger.error('❌ Erro no webhook do Telegram:', error);
+    res.status(500).json({ error: 'Erro ao processar webhook' });
+  }
+});
+
+/**
+ * GET /api/alerts/config
+ * Retorna configuração atual do usuário
+ */
+router.get('/config', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Usuário não autenticado' });
+    }
+
+    const { supabaseAdmin } = require('../utils/supabase');
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: 'Serviço de autenticação não configurado' });
+    }
+
+    const { data: { user }, error } = await supabaseAdmin.auth.admin.getUserById(userId);
+    if (error || !user) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const metadata = user.user_metadata || {};
+
+    res.json({
+      alertsEnabled: metadata.alertsEnabled ?? true,
+      telegramChatId: metadata.telegramChatId || null,
+      phone: metadata.phone || null,
+      preferredAlertChannel: metadata.preferredAlertChannel || 'email',
+      telegramConfigured: !!process.env.TELEGRAM_BOT_TOKEN,
+      whatsappConfigured: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_WHATSAPP_NUMBER)
+    });
+  } catch (error) {
+    logger.error('❌ Erro ao buscar configuração:', error);
+    res.status(500).json({ error: 'Erro ao buscar configuração de alertas' });
+  }
+});
+
 module.exports = router;
 
