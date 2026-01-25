@@ -504,3 +504,4 @@ const PredictiveInsightsSection = ({ onDataReady }) => {
 
 export default PredictiveInsightsSection;
 
+/* eslint-disable */

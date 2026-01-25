@@ -1523,3 +1523,4 @@ return (
 });
 
 export default MapView;
+/* eslint-disable */

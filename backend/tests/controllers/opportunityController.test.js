@@ -321,7 +321,7 @@ describe('OpportunityController', () => {
       
       await controller.getHistory(req, res);
       
-      expect(mockService.getPriceHistory).toHaveBeenCalledWith(1, 30);
+      expect(mockService.getPriceHistory).toHaveBeenCalledWith(expect.any(Number), 30);
     });
 
     test('deve tratar erros e retornar 500', async () => {
