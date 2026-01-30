@@ -3,11 +3,6 @@
 // 🏗️ AGRO-AI BACKEND v7.2 (VERSÃO COMPLETA INTEGRADA)
 // ============================================
 
-if (process.env.RAILWAY_ENVIRONMENT_NAME) {
-  app.set('trust proxy', true);
-  console.log('✅ Trust proxy habilitado para Railway');
-}
-
 // 1. CARREGAMENTO DE DEPENDÊNCIAS
 require('dotenv').config();
 
@@ -464,7 +459,6 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customSiteTitle: 'Agro-AI API Documentation'
 }));
 
-
 // ============================================
 // 🔐 ROTAS DE AUTENTICAÇÃO
 // ============================================
@@ -495,7 +489,7 @@ if (authController) {
    *                 minLength: 8
    *     responses:
    *       201:
-   *         description: "Usuário criado com sucesso"
+   *         description: Usuário criado com sucesso
    *       400:
    *         $ref: '#/components/responses/Error'
    *       401:
@@ -531,7 +525,7 @@ if (authController) {
    *                 example: senha123
    *     responses:
    *       200:
-   *         description: "Login bem-sucedido"
+   *         description: Login bem-sucedido
    *         content:
    *           application/json:
    *             schema:
@@ -539,7 +533,7 @@ if (authController) {
    *               properties:
    *                 token:
    *                   type: string
-   *                   description: "Token JWT para autenticação"
+   *                   description: Token JWT para autenticação
    *                 user:
    *                   type: object
    *                   properties:
@@ -552,7 +546,7 @@ if (authController) {
    *       401:
    *         $ref: '#/components/responses/Error'
    *       429:
-   *         description: "Muitas tentativas de login"
+   *         description: Muitas tentativas de login
    */
   app.post('/api/auth/login', authLimiter, authController.login); // ✅ CRIT-003: Rate limiting para login
   
@@ -565,17 +559,15 @@ if (authController) {
    *     security: []
    *     responses:
    *       200:
-   *         description: "Token renovado"
+   *         description: Token renovado
    *       401:
    *         $ref: '#/components/responses/Error'
    */
   app.post('/api/auth/refresh', authLimiter, authController.refreshToken); // ✅ CRIT-003: Rate limiting para refresh
 }
 
-
 // ✅ REFACTOR-001: Inicializa controller após getDollarRate estar definido
 opportunityController = new OpportunityController(pythonAxios, getDollarRate);
-
 
 // Verificação de segurança
 if (!opportunityController) {
@@ -583,11 +575,9 @@ if (!opportunityController) {
   process.exit(1);
 }
 
-
 // ============================================
 // 📊 ROTAS DE NEGÓCIO (DADOS)
 // ============================================
-
 
 // 1. Listar Oportunidades (Com Dólar em Tempo Real)
 // ✅ REFACTOR-001: Usa controller
@@ -604,38 +594,38 @@ if (!opportunityController) {
  *         schema:
  *           type: integer
  *           default: 100
- *         description: "Número máximo de resultados"
+ *         description: Número máximo de resultados
  *       - in: query
  *         name: skip
  *         schema:
  *           type: integer
  *           default: 0
- *         description: "Número de resultados para pular"
+ *         description: Número de resultados para pular
  *       - in: query
  *         name: product
  *         schema:
  *           type: string
- *         description: "Filtrar por produto (ex: Tomate, Soja)"
+ *         description: Filtrar por produto (ex: Tomate, Soja)
  *       - in: query
  *         name: state
  *         schema:
  *           type: string
- *         description: "Filtrar por estado (ex: MT, GO)"
+ *         description: Filtrar por estado (ex: MT, GO)
  *       - in: query
  *         name: minRoi
  *         schema:
  *           type: number
  *           format: float
- *         description: "ROI mínimo"
+ *         description: ROI mínimo
  *       - in: query
  *         name: maxRoi
  *         schema:
  *           type: number
  *           format: float
- *         description: "ROI máximo"
+ *         description: ROI máximo
  *     responses:
  *       200:
- *         description: "Lista de oportunidades"
+ *         description: Lista de oportunidades
  *         content:
  *           application/json:
  *             schema:
@@ -656,7 +646,6 @@ app.get('/api/opportunities',
   }
 );
 
-
 // ✅ FASE B - B1: Exportação Excel Premium
 /**
  * @swagger
@@ -671,26 +660,26 @@ app.get('/api/opportunities',
  *         name: product
  *         schema:
  *           type: string
- *         description: "Filtrar por produto"
+ *         description: Filtrar por produto
  *       - in: query
  *         name: state
  *         schema:
  *           type: string
- *         description: "Filtrar por estado"
+ *         description: Filtrar por estado
  *       - in: query
  *         name: minRoi
  *         schema:
  *           type: number
- *         description: "ROI mínimo"
+ *         description: ROI mínimo
  *       - in: query
  *         name: maxResults
  *         schema:
  *           type: integer
  *           default: 1000
- *         description: "Número máximo de resultados"
+ *         description: Número máximo de resultados
  *     responses:
  *       200:
- *         description: "Arquivo Excel"
+ *         description: Arquivo Excel
  *         content:
  *           application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
  *             schema:
