@@ -1,3 +1,4 @@
+//frontend/src/components/Weather/StorageAdvisor.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { StorageService } from '../../services/storageService';
 import {
